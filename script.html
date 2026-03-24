@@ -332,18 +332,19 @@ var Logger={
 // ============================================================
 var EmpAgent={
   _batch:100, _loaded:0, _sort:{col:'NAME',dir:'asc'},
-  _filtered:function(){
-    var onEmpView=document.getElementById('view-employees') && document.getElementById('view-employees').classList.contains('active');
-    var q  =onEmpView?(document.getElementById('emp-q2') ||{}).value||'':(document.getElementById('emp-q')  ||{}).value||'';
-    var qt =onEmpView?'':(document.getElementById('emp-tq') ||{}).value||'';
-    var ent=onEmpView?(document.getElementById('emp-ent2')||{}).value||'':(document.getElementById('emp-ent')||{}).value||'';
-    var lic=onEmpView?(document.getElementById('emp-lic2')||{}).value||'':(document.getElementById('emp-lic')||{}).value||'';
-    var sts=onEmpView?'':(document.getElementById('emp-sts')||{}).value||'';
-    var nat=onEmpView?'':(document.getElementById('emp-nat-f')||{}).value||'';
-    var doj=onEmpView?'':(document.getElementById('emp-doj-f')||{}).value||'';
+  _isMasterView:function(){
+    var v=document.getElementById('view-masterdata'); return v&&v.classList.contains('active');
+  },
+  _filteredMaster:function(){
+    var q  =(document.getElementById('emp-q')    ||{}).value||'';
+    var qt =(document.getElementById('emp-tq')   ||{}).value||'';
+    var ent=(document.getElementById('emp-ent')  ||{}).value||'';
+    var lic=(document.getElementById('emp-lic')  ||{}).value||'';
+    var sts=(document.getElementById('emp-sts')  ||{}).value||'';
+    var nat=(document.getElementById('emp-nat-f')||{}).value||'';
+    var doj=(document.getElementById('emp-doj-f')||{}).value||'';
     q=q.toLowerCase(); qt=qt.toLowerCase();
-    var active=getActiveEmployees();
-    var list=active.filter(function(r){
+    var list=APP.master.filter(function(r){
       if(q  && ![(r.NAME||''),(r.ID||''),(r['PASSPORT NO']||'')].some(function(v){ return v.toLowerCase().indexOf(q)>=0; })) return false;
       if(qt && ![(r.NAME||''),(r.ID||''),(r['EID NO']||'')].some(function(v){ return v.toLowerCase().indexOf(qt)>=0; })) return false;
       if(ent && normEnt(r.ENTITY)!==ent) return false;
@@ -353,32 +354,29 @@ var EmpAgent={
       if(doj && (r['DATE OF JOIN']||'').indexOf(doj)<0) return false;
       return true;
     });
-    // Sort
     var sc=this._sort.col, sd=this._sort.dir;
-    list.sort(function(a,b){
-      var av=String(a[sc]||'').toUpperCase(), bv=String(b[sc]||'').toUpperCase();
-      return sd==='asc'?av.localeCompare(bv):bv.localeCompare(av);
+    list.sort(function(a,b){ var av=String(a[sc]||'').toUpperCase(),bv=String(b[sc]||'').toUpperCase(); return sd==='asc'?av.localeCompare(bv):bv.localeCompare(av); });
+    return list;
+  },
+  _filteredActive:function(){
+    var q  =(document.getElementById('emp-q2')  ||{}).value||'';
+    var ent=(document.getElementById('emp-ent2')||{}).value||'';
+    var lic=(document.getElementById('emp-lic2')||{}).value||'';
+    q=q.toLowerCase();
+    var list=getActiveEmployees().filter(function(r){
+      if(q  && ![(r.NAME||''),(r.ID||''),(r['PASSPORT NO']||'')].some(function(v){ return v.toLowerCase().indexOf(q)>=0; })) return false;
+      if(ent && normEnt(r.ENTITY)!==ent) return false;
+      if(lic && r['LIC AUTH']!==lic) return false;
+      return true;
     });
+    var sc=this._sort.col, sd=this._sort.dir;
+    list.sort(function(a,b){ var av=String(a[sc]||'').toUpperCase(),bv=String(b[sc]||'').toUpperCase(); return sd==='asc'?av.localeCompare(bv):bv.localeCompare(av); });
     return list;
   },
   render:function(reset){
-    var tb=document.getElementById('emp-tbody');
-    var tb2=document.getElementById('emp-tbody2');
-    if(!tb && !tb2) return;
-    var list=this._filtered(), t=list.length;
-    if(reset) this._loaded=0;
-    var batch=Math.min(this._loaded+this._batch, t);
-    this._loaded=batch;
-    var active=getActiveEmployees();
-    var cnt=document.getElementById('emp-cnt'); if(cnt) cnt.textContent=t+' of '+active.length;
-    var cnt2=document.getElementById('emp-cnt2'); if(cnt2) cnt2.textContent=t+' of '+active.length;
-    var nb=document.getElementById('nb-emp');  if(nb)  nb.textContent=active.length;
-    var empty='<tr><td colspan="6" style="text-align:center;padding:32px;color:var(--muted)">No records found.</td></tr>';
-    if(!t){ if(tb) tb.innerHTML=empty; if(tb2) tb2.innerHTML=empty; return; }
     var licB=function(l){ var m={PSBD:'bp',SIRA:'bs',NIL:'bn',OTHER:'bo'}; return '<span class="badge '+(m[l]||'bn')+'">'+esc(l||'NIL')+'</span>'; };
-    var rows=list.slice(0,batch).map(function(r,i){
+    var makeRow=function(r,i){
       var id=esc(r.ID||''), nm=esc(r.NAME||'—');
-      var jd=r['DATE OF JOIN']||'—'; if(jd.length>10) jd=jd.substring(0,10);
       return '<tr>'+
         '<td style="color:var(--muted2);font-size:10px">'+(i+1)+'</td>'+
         '<td><span class="pph" title="PP: '+esc(r['PASSPORT NO']||'N/A')+'">'+id+'</span></td>'+
@@ -389,25 +387,42 @@ var EmpAgent={
           '<button class="btn btn-secondary btn-icon btn-sm" data-action="edit-emp" data-id="'+id+'" title="Edit">&#9998;</button>'+
           '<button class="btn btn-danger btn-icon btn-sm" data-action="del-emp" data-id="'+id+'" data-name="'+nm+'" title="Delete">&#128465;</button>'+
         '</div></td></tr>';
-    }).join('');
-    if(batch<t){
-      rows+='<tr class="load-more-row"><td colspan="6"><button class="btn btn-secondary" onclick="EmpAgent.loadMore()" style="width:100%">&#8595; Load more ('+t+' total, showing '+batch+')</button></td></tr>';
+    };
+    var empty='<tr><td colspan="6" style="text-align:center;padding:32px;color:var(--muted)">No records found.</td></tr>';
+    var active=getActiveEmployees();
+    var nb=document.getElementById('nb-emp'); if(nb) nb.textContent=active.length;
+
+    // — Employee Register: all master data, no pagination —
+    var tb=document.getElementById('emp-tbody');
+    if(tb){
+      var mlist=this._filteredMaster(), mt=mlist.length;
+      var cnt=document.getElementById('emp-cnt'); if(cnt) cnt.textContent=mt+' of '+APP.master.length;
+      tb.innerHTML=mt?mlist.map(makeRow).join(''):empty;
     }
-    if(tb) tb.innerHTML=rows;
-    if(tb2) tb2.innerHTML=rows;
+
+    // — Active Employees: filtered active, with pagination —
+    var tb2=document.getElementById('emp-tbody2');
+    if(tb2){
+      var alist=this._filteredActive(), at=alist.length;
+      if(reset) this._loaded=0;
+      var batch=Math.min(this._loaded+this._batch, at);
+      this._loaded=batch;
+      var cnt2=document.getElementById('emp-cnt2'); if(cnt2) cnt2.textContent=at+' of '+active.length;
+      var rows=at?alist.slice(0,batch).map(makeRow).join(''):empty;
+      if(at&&batch<at) rows+='<tr class="load-more-row"><td colspan="6"><button class="btn btn-secondary" onclick="EmpAgent.loadMore()" style="width:100%">&#8595; Load more ('+at+' total, showing '+batch+')</button></td></tr>';
+      tb2.innerHTML=rows;
+    }
   },
   loadMore:function(){
-    var list=this._filtered(), t=list.length;
+    var list=this._filteredActive(), t=list.length;
     var newBatch=Math.min(this._loaded+this._batch,t);
     this._loaded=newBatch;
-    var tb=document.getElementById('emp-tbody'); if(!tb) return;
-    // Remove last "load more" row
-    var last=tb.querySelector('.load-more-row'); if(last) last.remove();
+    var tb2=document.getElementById('emp-tbody2'); if(!tb2) return;
+    var last=tb2.querySelector('.load-more-row'); if(last) last.remove();
     var licB=function(l){ var m={PSBD:'bp',SIRA:'bs',NIL:'bn',OTHER:'bo'}; return '<span class="badge '+(m[l]||'bn')+'">'+esc(l||'NIL')+'</span>'; };
     var prev=this._loaded-this._batch;
     var rows=list.slice(prev,newBatch).map(function(r,i){
       var id=esc(r.ID||''), nm=esc(r.NAME||'—');
-      var jd=r['DATE OF JOIN']||'—'; if(jd.length>10) jd=jd.substring(0,10);
       return '<tr>'+
         '<td style="color:var(--muted2);font-size:10px">'+(prev+i+1)+'</td>'+
         '<td><span class="pph" title="PP: '+esc(r['PASSPORT NO']||'N/A')+'">'+id+'</span></td>'+
@@ -419,10 +434,8 @@ var EmpAgent={
           '<button class="btn btn-danger btn-icon btn-sm" data-action="del-emp" data-id="'+id+'" data-name="'+nm+'" title="Delete">&#128465;</button>'+
         '</div></td></tr>';
     }).join('');
-    if(newBatch<t){
-      rows+='<tr class="load-more-row"><td colspan="6"><button class="btn btn-secondary" onclick="EmpAgent.loadMore()" style="width:100%">&#8595; Load more ('+t+' total, showing '+newBatch+')</button></td></tr>';
-    }
-    tb.insertAdjacentHTML('beforeend',rows);
+    if(newBatch<t) rows+='<tr class="load-more-row"><td colspan="6"><button class="btn btn-secondary" onclick="EmpAgent.loadMore()" style="width:100%">&#8595; Load more ('+t+' total, showing '+newBatch+')</button></td></tr>';
+    tb2.insertAdjacentHTML('beforeend',rows);
   },
   sortBy:function(col){
     if(this._sort.col===col) this._sort.dir=this._sort.dir==='asc'?'desc':'asc';
@@ -434,8 +447,8 @@ var EmpAgent={
     this.render(true);
   },
   resetF:function(){
-    ['emp-q','emp-tq','emp-nat-f','emp-doj-f'].forEach(function(id){ var el=document.getElementById(id); if(el) el.value=''; });
-    ['emp-ent','emp-lic','emp-sts'].forEach(function(id){ var el=document.getElementById(id); if(el) el.value=''; });
+    ['emp-q','emp-tq','emp-nat-f','emp-doj-f','emp-q2'].forEach(function(id){ var el=document.getElementById(id); if(el) el.value=''; });
+    ['emp-ent','emp-lic','emp-sts','emp-ent2','emp-lic2'].forEach(function(id){ var el=document.getElementById(id); if(el) el.value=''; });
     this._sort={col:'NAME',dir:'asc'};
     this.render(true);
   },
