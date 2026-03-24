@@ -333,10 +333,10 @@ var Logger={
 var EmpAgent={
   _batch:100, _loaded:0, _sort:{col:'NAME',dir:'asc'},
   _filtered:function(){
-    var q  =(document.getElementById('emp-q')  ||{}).value||'';
+    var q  =(document.getElementById('emp-q')  ||{}).value||(document.getElementById('emp-q2') ||{}).value||'';
     var qt =(document.getElementById('emp-tq') ||{}).value||'';
-    var ent=(document.getElementById('emp-ent')||{}).value||'';
-    var lic=(document.getElementById('emp-lic')||{}).value||'';
+    var ent=(document.getElementById('emp-ent')||{}).value||(document.getElementById('emp-ent2')||{}).value||'';
+    var lic=(document.getElementById('emp-lic')||{}).value||(document.getElementById('emp-lic2')||{}).value||'';
     var sts=(document.getElementById('emp-sts')||{}).value||'';
     var nat=(document.getElementById('emp-nat-f')||{}).value||'';
     var doj=(document.getElementById('emp-doj-f')||{}).value||'';
@@ -361,15 +361,19 @@ var EmpAgent={
     return list;
   },
   render:function(reset){
-    var tb=document.getElementById('emp-tbody'); if(!tb) return;
+    var tb=document.getElementById('emp-tbody');
+    var tb2=document.getElementById('emp-tbody2');
+    if(!tb && !tb2) return;
     var list=this._filtered(), t=list.length;
     if(reset) this._loaded=0;
     var batch=Math.min(this._loaded+this._batch, t);
     this._loaded=batch;
     var active=getActiveEmployees();
     var cnt=document.getElementById('emp-cnt'); if(cnt) cnt.textContent=t+' of '+active.length;
+    var cnt2=document.getElementById('emp-cnt2'); if(cnt2) cnt2.textContent=t+' of '+active.length;
     var nb=document.getElementById('nb-emp');  if(nb)  nb.textContent=active.length;
-    if(!t){ tb.innerHTML='<tr><td colspan="6" style="text-align:center;padding:32px;color:var(--muted)">No records found.</td></tr>'; return; }
+    var empty='<tr><td colspan="6" style="text-align:center;padding:32px;color:var(--muted)">No records found.</td></tr>';
+    if(!t){ if(tb) tb.innerHTML=empty; if(tb2) tb2.innerHTML=empty; return; }
     var licB=function(l){ var m={PSBD:'bp',SIRA:'bs',NIL:'bn',OTHER:'bo'}; return '<span class="badge '+(m[l]||'bn')+'">'+esc(l||'NIL')+'</span>'; };
     var rows=list.slice(0,batch).map(function(r,i){
       var id=esc(r.ID||''), nm=esc(r.NAME||'—');
@@ -388,7 +392,8 @@ var EmpAgent={
     if(batch<t){
       rows+='<tr class="load-more-row"><td colspan="6"><button class="btn btn-secondary" onclick="EmpAgent.loadMore()" style="width:100%">&#8595; Load more ('+t+' total, showing '+batch+')</button></td></tr>';
     }
-    tb.innerHTML=rows;
+    if(tb) tb.innerHTML=rows;
+    if(tb2) tb2.innerHTML=rows;
   },
   loadMore:function(){
     var list=this._filtered(), t=list.length;
