@@ -372,3 +372,117 @@ function getOrCreate(name,headers){
 function formatDate(d){
   return ('0'+d.getDate()).slice(-2)+'/'+('0'+(d.getMonth()+1)).slice(-2)+'/'+d.getFullYear();
 }
+
+// ============================================================
+// LETTER TEMPLATES — HR Letters (Warning, Experience, etc.)
+// Templates stored in AppConfig sheet as:
+//   LTEMPL_{TYPE_KEY}_DRIVE  — Google Doc/Drive File ID
+//   LTEMPL_{TYPE_KEY}_BODY   — in-app text body with placeholders
+// Supported placeholders: {{NAME}} {{EMP_ID}} {{PASSPORT_NO}}
+//   {{DESIGNATION}} {{COMPANY}} {{ENTITY}} {{DATE_OF_JOIN}}
+//   {{SALARY}} {{DATE}} {{REF_NO}} {{ISSUED_BY}}
+//   {{HR_OFFICER}} {{HR_DESIGNATION}}
+// ============================================================
+function getTypeKey_(type) {
+  return String(type).toUpperCase().replace(/[^A-Z0-9]/g, '_');
+}
+
+function saveLetterTemplate(type, driveId, bodyText) {
+  try {
+    var sh = getOrCreate(TABS.CONFIG, ['KEY','VALUE']);
+    var d = sh.getDataRange().getValues();
+    var driveKey = 'LTEMPL_' + getTypeKey_(type) + '_DRIVE';
+    var bodyKey  = 'LTEMPL_' + getTypeKey_(type) + '_BODY';
+    var keyMap = {};
+    for (var i = 1; i < d.length; i++) { if (d[i][0]) keyMap[String(d[i][0])] = i + 1; }
+    if (keyMap[driveKey]) sh.getRange(keyMap[driveKey], 2).setValue(driveId || '');
+    else sh.appendRow([driveKey, driveId || '']);
+    if (keyMap[bodyKey]) sh.getRange(keyMap[bodyKey], 2).setValue(bodyText || '');
+    else sh.appendRow([bodyKey, bodyText || '']);
+    return { success: true };
+  } catch(e) { return { success: false, error: e.message }; }
+}
+
+function _fillPlaceholders(text, data, cfg) {
+  var map = {
+    '{{NAME}}':           data.EMP_NAME    || '',
+    '{{EMP_ID}}':         data.EMP_ID      || '',
+    '{{PASSPORT_NO}}':    data.PASSPORT_NO || '',
+    '{{DESIGNATION}}':    data.DESIGNATION || '',
+    '{{COMPANY}}':        cfg.company_name || 'United Group Holding',
+    '{{ENTITY}}':         data.ENTITY      || '',
+    '{{DATE_OF_JOIN}}':   data.DATE_OF_JOIN|| '',
+    '{{SALARY}}':         data.SALARY      || '',
+    '{{DATE}}':           data.ISSUE_DATE  || '',
+    '{{REF_NO}}':         data.REF_NO      || '',
+    '{{ISSUED_BY}}':      data.ISSUED_BY   || '',
+    '{{HR_OFFICER}}':     cfg.hr_officer   || 'HR Manager',
+    '{{HR_DESIGNATION}}': cfg.designation  || 'HR Manager'
+  };
+  var result = text;
+  Object.keys(map).forEach(function(k) { result = result.split(k).join(map[k]); });
+  return result;
+}
+
+function _generateFromDriveTemplate(driveId, data, cfg) {
+  var file = DriveApp.getFileById(driveId);
+  var copy = file.makeCopy('_HR_TEMP_' + data.REF_NO);
+  try {
+    var doc = DocumentApp.openById(copy.getId());
+    var body = doc.getBody();
+    var placeholders = {
+      '{{NAME}}':           data.EMP_NAME    || '',
+      '{{EMP_ID}}':         data.EMP_ID      || '',
+      '{{PASSPORT_NO}}':    data.PASSPORT_NO || '',
+      '{{DESIGNATION}}':    data.DESIGNATION || '',
+      '{{COMPANY}}':        cfg.company_name || 'United Group Holding',
+      '{{ENTITY}}':         data.ENTITY      || '',
+      '{{DATE_OF_JOIN}}':   data.DATE_OF_JOIN|| '',
+      '{{SALARY}}':         data.SALARY      || '',
+      '{{DATE}}':           data.ISSUE_DATE  || '',
+      '{{REF_NO}}':         data.REF_NO      || '',
+      '{{ISSUED_BY}}':      data.ISSUED_BY   || '',
+      '{{HR_OFFICER}}':     cfg.hr_officer   || 'HR Manager',
+      '{{HR_DESIGNATION}}': cfg.designation  || 'HR Manager'
+    };
+    Object.keys(placeholders).forEach(function(k) { body.replaceText(k, placeholders[k]); });
+    doc.saveAndClose();
+    var pdfBytes = DriveApp.getFileById(copy.getId()).getAs('application/pdf').getBytes();
+    return Utilities.base64Encode(pdfBytes);
+  } finally {
+    try { copy.setTrashed(true); } catch(e2) {}
+  }
+}
+
+function _generateFromTextTemplate(bodyText, data, cfg) {
+  var filled = _fillPlaceholders(bodyText, data, cfg);
+  var doc = DocumentApp.create('_HR_TEMP_' + data.REF_NO);
+  try {
+    var body = doc.getBody();
+    var lines = filled.split('\n');
+    body.setText(lines[0] || ' ');
+    for (var i = 1; i < lines.length; i++) { body.appendParagraph(lines[i]); }
+    doc.saveAndClose();
+    var pdfBytes = DriveApp.getFileById(doc.getId()).getAs('application/pdf').getBytes();
+    return Utilities.base64Encode(pdfBytes);
+  } finally {
+    try { DriveApp.getFileById(doc.getId()).setTrashed(true); } catch(e2) {}
+  }
+}
+
+function generateAndIssueLetter(data) {
+  try {
+    var cfg = getConfig();
+    var typeKey  = getTypeKey_(data.LETTER_TYPE);
+    var driveId  = String(cfg['LTEMPL_' + typeKey + '_DRIVE']  || '').trim();
+    var bodyText = String(cfg['LTEMPL_' + typeKey + '_BODY']   || '').trim();
+    var pdfBase64 = null;
+    if (driveId)       pdfBase64 = _generateFromDriveTemplate(driveId, data, cfg);
+    else if (bodyText) pdfBase64 = _generateFromTextTemplate(bodyText, data, cfg);
+    var sh = getOrCreate(TABS.HR_DOCS, ['REF_NO','EMP_ID','EMP_NAME','LETTER_TYPE','ISSUE_DATE','ISSUED_BY','NOTES']);
+    sh.appendRow([data.REF_NO, data.EMP_ID, data.EMP_NAME, data.LETTER_TYPE,
+                  data.ISSUE_DATE, data.ISSUED_BY||'HR', data.NOTES||'']);
+    logActivity('LetterAgent', 'ISSUE', data.REF_NO + '--' + data.LETTER_TYPE, 'SUCCESS');
+    return { success: true, pdf: pdfBase64 };
+  } catch(e) { return { success: false, error: e.message }; }
+}
