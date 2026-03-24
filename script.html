@@ -844,9 +844,10 @@ var DashAgent={
       var natEl=document.getElementById('kNatHL');
       if(natEl) natEl.innerHTML='<span class="nat-flag">'+getFlag(topNat[0])+'</span><span><span class="nat-name">'+esc(topNat[0])+'</span><span class="nat-count">'+topNat[1].toLocaleString()+' ('+(t?(topNat[1]/t*100).toFixed(1):0)+'%)</span></span>';
     }
-    // Ex-employees this year from Deletion_Log
+    // Ex-employees: total count, with this-year breakdown in subtitle
+    var exTotal=APP.deletions.length;
     var exYear=APP.deletions.filter(function(d){ return String(d.DELETED_DATE||'').indexOf(curYear)>=0; }).length;
-    s('kEX',exYear.toLocaleString()); s('kEXsub',exYear+' resigned this year');
+    s('kEX',exTotal.toLocaleString()); s('kEXsub',exYear+' resigned this year');
     // Onboarding stats
     var pend=0,trans=0,canc=0;
     APP.onboarding.forEach(function(r){ if(r.STATUS==='Pending') pend++; else if(r.STATUS==='Transferred') trans++; else if(r.STATUS==='Cancelled') canc++; });
