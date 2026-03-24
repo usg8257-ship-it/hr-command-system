@@ -1,0 +1,1188 @@
+<script>
+'use strict';
+
+// ============================================================
+// FLAG MAP
+// ============================================================
+var FLAG_MAP={'INDIA':'🇮🇳','PAKISTAN':'🇵🇰','PHILIPPINES':'🇵🇭','NEPAL':'🇳🇵','SRI LANKA':'🇱🇰','BANGLADESH':'🇧🇩','EGYPT':'🇪🇬','KENYA':'🇰🇪','NIGERIA':'🇳🇬','ETHIOPIA':'🇪🇹','UGANDA':'🇺🇬','GHANA':'🇬🇭','JORDAN':'🇯🇴','INDONESIA':'🇮🇩','UAE':'🇦🇪','SAUDI ARABIA':'🇸🇦','MYANMAR':'🇲🇲','VIETNAM':'🇻🇳','THAILAND':'🇹🇭','CHINA':'🇨🇳','MOROCCO':'🇲🇦','TANZANIA':'🇹🇿','SOUTH AFRICA':'🇿🇦','ZIMBABWE':'🇿🇼','SUDAN':'🇸🇩'};
+function getFlag(nat){ return FLAG_MAP[String(nat||'').toUpperCase()]||'🌍'; }
+
+// ENTITY normalise (4 valid: USG, UG, UST, USG-M)
+function normEnt(raw){
+  var v=String(raw||'').trim().toUpperCase();
+  if(v==='UGU'||v==='USU') return 'UG';
+  if(v==='USG-M') return 'USG-M';
+  if(v==='USG') return 'USG';
+  if(v==='UG') return 'UG';
+  if(v==='UST') return 'UST';
+  return v||null;
+}
+
+// ============================================================
+// APP STATE
+// ============================================================
+var APP={config:{},master:[],deletions:[],onboarding:[],hrDocs:[],summary:[],loaded:false};
+// Track if any modal is open (to block auto-refresh during editing)
+var EDITING=false;
+
+function getActiveEmployees(){
+  var delIds={};
+  APP.deletions.forEach(function(d){ if(d.EMP_ID) delIds[String(d.EMP_ID).trim()]=true; });
+  // deduplicate by ID
+  var seen={},result=[];
+  APP.master.forEach(function(r){
+    var id=String(r.ID||'').trim();
+    if(!id) return;
+    if(seen[id]) return;
+    if(r.STATUS==='DELETED'||delIds[id]) return;
+    seen[id]=true;
+    result.push(r);
+  });
+  return result;
+}
+
+// ============================================================
+// UTILITIES
+// ============================================================
+function esc(v){ return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function today(){ return new Date().toISOString().split('T')[0]; }
+function todayDisplay(){ return new Date().toLocaleDateString('en-AE',{day:'2-digit',month:'long',year:'numeric'}); }
+function genId(p){ return (p||'ID')+'-'+Date.now().toString().slice(-8); }
+
+function toast(msg,type){
+  var box=document.getElementById('tbox');
+  var el=document.createElement('div'); el.className='toast t-'+(type||'info'); el.textContent=msg;
+  box.appendChild(el);
+  setTimeout(function(){ el.style.opacity='0'; el.style.transform='translateX(110%)'; el.style.transition='.3s'; setTimeout(function(){ el.remove(); },300); },3500);
+}
+function openM(id){ EDITING=true; document.getElementById(id).classList.add('show'); }
+function closeM(id){ document.getElementById(id).classList.remove('show'); EDITING=false; }
+document.addEventListener('click',function(e){ if(e.target.classList.contains('modal-overlay')){ e.target.classList.remove('show'); EDITING=false; } });
+
+// ============================================================
+// GLOBAL SEARCH — searches ID, Name, Passport No, EID No
+// ============================================================
+var GlobalSearch = {
+  _timer: null,
+  _lastQ: '',
+
+  query: function(q) {
+    var self = this;
+    q = String(q||'').trim();
+    var clearBtn = document.getElementById('gsearch-clear');
+    if(clearBtn) clearBtn.style.display = q ? 'block' : 'none';
+    clearTimeout(this._timer);
+    if(!q){ this.hide(); this._lastQ=''; return; }
+    this._timer = setTimeout(function(){ self._run(q); }, 180);
+  },
+
+  _run: function(q) {
+    this._lastQ = q;
+    var ql = q.toLowerCase();
+    var results = [];
+
+    // Search active employees across 4 fields
+    getActiveEmployees().forEach(function(r){
+      var id   = String(r.ID||'').toLowerCase();
+      var name = String(r.NAME||'').toLowerCase();
+      var pp   = String(r['PASSPORT NO']||'').toLowerCase();
+      var eid  = String(r['EID NO']||'').toLowerCase();
+      if(id.indexOf(ql)>=0 || name.indexOf(ql)>=0 || pp.indexOf(ql)>=0 || eid.indexOf(ql)>=0){
+        results.push({type:'emp', data:r});
+      }
+      if(results.length >= 12) return;
+    });
+
+    // Also search onboarding
+    APP.onboarding.forEach(function(c){
+      if(results.length >= 15) return;
+      var name = String(c.FULL_NAME||'').toLowerCase();
+      var pp   = String(c.PASSPORT_NO||'').toLowerCase();
+      if(name.indexOf(ql)>=0 || pp.indexOf(ql)>=0){
+        results.push({type:'ob', data:c});
+      }
+    });
+
+    this._render(results, q);
+  },
+
+  _hl: function(text, q) {
+    if(!q || !text) return esc(text);
+    var escaped = esc(text);
+    var escapedQ = esc(q);
+    var re = new RegExp('('+escapedQ.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+')', 'gi');
+    return escaped.replace(re, '<mark class="hl">$1</mark>');
+  },
+
+  _render: function(results, q) {
+    var box = document.getElementById('gsearch-results'); if(!box) return;
+    box.classList.add('open');
+
+    if(!results.length){
+      box.innerHTML = '<div class="gsearch-header"><span>Search Results</span><span>0 found</span></div><div class="gsearch-empty">&#128269; No results for &ldquo;'+esc(q)+'&rdquo;<br><span style="font-size:10.5px">Try ID, name, passport no, or EID</span></div>';
+      return;
+    }
+
+    var empCount = results.filter(function(r){ return r.type==='emp'; }).length;
+    var obCount  = results.filter(function(r){ return r.type==='ob';  }).length;
+
+    var html = '<div class="gsearch-header"><span>Search Results</span><span>'+results.length+' found</span></div>';
+
+    var self = this;
+    results.forEach(function(item){
+      if(item.type === 'emp'){
+        var r = item.data;
+        var initials = (r.NAME||'?').substring(0,2).toUpperCase();
+        var licCls = {PSBD:'bp',SIRA:'bs',NIL:'bn',OTHER:'bo'}[r['LIC AUTH']||'NIL']||'bn';
+        html += '<div class="gsearch-item" onclick="GlobalSearch.showDetail(\''+esc(r.ID||'')+'\')">'+
+          '<div class="gsearch-avatar">'+esc(initials)+'</div>'+
+          '<div class="gsearch-info">'+
+            '<div class="gsearch-name">'+self._hl(r.NAME||'—', q)+'</div>'+
+            '<div class="gsearch-meta">ID: '+self._hl(r.ID||'—',q)+' &nbsp;|&nbsp; PP: '+self._hl(r['PASSPORT NO']||'—',q)+' &nbsp;|&nbsp; EID: '+self._hl(r['EID NO']||'—',q)+'</div>'+
+          '</div>'+
+          '<span class="gsearch-tag badge '+licCls+'">'+esc(r['LIC AUTH']||'NIL')+'</span>'+
+        '</div>';
+      } else {
+        var c = item.data;
+        var initials2 = (c.FULL_NAME||'?').substring(0,2).toUpperCase();
+        html += '<div class="gsearch-item" style="opacity:.85" onclick="GlobalSearch.showOnboardDetail(\''+esc(c.OB_ID||'')+'\')">'+
+          '<div class="gsearch-avatar" style="background:linear-gradient(135deg,#b87000,#8a5200)">'+esc(initials2)+'</div>'+
+          '<div class="gsearch-info">'+
+            '<div class="gsearch-name">'+self._hl(c.FULL_NAME||'—',q)+'</div>'+
+            '<div class="gsearch-meta">Onboarding &nbsp;|&nbsp; PP: '+self._hl(c.PASSPORT_NO||'—',q)+' &nbsp;|&nbsp; Status: '+esc(c.STATUS||'—')+'</div>'+
+          '</div>'+
+          '<span class="gsearch-tag badge bo">OB</span>'+
+        '</div>';
+      }
+    });
+
+    box.innerHTML = html;
+  },
+
+  showDetail: function(empId) {
+    var r = APP.master.find(function(x){ return x.ID === empId; });
+    if(!r){ toast('Employee not found','error'); return; }
+    this.clear();
+
+    var licCls  = {PSBD:'bp',SIRA:'bs',NIL:'bn',OTHER:'bo'}[r['LIC AUTH']||'NIL']||'bn';
+    var locColor = r.STATUS==='ABU DHABI'?'#1e4799':r.STATUS==='DUBAI'?'#007a8a':'var(--muted)';
+    var initials = (r.NAME||'?').substring(0,2).toUpperCase();
+
+    var body = document.getElementById('empdetail-body');
+    body.innerHTML =
+      '<div class="empdetail-head">'+
+        '<div class="empdetail-avatar">'+esc(initials)+'</div>'+
+        '<div class="empdetail-headinfo">'+
+          '<div class="ename">'+esc(r.NAME||'—')+'</div>'+
+          '<div class="emeta">'+
+            '<span class="badge '+licCls+'" style="margin-right:5px">'+esc(r['LIC AUTH']||'NIL')+'</span>'+
+            '<span style="color:'+locColor+';font-weight:700;font-size:11px">'+esc(r.STATUS||'—')+'</span>'+
+          '</div>'+
+        '</div>'+
+      '</div>'+
+      '<div class="empdetail-grid">'+
+        '<div class="empdetail-row"><div class="empdetail-label">Employee ID</div><div class="empdetail-val">'+esc(r.ID||'—')+'</div></div>'+
+        '<div class="empdetail-row"><div class="empdetail-label">Entity / Company</div><div class="empdetail-val">'+esc(normEnt(r.ENTITY)||'—')+'</div></div>'+
+        '<div class="empdetail-row full"><div class="empdetail-label">Full Name</div><div class="empdetail-val">'+esc(r.NAME||'—')+'</div></div>'+
+        '<div class="empdetail-row"><div class="empdetail-label">Passport No</div><div class="empdetail-val" style="font-family:monospace;font-size:12px">'+esc(r['PASSPORT NO']||'—')+'</div></div>'+
+        '<div class="empdetail-row"><div class="empdetail-label">Emirates ID</div><div class="empdetail-val" style="font-family:monospace;font-size:12px;color:var(--teal)">'+esc(r['EID NO']||'—')+'</div></div>'+
+        '<div class="empdetail-row"><div class="empdetail-label">Nationality</div><div class="empdetail-val">'+getFlag(r.NATIONALITY||'')+' '+esc(r.NATIONALITY||'—')+'</div></div>'+
+        '<div class="empdetail-row"><div class="empdetail-label">Designation</div><div class="empdetail-val">'+esc(r.DESIGNATION||'—')+'</div></div>'+
+        '<div class="empdetail-row"><div class="empdetail-label">Date of Joining</div><div class="empdetail-val">'+esc(r['DATE OF JOIN']||'—')+'</div></div>'+
+        '<div class="empdetail-row"><div class="empdetail-label">Date of Birth</div><div class="empdetail-val">'+esc(r['BIRTH DATE']||'—')+'</div></div>'+
+        '<div class="empdetail-row"><div class="empdetail-label">Age</div><div class="empdetail-val">'+esc(r.AGE||'—')+'</div></div>'+
+      '</div>';
+
+    // Wire edit button
+    var editBtn = document.getElementById('empdetail-edit-btn');
+    if(editBtn){
+      editBtn.onclick = function(){
+        closeM('m-empdetail');
+        EmpAgent.openEdit(empId);
+      };
+    }
+    openM('m-empdetail');
+  },
+
+  showOnboardDetail: function(obId) {
+    var c = APP.onboarding.find(function(x){ return x.OB_ID === obId; });
+    if(!c){ toast('Candidate not found','error'); return; }
+    this.clear();
+    var initials = (c.FULL_NAME||'?').substring(0,2).toUpperCase();
+    var body = document.getElementById('empdetail-body');
+    body.innerHTML =
+      '<div class="empdetail-head">'+
+        '<div class="empdetail-avatar" style="background:linear-gradient(135deg,#b87000,#8a5200)">'+esc(initials)+'</div>'+
+        '<div class="empdetail-headinfo">'+
+          '<div class="ename">'+esc(c.FULL_NAME||'—')+'</div>'+
+          '<div class="emeta">'+
+            '<span class="badge bo" style="margin-right:5px">Onboarding</span>'+
+            '<span class="badge '+(c.STATUS==='Pending'?'bo':c.STATUS==='Transferred'?'bg2':'bn')+'">'+esc(c.STATUS||'—')+'</span>'+
+          '</div>'+
+        '</div>'+
+      '</div>'+
+      '<div class="empdetail-grid">'+
+        '<div class="empdetail-row"><div class="empdetail-label">OB ID</div><div class="empdetail-val">'+esc(c.OB_ID||'—')+'</div></div>'+
+        '<div class="empdetail-row"><div class="empdetail-label">Position Type</div><div class="empdetail-val">'+esc(c.POSITION_TYPE||'—')+'</div></div>'+
+        '<div class="empdetail-row full"><div class="empdetail-label">Full Name</div><div class="empdetail-val">'+esc(c.FULL_NAME||'—')+'</div></div>'+
+        '<div class="empdetail-row"><div class="empdetail-label">Passport No</div><div class="empdetail-val" style="font-family:monospace;font-size:12px">'+esc(c.PASSPORT_NO||'—')+'</div></div>'+
+        '<div class="empdetail-row"><div class="empdetail-label">Mobile</div><div class="empdetail-val">'+esc(c.MOBILE||'—')+'</div></div>'+
+        '<div class="empdetail-row"><div class="empdetail-label">Visa Status</div><div class="empdetail-val">'+esc(c.VISA_STATUS||'—')+'</div></div>'+
+        '<div class="empdetail-row"><div class="empdetail-label">Expected Join</div><div class="empdetail-val">'+esc(c.EXP_JOIN_DATE||'—')+'</div></div>'+
+        '<div class="empdetail-row"><div class="empdetail-label">Date Added</div><div class="empdetail-val">'+esc(c.DATE_ADDED||'—')+'</div></div>'+
+      '</div>';
+
+    var editBtn = document.getElementById('empdetail-edit-btn');
+    if(editBtn){
+      editBtn.textContent = '\u270E Edit Candidate';
+      editBtn.onclick = function(){
+        closeM('m-empdetail');
+        OBAgent.openEdit(obId);
+      };
+    }
+    openM('m-empdetail');
+  },
+
+  show: function(){
+    var q = (document.getElementById('gsearch-input')||{}).value||'';
+    if(q.trim()) this._run(q);
+  },
+
+  hide: function(){
+    var box = document.getElementById('gsearch-results'); if(!box) return;
+    box.classList.remove('open');
+    box.innerHTML = '';
+  },
+
+  clear: function(){
+    var inp = document.getElementById('gsearch-input'); if(inp) inp.value='';
+    var clr = document.getElementById('gsearch-clear'); if(clr) clr.style.display='none';
+    this.hide();
+    this._lastQ = '';
+  }
+};
+
+// Close search on outside click
+document.addEventListener('click', function(e){
+  var wrap = document.getElementById('gsearch-wrap');
+  if(wrap && !wrap.contains(e.target)) GlobalSearch.hide();
+});
+// Close on Escape
+document.addEventListener('keydown', function(e){
+  if(e.key === 'Escape') GlobalSearch.clear();
+});
+
+// ============================================================
+// GAS BRIDGE
+// ============================================================
+var GAS={
+  call:function(fn,args,ok,err){
+    google.script.run
+      .withSuccessHandler(function(r){ if(ok) ok(r); })
+      .withFailureHandler(function(e){ toast('Server error: '+(e.message||e),'error'); if(err) err(e); })
+      [fn].apply(google.script.run,args||[]);
+  },
+  loadAll:function(cb){
+    GAS.call('loadAllData',[],function(r){
+      if(r.master     &&r.master.success)     APP.master     =r.master.data     ||[];
+      if(r.deletions  &&r.deletions.success)  APP.deletions  =r.deletions.data  ||[];
+      if(r.onboarding &&r.onboarding.success) APP.onboarding =r.onboarding.data ||[];
+      if(r.hrDocs     &&r.hrDocs.success)     APP.hrDocs     =r.hrDocs.data     ||[];
+      if(r.summary    &&r.summary.success)    APP.summary    =r.summary.data    ||[];
+      APP.config=r.config||{}; APP.loaded=true;
+      if(cb) cb();
+    });
+  },
+  addEmployee:      function(d,cb){ GAS.call('addEmployee',     [d],cb); },
+  updateEmployee:   function(d,cb){ GAS.call('updateEmployee',  [d],cb); },
+  deleteEmployee:   function(id,rsn,by,cb){ GAS.call('deleteEmployee',[id,rsn,by],cb); },
+  addOnboarding:    function(d,cb){ GAS.call('addOnboarding',   [d],cb); },
+  updateOnboarding: function(d,cb){ GAS.call('updateOnboarding',[d],cb); },
+  transferToMaster: function(obId,emp,cb){ GAS.call('transferToMaster',[obId,emp],cb); },
+  issueHRDoc:       function(d,cb){ GAS.call('issueHRDoc',      [d],cb); },
+  saveConfig:            function(cfg,cb){ GAS.call('saveConfig',           [cfg],cb); },
+  getActivityLog:        function(cb)    { GAS.call('getActivityLog',        [],cb); },
+  getOfferLetterTemplate:function(type,cb){ GAS.call('getOfferLetterTemplate',[type],cb); },
+  saveTemplateFileIds:   function(p,s,cb){ GAS.call('saveTemplateFileIds',  [p,s],cb); }
+};
+
+// ============================================================
+// LOGGER
+// ============================================================
+var Logger={
+  entries:[],
+  write:function(a,act,d,s){ this.entries.unshift({TIMESTAMP:new Date().toLocaleString('en-AE',{hour12:false}),AGENT:a,ACTION:act,DETAIL:d||'',STATUS:s||'SUCCESS'}); this._r(); },
+  clear:function(){ this.entries=[]; this._r(); },
+  loadFromServer:function(){ GAS.getActivityLog(function(r){ if(r&&r.success){ Logger.entries=r.data||[]; Logger._r(); } }); },
+  _r:function(){
+    var tb=document.getElementById('log-tbody'); if(!tb) return;
+    if(!this.entries.length){ tb.innerHTML='<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--muted)">No logs.</td></tr>'; return; }
+    var cm={SUCCESS:'var(--teal)',ERROR:'var(--red)',WARNING:'var(--gold)',INFO:'var(--navy)'};
+    tb.innerHTML=this.entries.slice(0,200).map(function(e){
+      var c=cm[e.STATUS]||'#888';
+      return '<tr><td style="font-family:monospace;font-size:10px;color:var(--muted)">'+esc(e.TIMESTAMP)+'</td><td style="color:var(--navy);font-size:11px;font-weight:700">'+esc(e.AGENT)+'</td><td>'+esc(e.ACTION)+'</td><td style="font-size:11px;color:var(--muted)">'+esc(e.DETAIL)+'</td><td><span class="badge" style="background:'+c+'22;color:'+c+'">'+esc(e.STATUS)+'</span></td></tr>';
+    }).join('');
+  }
+};
+
+// ============================================================
+// EMPLOYEE AGENT — lazy load 100/batch
+// ============================================================
+var EmpAgent={
+  _batch:100, _loaded:0, _sort:{col:'NAME',dir:'asc'},
+  _filtered:function(){
+    var q  =(document.getElementById('emp-q')  ||{}).value||'';
+    var qt =(document.getElementById('emp-tq') ||{}).value||'';
+    var ent=(document.getElementById('emp-ent')||{}).value||'';
+    var lic=(document.getElementById('emp-lic')||{}).value||'';
+    var sts=(document.getElementById('emp-sts')||{}).value||'';
+    var nat=(document.getElementById('emp-nat-f')||{}).value||'';
+    var doj=(document.getElementById('emp-doj-f')||{}).value||'';
+    q=q.toLowerCase(); qt=qt.toLowerCase();
+    var active=getActiveEmployees();
+    var list=active.filter(function(r){
+      if(q  && ![(r.NAME||''),(r.ID||''),(r['PASSPORT NO']||'')].some(function(v){ return v.toLowerCase().indexOf(q)>=0; })) return false;
+      if(qt && ![(r.NAME||''),(r.ID||''),(r['EID NO']||'')].some(function(v){ return v.toLowerCase().indexOf(qt)>=0; })) return false;
+      if(ent && normEnt(r.ENTITY)!==ent) return false;
+      if(lic && r['LIC AUTH']!==lic) return false;
+      if(sts && r.STATUS!==sts) return false;
+      if(nat && (r.NATIONALITY||'').toLowerCase().indexOf(nat.toLowerCase())<0) return false;
+      if(doj && (r['DATE OF JOIN']||'').indexOf(doj)<0) return false;
+      return true;
+    });
+    // Sort
+    var sc=this._sort.col, sd=this._sort.dir;
+    list.sort(function(a,b){
+      var av=String(a[sc]||'').toUpperCase(), bv=String(b[sc]||'').toUpperCase();
+      return sd==='asc'?av.localeCompare(bv):bv.localeCompare(av);
+    });
+    return list;
+  },
+  render:function(reset){
+    var tb=document.getElementById('emp-tbody'); if(!tb) return;
+    var list=this._filtered(), t=list.length;
+    if(reset) this._loaded=0;
+    var batch=Math.min(this._loaded+this._batch, t);
+    this._loaded=batch;
+    var active=getActiveEmployees();
+    var cnt=document.getElementById('emp-cnt'); if(cnt) cnt.textContent=t+' of '+active.length;
+    var nb=document.getElementById('nb-emp');  if(nb)  nb.textContent=active.length;
+    if(!t){ tb.innerHTML='<tr><td colspan="6" style="text-align:center;padding:32px;color:var(--muted)">No records found.</td></tr>'; return; }
+    var licB=function(l){ var m={PSBD:'bp',SIRA:'bs',NIL:'bn',OTHER:'bo'}; return '<span class="badge '+(m[l]||'bn')+'">'+esc(l||'NIL')+'</span>'; };
+    var rows=list.slice(0,batch).map(function(r,i){
+      var id=esc(r.ID||''), nm=esc(r.NAME||'—');
+      var jd=r['DATE OF JOIN']||'—'; if(jd.length>10) jd=jd.substring(0,10);
+      return '<tr>'+
+        '<td style="color:var(--muted2);font-size:10px">'+(i+1)+'</td>'+
+        '<td><span class="pph" title="PP: '+esc(r['PASSPORT NO']||'N/A')+'">'+id+'</span></td>'+
+        '<td style="font-weight:600">'+nm.substring(0,26)+(nm.length>26?'&hellip;':'')+'</td>'+
+        '<td>'+licB(r['LIC AUTH']||'NIL')+'</td>'+
+        '<td class="eid-cell" id="eid-cell-'+id+'"><span id="eid-text-'+id+'" style="cursor:pointer" title="Click to edit" onclick="EmpAgent.editEID(\''+id+'\')">'+esc(r['EID NO']||'—')+'</span></td>'+
+        '<td><div class="act-btns">'+
+          '<button class="btn btn-secondary btn-icon btn-sm" data-action="edit-emp" data-id="'+id+'" title="Edit">&#9998;</button>'+
+          '<button class="btn btn-danger btn-icon btn-sm" data-action="del-emp" data-id="'+id+'" data-name="'+nm+'" title="Delete">&#128465;</button>'+
+        '</div></td></tr>';
+    }).join('');
+    if(batch<t){
+      rows+='<tr class="load-more-row"><td colspan="6"><button class="btn btn-secondary" onclick="EmpAgent.loadMore()" style="width:100%">&#8595; Load more ('+t+' total, showing '+batch+')</button></td></tr>';
+    }
+    tb.innerHTML=rows;
+  },
+  loadMore:function(){
+    var list=this._filtered(), t=list.length;
+    var newBatch=Math.min(this._loaded+this._batch,t);
+    this._loaded=newBatch;
+    var tb=document.getElementById('emp-tbody'); if(!tb) return;
+    // Remove last "load more" row
+    var last=tb.querySelector('.load-more-row'); if(last) last.remove();
+    var licB=function(l){ var m={PSBD:'bp',SIRA:'bs',NIL:'bn',OTHER:'bo'}; return '<span class="badge '+(m[l]||'bn')+'">'+esc(l||'NIL')+'</span>'; };
+    var prev=this._loaded-this._batch;
+    var rows=list.slice(prev,newBatch).map(function(r,i){
+      var id=esc(r.ID||''), nm=esc(r.NAME||'—');
+      var jd=r['DATE OF JOIN']||'—'; if(jd.length>10) jd=jd.substring(0,10);
+      return '<tr>'+
+        '<td style="color:var(--muted2);font-size:10px">'+(prev+i+1)+'</td>'+
+        '<td><span class="pph" title="PP: '+esc(r['PASSPORT NO']||'N/A')+'">'+id+'</span></td>'+
+        '<td style="font-weight:600">'+nm.substring(0,26)+(nm.length>26?'&hellip;':'')+'</td>'+
+        '<td>'+licB(r['LIC AUTH']||'NIL')+'</td>'+
+        '<td class="eid-cell" id="eid-cell-'+id+'"><span id="eid-text-'+id+'" style="cursor:pointer" onclick="EmpAgent.editEID(\''+id+'\')">'+esc(r['EID NO']||'—')+'</span></td>'+
+        '<td><div class="act-btns">'+
+          '<button class="btn btn-secondary btn-icon btn-sm" data-action="edit-emp" data-id="'+id+'" title="Edit">&#9998;</button>'+
+          '<button class="btn btn-danger btn-icon btn-sm" data-action="del-emp" data-id="'+id+'" data-name="'+nm+'" title="Delete">&#128465;</button>'+
+        '</div></td></tr>';
+    }).join('');
+    if(newBatch<t){
+      rows+='<tr class="load-more-row"><td colspan="6"><button class="btn btn-secondary" onclick="EmpAgent.loadMore()" style="width:100%">&#8595; Load more ('+t+' total, showing '+newBatch+')</button></td></tr>';
+    }
+    tb.insertAdjacentHTML('beforeend',rows);
+  },
+  sortBy:function(col){
+    if(this._sort.col===col) this._sort.dir=this._sort.dir==='asc'?'desc':'asc';
+    else{ this._sort.col=col; this._sort.dir='asc'; }
+    // update sort indicators
+    document.querySelectorAll('.sort-btn').forEach(function(b){ b.classList.remove('active'); b.textContent='&#8597;'; });
+    var btn=document.querySelector('.sort-btn[data-col="'+col+'"]');
+    if(btn){ btn.classList.add('active'); btn.innerHTML=this._sort.dir==='asc'?'&#8593;':'&#8595;'; }
+    this.render(true);
+  },
+  resetF:function(){
+    ['emp-q','emp-tq','emp-nat-f','emp-doj-f'].forEach(function(id){ var el=document.getElementById(id); if(el) el.value=''; });
+    ['emp-ent','emp-lic','emp-sts'].forEach(function(id){ var el=document.getElementById(id); if(el) el.value=''; });
+    this._sort={col:'NAME',dir:'asc'};
+    this.render(true);
+  },
+  editEID:function(id){
+    var cell=document.getElementById('eid-cell-'+id);
+    var r=APP.master.find(function(x){ return x.ID===id; }); if(!r||!cell) return;
+    cell.innerHTML='<input class="eid-edit" id="eid-inp-'+id+'" value="'+esc(r['EID NO']||'')+'" placeholder="784-XXXX-XXXXXXX-X" maxlength="20" oninput="EmpAgent.validateEID(this)"><button class="eid-save" onclick="EmpAgent.saveEID(\''+id+'\')">Save</button><button class="eid-save" style="color:var(--muted)" onclick="EmpAgent.render(true)">x</button>';
+    var inp=document.getElementById('eid-inp-'+id); if(inp) inp.focus();
+  },
+  validateEID:function(inp){
+    var val=inp.value.replace(/[^0-9-]/g,''); inp.value=val;
+    inp.style.borderColor=(val.length===0||val.startsWith('784'))?'var(--teal)':'var(--red)';
+  },
+  saveEID:function(id){
+    var inp=document.getElementById('eid-inp-'+id); if(!inp) return;
+    var val=inp.value.trim();
+    if(val&&!val.startsWith('784')){ toast('EID must start with 784','error'); return; }
+    var r=APP.master.find(function(x){ return x.ID===id; }); if(!r) return;
+    r['EID NO']=val;
+    GAS.updateEmployee(r,function(result){
+      if(!result||!result.success){ toast('Error: '+(result?result.error:'Unknown'),'error'); return; }
+      toast('EID updated','success');
+      EmpAgent.render(true);
+    });
+  },
+  byId:function(id){ return APP.master.find(function(r){ return r.ID===id; }); },
+  openAdd:function(){
+    document.getElementById('m-emp-ttl').textContent='Add Employee';
+    document.getElementById('ef-editid').value='';
+    ['ef-id','ef-name','ef-pp','ef-eid','ef-desig','ef-nat','ef-days'].forEach(function(id){ var el=document.getElementById(id); if(el) el.value=''; });
+    document.getElementById('ef-ent').value='USG';
+    document.getElementById('ef-lic').value='NIL';
+    document.getElementById('ef-loc').value='ABU DHABI';
+    document.getElementById('ef-join').value=today();
+    document.getElementById('ef-birth').value='';
+    openM('m-emp');
+  },
+  openEdit:function(id){
+    var r=this.byId(id); if(!r){ toast('Not found','error'); return; }
+    document.getElementById('m-emp-ttl').textContent='Edit Employee';
+    document.getElementById('ef-editid').value=id;
+    document.getElementById('ef-id').value    =r.ID||'';
+    document.getElementById('ef-name').value  =r.NAME||'';
+    document.getElementById('ef-pp').value    =r['PASSPORT NO']||'';
+    document.getElementById('ef-eid').value   =r['EID NO']||'';
+    document.getElementById('ef-desig').value =r.DESIGNATION||'';
+    document.getElementById('ef-ent').value   =normEnt(r.ENTITY)||'USG';
+    document.getElementById('ef-lic').value   =r['LIC AUTH']||'NIL';
+    document.getElementById('ef-nat').value   =r.NATIONALITY||'';
+    document.getElementById('ef-join').value  =r['DATE OF JOIN']||'';
+    document.getElementById('ef-birth').value =r['BIRTH DATE']||'';
+    document.getElementById('ef-loc').value   =r.STATUS||'ABU DHABI';
+    document.getElementById('ef-days').value  =r.Days||'';
+    openM('m-emp');
+  },
+  save:function(){
+    var editId=document.getElementById('ef-editid').value;
+    var id   =document.getElementById('ef-id').value.trim();
+    var name =document.getElementById('ef-name').value.trim();
+    var pp   =document.getElementById('ef-pp').value.trim();
+    var eid  =document.getElementById('ef-eid').value.trim();
+    if(!id)  { toast('Employee ID required','error'); return; }
+    if(!name){ toast('Full Name required','error'); return; }
+    if(!pp)  { toast('Passport No required','error'); return; }
+    if(eid&&!eid.startsWith('784')){ toast('EID must start with 784','error'); return; }
+    if(!editId&&APP.master.some(function(e){ return e.ID===id; })){ toast('Employee ID exists','error'); return; }
+    if(!editId&&APP.master.some(function(e){ return e['PASSPORT NO']===pp; })){ toast('Passport No exists','error'); return; }
+    var loc=document.getElementById('ef-loc').value;
+    var data={ID:id,NAME:name.toUpperCase(),VISA:loc,STATUS:loc,ENTITY:document.getElementById('ef-ent').value,'LIC AUTH':document.getElementById('ef-lic').value,DESIGNATION:document.getElementById('ef-desig').value.trim()||'Security Guard','DATE OF JOIN':document.getElementById('ef-join').value,NATIONALITY:document.getElementById('ef-nat').value.trim().toUpperCase(),'BIRTH DATE':document.getElementById('ef-birth').value,'PASSPORT NO':pp.toUpperCase(),'EID NO':eid,AGE:'',Days:document.getElementById('ef-days').value||'0'};
+    var btn=document.querySelector('#m-emp .btn-gold'); if(btn){ btn.disabled=true; btn.innerHTML='<span class="spin-sm"></span> Saving&hellip;'; }
+    var done=function(result){
+      if(btn){ btn.disabled=false; btn.textContent='Save Employee'; }
+      if(!result||!result.success){ toast('Error: '+(result?result.error:'Unknown'),'error'); return; }
+      if(editId){ var idx=APP.master.findIndex(function(e){ return e.ID===editId; }); if(idx>=0) APP.master[idx]=data; toast('Updated: '+name,'success'); }
+      else{ APP.master.push(data); toast('Added: '+name,'success'); }
+      closeM('m-emp'); EmpAgent.render(true); DashAgent.refresh();
+    };
+    editId?GAS.updateEmployee(data,done):GAS.addEmployee(data,done);
+  },
+  openDelete:function(id,name){
+    document.getElementById('del-id').value=id;
+    document.getElementById('del-name').textContent=name;
+    document.getElementById('del-reason').value='';
+    openM('m-del');
+  },
+  confirmDel:function(){
+    var id=document.getElementById('del-id').value;
+    var reason=document.getElementById('del-reason').value;
+    if(!reason){ toast('Select a reason','error'); return; }
+    var emp=this.byId(id); if(!emp){ toast('Not found','error'); return; }
+    GAS.deleteEmployee(id,reason,APP.config.hr_officer||'HR',function(result){
+      if(!result||!result.success){ toast('Error: '+(result?result.error:'Unknown'),'error'); return; }
+      emp.STATUS='DELETED';
+      APP.deletions.push({EMP_ID:id,FULL_NAME:emp.NAME,REASON:reason,DELETED_DATE:today()});
+      toast('Logged: '+emp.NAME,'success');
+      closeM('m-del'); EmpAgent.render(true); DashAgent.refresh();
+    });
+  }
+};
+
+// ============================================================
+// ONBOARDING AGENT — real-time bind, correct workflow
+// ============================================================
+var OBAgent={
+  _pending:function(){ return APP.onboarding.filter(function(c){ return c.STATUS==='Pending'; }).length; },
+  _filtered:function(){
+    var q=(document.getElementById('ob-q')   ||{}).value||'';
+    var s=(document.getElementById('ob-sts') ||{}).value||'';
+    var t=(document.getElementById('ob-type')||{}).value||'';
+    q=q.toLowerCase();
+    return APP.onboarding.filter(function(r){
+      if(q&&![(r.FULL_NAME||''),(r.PASSPORT_NO||'')].some(function(v){ return v.toLowerCase().indexOf(q)>=0; })) return false;
+      if(s&&r.STATUS!==s) return false;
+      if(t&&r.POSITION_TYPE!==t) return false;
+      return true;
+    });
+  },
+  render:function(){
+    var tb=document.getElementById('ob-tbody'); if(!tb) return;
+    var p=this._pending();
+    var nb=document.getElementById('nb-ob'); if(nb) nb.textContent=p;
+    var kb=document.getElementById('kOB');   if(kb) kb.textContent=p;
+    var list=this._filtered();
+    var cnt=document.getElementById('ob-cnt'); if(cnt) cnt.textContent=list.length+' candidates';
+    if(!list.length){ tb.innerHTML='<tr><td colspan="10" style="text-align:center;padding:32px;color:var(--muted)">No onboarding records. Add a candidate to begin.</td></tr>'; return; }
+    var sB=function(s){ var m={Pending:'badge bo',Transferred:'badge bg2',Cancelled:'badge bn'}; return '<span class="'+(m[s]||'badge bn')+'">'+esc(s||'—')+'</span>'; };
+    var tB=function(t){ return t==='PSBD'?'<span class="badge bp">PSBD</span>':'<span class="badge bs">SIRA</span>'; };
+    tb.innerHTML=list.map(function(r){
+      var obid=esc(r.OB_ID||''), nm=esc(r.FULL_NAME||'—');
+      var canAct=r.STATUS==='Pending';
+      var trBtn=canAct?'<button class="btn btn-primary btn-sm" data-action="transfer" data-obid="'+obid+'" data-name="'+nm+'" title="Transfer to Master">&rarr;</button>':'';
+      var olBtn=canAct?'<button class="btn btn-gold btn-sm" data-action="gen-ol" data-obid="'+obid+'" data-name="'+nm+'" data-type="'+esc(r.POSITION_TYPE||'PSBD')+'" data-pp="'+esc(r.PASSPORT_NO||'')+'" title="Generate Offer Letter">&#128196;</button>':'';
+      return '<tr><td style="font-family:monospace;font-size:10px;color:var(--gold)">'+esc(r.OB_ID||'—')+'</td><td style="font-weight:600">'+nm+'</td><td style="font-family:monospace;font-size:10.5px">'+esc(r.PASSPORT_NO||'—')+'</td><td>'+tB(r.POSITION_TYPE)+'</td><td style="font-size:11px">'+esc(r.MOBILE||'—')+'</td><td style="font-size:11px">'+esc(r.VISA_STATUS||'—')+'</td><td style="font-size:11px">'+esc(r.EXP_JOIN_DATE||'—')+'</td><td style="font-size:10px;color:var(--muted)">'+esc(r.DATE_ADDED||'—')+'</td><td>'+sB(r.STATUS)+'</td><td><div class="act-btns">'+trBtn+olBtn+'<button class="btn btn-secondary btn-icon btn-sm" data-action="edit-ob" data-obid="'+obid+'" title="Edit">&#9998;</button><button class="btn btn-danger btn-icon btn-sm" data-action="cancel-ob" data-obid="'+obid+'" title="Cancel">&#10005;</button></div></td></tr>';
+    }).join('');
+  },
+  resetF:function(){
+    var q=document.getElementById('ob-q'); if(q) q.value='';
+    ['ob-sts','ob-type'].forEach(function(id){ var el=document.getElementById(id); if(el) el.value=''; });
+    this.render();
+  },
+  // STEP 1: Collect candidate info (name, passport, mobile, visa, joining date)
+  openAdd:function(){
+    document.getElementById('m-ob-ttl').textContent='Step 1: Add New Candidate';
+    document.getElementById('obf-editid').value='';
+    ['obf-name','obf-pp','obf-mob','obf-notes'].forEach(function(id){ var el=document.getElementById(id); if(el) el.value=''; });
+    document.getElementById('obf-type').value='PSBD';
+    document.getElementById('obf-visa').value='Inside UAE';
+    document.getElementById('obf-join').value=today();
+    openM('m-ob');
+  },
+  openEdit:function(obId){
+    var c=APP.onboarding.find(function(r){ return r.OB_ID===obId; });
+    if(!c){ toast('Not found','error'); return; }
+    document.getElementById('m-ob-ttl').textContent='Edit Candidate';
+    document.getElementById('obf-editid').value=obId;
+    document.getElementById('obf-name').value  =c.FULL_NAME||'';
+    document.getElementById('obf-pp').value    =c.PASSPORT_NO||'';
+    document.getElementById('obf-type').value  =c.POSITION_TYPE||'PSBD';
+    document.getElementById('obf-mob').value   =c.MOBILE||'';
+    document.getElementById('obf-visa').value  =c.VISA_STATUS||'Inside UAE';
+    document.getElementById('obf-join').value  =c.EXP_JOIN_DATE||'';
+    document.getElementById('obf-notes').value =c.NOTES||'';
+    openM('m-ob');
+  },
+  // STEP 2: Save to Onboarding Sheet
+  save:function(){
+    var editId=document.getElementById('obf-editid').value;
+    var name  =document.getElementById('obf-name').value.trim();
+    var pp    =document.getElementById('obf-pp').value.trim();
+    if(!name){ toast('Full Name required','error'); return; }
+    if(!pp)  { toast('Passport No required','error'); return; }
+    if(!editId&&APP.onboarding.some(function(c){ return c.PASSPORT_NO===pp&&c.STATUS!=='Cancelled'; })){ toast('Candidate already exists','error'); return; }
+    if(!editId&&APP.master.some(function(e){ return e['PASSPORT NO']===pp; })){ toast('Passport No in Master Data','error'); return; }
+    var type =document.getElementById('obf-type').value;
+    var mob  =document.getElementById('obf-mob').value.trim();
+    var visa =document.getElementById('obf-visa').value;
+    var join =document.getElementById('obf-join').value;
+    var notes=document.getElementById('obf-notes').value.trim();
+    if(editId){
+      var data={OB_ID:editId,FULL_NAME:name.toUpperCase(),PASSPORT_NO:pp.toUpperCase(),POSITION_TYPE:type,MOBILE:mob,VISA_STATUS:visa,EXP_JOIN_DATE:join,DATE_ADDED:'',STATUS:'Pending',NOTES:notes};
+      GAS.updateOnboarding(data,function(result){
+        if(!result||!result.success){ toast('Error: '+(result?result.error:'Unknown'),'error'); return; }
+        var c=APP.onboarding.find(function(r){ return r.OB_ID===editId; });
+        if(c) Object.assign(c,data);
+        toast('Updated: '+name,'success');
+        closeM('m-ob'); OBAgent.render();
+      });
+    } else {
+      var obId=genId('OB');
+      var newRec={OB_ID:obId,FULL_NAME:name.toUpperCase(),PASSPORT_NO:pp.toUpperCase(),POSITION_TYPE:type,MOBILE:mob,VISA_STATUS:visa,EXP_JOIN_DATE:join,DATE_ADDED:today(),STATUS:'Pending',NOTES:notes};
+      GAS.addOnboarding(newRec,function(result){
+        if(!result||!result.success){ toast('Error: '+(result?result.error:'Unknown'),'error'); return; }
+        APP.onboarding.push(newRec); // real-time bind
+        toast('Candidate saved. You can now issue Offer Letter.','success');
+        closeM('m-ob'); OBAgent.render();
+        // STEP 3: Prompt to issue offer letter
+        setTimeout(function(){
+          if(confirm('Candidate added. Generate Offer Letter now?')){ OBAgent._openOLForCandidate(newRec); }
+        },400);
+      });
+    }
+  },
+  // STEP 3: Offer letter from existing candidate data
+  _openOLForCandidate:function(cand){
+    document.getElementById('ol-name').value=(cand.FULL_NAME||'').toUpperCase();
+    document.getElementById('ol-pp').value  =(cand.PASSPORT_NO||'').toUpperCase();
+    document.getElementById('ol-date').textContent=todayDisplay();
+    document.getElementById('ol-msg').textContent='';
+    selectOL(cand.POSITION_TYPE||'PSBD');
+    openM('m-ol');
+  },
+  openOLForId:function(obId,name,type,pp){
+    var cand={FULL_NAME:name,PASSPORT_NO:pp,POSITION_TYPE:type};
+    this._openOLForCandidate(cand);
+  },
+  openTransfer:function(obId,name){
+    document.getElementById('trf-obid').value=obId;
+    document.getElementById('tr-name').textContent=name;
+    document.getElementById('trf-id').value   ='';
+    document.getElementById('trf-ent').value  ='USG';
+    document.getElementById('trf-join').value =today();
+    document.getElementById('trf-desig').value='Security Guard';
+    openM('m-tr');
+  },
+  confirmTransfer:function(){
+    var obId =document.getElementById('trf-obid').value;
+    var empId=document.getElementById('trf-id').value.trim();
+    var ent  =document.getElementById('trf-ent').value;
+    var join =document.getElementById('trf-join').value;
+    var desig=document.getElementById('trf-desig').value.trim()||'Security Guard';
+    if(!empId){ toast('Employee ID required','error'); return; }
+    if(!ent)  { toast('Entity required','error'); return; }
+    if(APP.master.some(function(e){ return e.ID===empId; })){ toast('Employee ID already exists','error'); return; }
+    var cand=APP.onboarding.find(function(c){ return c.OB_ID===obId; });
+    if(!cand){ toast('Candidate not found','error'); return; }
+    var empData={ID:empId,NAME:cand.FULL_NAME,VISA:'ABU DHABI',STATUS:'ABU DHABI',ENTITY:ent,'LIC AUTH':cand.POSITION_TYPE==='PSBD'?'PSBD':'SIRA',DESIGNATION:desig,'DATE OF JOIN':join,NATIONALITY:'','BIRTH DATE':'','PASSPORT NO':cand.PASSPORT_NO,'EID NO':'',AGE:'',Days:''};
+    GAS.transferToMaster(obId,empData,function(result){
+      if(!result||!result.success){ toast('Error: '+(result?result.error:'Unknown'),'error'); return; }
+      APP.master.push(empData);
+      cand.STATUS='Transferred';
+      toast('Transferred: '+cand.FULL_NAME,'success');
+      closeM('m-tr'); OBAgent.render(); EmpAgent.render(true); DashAgent.refresh();
+    });
+  },
+  cancel:function(obId){
+    var c=APP.onboarding.find(function(r){ return r.OB_ID===obId; }); if(!c) return;
+    if(!confirm('Cancel onboarding for '+c.FULL_NAME+'?')) return;
+    var data=Object.assign({},c,{STATUS:'Cancelled'});
+    GAS.updateOnboarding(data,function(result){
+      if(!result||!result.success){ toast('Error','error'); return; }
+      c.STATUS='Cancelled';
+      toast(c.FULL_NAME+' cancelled','info');
+      OBAgent.render();
+    });
+  }
+};
+
+// ============================================================
+// LETTERS AGENT — simple popup modal (temporary)
+// ============================================================
+var LtrAgent={
+  TYPES:['Warning Letter','Experience Letter','Salary Certificate','Employment Certificate','NOC Letter','Others'],
+  _stats:function(){
+    var self=this,counts=[0,0,0,0,0,0];
+    APP.hrDocs.forEach(function(l){ var i=self.TYPES.indexOf(l.LETTER_TYPE); if(i>=0) counts[i]++; else counts[5]++; });
+    counts.forEach(function(v,i){ var el=document.getElementById('lc'+i); if(el) el.textContent=v; });
+  },
+  _filtered:function(){
+    var q=(document.getElementById('lt-q')   ||{}).value||'';
+    var t=(document.getElementById('lt-type')||{}).value||'';
+    q=q.toLowerCase();
+    return APP.hrDocs.filter(function(l){
+      if(q&&![(l.EMP_ID||''),(l.EMP_NAME||''),(l.LETTER_TYPE||'')].some(function(v){ return v.toLowerCase().indexOf(q)>=0; })) return false;
+      if(t&&l.LETTER_TYPE!==t) return false;
+      return true;
+    });
+  },
+  render:function(){
+    var tb=document.getElementById('lt-tbody'); if(!tb) return;
+    this._stats();
+    var list=this._filtered();
+    var cnt=document.getElementById('lt-cnt'); if(cnt) cnt.textContent=list.length;
+    if(!list.length){ tb.innerHTML='<tr><td colspan="8" style="text-align:center;padding:32px;color:var(--muted)">No letters issued yet.</td></tr>'; return; }
+    tb.innerHTML=list.map(function(l){
+      return '<tr><td style="font-family:monospace;font-size:10px;color:var(--gold)">'+esc(l.REF_NO||'—')+'</td><td style="font-family:monospace;font-size:10.5px">'+esc(l.EMP_ID||'—')+'</td><td style="font-weight:600">'+esc(l.EMP_NAME||'—')+'</td><td><span class="badge bo">'+esc(l.LETTER_TYPE||'—')+'</span></td><td style="font-size:11px">'+esc(l.ISSUE_DATE||'—')+'</td><td style="font-size:11px">'+esc(l.ISSUED_BY||'—')+'</td><td style="font-size:10.5px;color:var(--muted)">'+esc(l.NOTES||'—')+'</td><td><button class="btn btn-danger btn-icon btn-sm" data-action="del-ltr" data-ref="'+esc(l.REF_NO||'')+'" title="Remove">&#10005;</button></td></tr>';
+    }).join('');
+  },
+  resetF:function(){ var q=document.getElementById('lt-q'); if(q) q.value=''; var t=document.getElementById('lt-type'); if(t) t.value=''; this.render(); },
+  // Simple popup modal (temporary)
+  openIssue:function(){
+    ['ltf-empid','ltf-name','ltf-notes'].forEach(function(id){ var el=document.getElementById(id); if(el) el.value=''; });
+    document.getElementById('ltf-type').value='';
+    document.getElementById('ltf-date').value=today();
+    document.getElementById('ltf-by').value=APP.config.hr_officer||'HR Manager';
+    document.getElementById('ltf-empid').disabled=true;
+    document.getElementById('ltf-empid').placeholder='Select letter type first';
+    openM('m-ltr');
+  },
+  onTypeChange:function(){
+    var type=document.getElementById('ltf-type').value;
+    var ef=document.getElementById('ltf-empid');
+    ef.disabled=!type; ef.placeholder=type?'Enter Employee ID':'Select letter type first';
+    if(!type){ ef.value=''; document.getElementById('ltf-name').value=''; }
+  },
+  autofill:function(){
+    var id=document.getElementById('ltf-empid').value.trim();
+    var emp=getActiveEmployees().find(function(e){ return e.ID===id; });
+    document.getElementById('ltf-name').value=emp?(emp.NAME||''):'';
+    if(id&&!emp) document.getElementById('ltf-name').value='(not found)';
+  },
+  issue:function(){
+    var type=document.getElementById('ltf-type').value;
+    var empId=document.getElementById('ltf-empid').value.trim();
+    if(!type){ toast('Select letter type first','error'); return; }
+    if(!empId){ toast('Employee ID required','error'); return; }
+    var nm=document.getElementById('ltf-name').value||'—';
+    var ref='HR-'+Date.now().toString().slice(-8);
+    var dt=document.getElementById('ltf-date').value;
+    var by=document.getElementById('ltf-by').value.trim();
+    var notes=document.getElementById('ltf-notes').value.trim();
+    var data={REF_NO:ref,EMP_ID:empId,EMP_NAME:nm,LETTER_TYPE:type,ISSUE_DATE:dt,ISSUED_BY:by,NOTES:notes};
+    GAS.issueHRDoc(data,function(result){
+      if(!result||!result.success){ toast('Error: '+(result?result.error:'Unknown'),'error'); return; }
+      APP.hrDocs.unshift(data);
+      toast(type+' issued ('+ref+')','success');
+      closeM('m-ltr'); LtrAgent.render();
+    });
+  },
+  delEntry:function(ref){ APP.hrDocs=APP.hrDocs.filter(function(l){ return l.REF_NO!==ref; }); toast('Removed locally','warning'); this.render(); }
+};
+
+// ============================================================
+// DASHBOARD AGENT
+// ============================================================
+var PAL=['#1e4799','#007a8a','#c83030','#2a5bbf','#b87000','#4e42b8','#136e42','#d45c00','#7a94b8','#3a8fbf'];
+var CHARTS={};
+function mkC(id,type,data,opts){
+  var cv=document.getElementById(id); if(!cv) return;
+  if(CHARTS[id]){ try{CHARTS[id].destroy();}catch(e){} }
+  CHARTS[id]=new Chart(cv,{type:type,data:data,options:Object.assign({responsive:true,maintainAspectRatio:true,animation:{duration:320},plugins:{legend:{display:false}}},opts)});
+}
+function makeLeg(id,labels,colors,vals,t){
+  var el=document.getElementById(id); if(!el) return;
+  el.innerHTML=labels.map(function(l,i){ return '<div class="lp"><div class="lpdot" style="background:'+(colors[i]||'#888')+'"></div>'+esc(l)+': '+(vals[i]||0).toLocaleString()+(t?' ('+(((vals[i]||0)/t)*100).toFixed(1)+'%)':'')+'</div>'; }).join('');
+}
+
+var DashAgent={
+  refresh:function(){
+    var active=getActiveEmployees(), t=active.length;
+    var curYear=new Date().getFullYear().toString();
+    var s=function(id,v){ var el=document.getElementById(id); if(el) el.textContent=v; };
+    s('kT',t.toLocaleString()); s('kTsub','Active headcount');
+    // Visa KPIs
+    var adVisa=active.filter(function(r){ return (r.VISA||r.STATUS||'').toUpperCase().indexOf('ABU DHABI')>=0; }).length;
+    var dxbVisa=active.filter(function(r){ return (r.VISA||r.STATUS||'').toUpperCase().indexOf('DUBAI')>=0; }).length;
+    s('kADV',adVisa.toLocaleString()); s('kADVp',t?(adVisa/t*100).toFixed(1)+'% holders':'—');
+    s('kDXBV',dxbVisa.toLocaleString()); s('kDXBVp',t?(dxbVisa/t*100).toFixed(1)+'% holders':'—');
+    // New employees this year
+    var newJoin=active.filter(function(r){ return String(r['DATE OF JOIN']||'').indexOf(curYear)>=0; }).length;
+    s('kN',newJoin.toLocaleString());
+    // Top nationality
+    var natCnt={};
+    active.forEach(function(r){ var n=String(r.NATIONALITY||'').trim().toUpperCase(); if(n&&n!=='N/A'&&n!=='NA') natCnt[n]=(natCnt[n]||0)+1; });
+    var topNat=Object.entries(natCnt).sort(function(a,b){ return b[1]-a[1]; })[0];
+    if(topNat){
+      var natEl=document.getElementById('kNatHL');
+      if(natEl) natEl.innerHTML='<span class="nat-flag">'+getFlag(topNat[0])+'</span><span><span class="nat-name">'+esc(topNat[0])+'</span><span class="nat-count">'+topNat[1].toLocaleString()+' ('+(t?(topNat[1]/t*100).toFixed(1):0)+'%)</span></span>';
+    }
+    // Ex-employees this year from Deletion_Log
+    var exYear=APP.deletions.filter(function(d){ return String(d.DELETED_DATE||'').indexOf(curYear)>=0; }).length;
+    s('kEX',exYear.toLocaleString()); s('kEXsub',exYear+' resigned this year');
+    // Onboarding stats
+    var pend=0,trans=0,canc=0;
+    APP.onboarding.forEach(function(r){ if(r.STATUS==='Pending') pend++; else if(r.STATUS==='Transferred') trans++; else if(r.STATUS==='Cancelled') canc++; });
+    s('kOB',pend.toLocaleString());
+    var ep=document.getElementById('ob-stat-pending'); if(ep) ep.textContent=pend;
+    var et=document.getElementById('ob-stat-trans');   if(et) et.textContent=trans;
+    var ec=document.getElementById('ob-stat-cancel');  if(ec) ec.textContent=canc;
+    this._charts(active,t,natCnt);
+  },
+  _cnt:function(arr,k){ var o={}; arr.forEach(function(r){ var v=r[k]||'Unknown'; o[v]=(o[v]||0)+1; }); return o; },
+  _top:function(o,n){ return Object.entries(o).filter(function(x){ return x[0]&&x[0]!=='Unknown'&&x[0]!=='nan'&&x[0]!=='N/A'; }).sort(function(a,b){ return b[1]-a[1]; }).slice(0,n); },
+  _charts:function(data,t,natCnt){
+    // Top 10 Nationalities
+    var tn=this._top(natCnt||this._cnt(data,'NATIONALITY'),10);
+    var nbEl=document.getElementById('cNBig'); if(nbEl) nbEl.textContent=Object.keys(natCnt||{}).length;
+    mkC('cTrend','bar',{labels:tn.map(function(x){ return getFlag(x[0])+' '+x[0]; }),datasets:[{data:tn.map(function(x){ return x[1]; }),backgroundColor:PAL,borderRadius:3}]},{indexAxis:'y',scales:{x:{grid:{color:'rgba(30,50,100,.06)'},ticks:{color:'var(--muted)',font:{family:'Tahoma'}}},y:{grid:{display:false},ticks:{color:'var(--text)',font:{size:11,family:'Tahoma'}}}}});
+    // License
+    var lO=['PSBD','SIRA','NIL','OTHER'],lC=['#1e4799','#007a8a','#8fa3be','#4e42b8'];
+    var lc=this._cnt(data,'LIC AUTH'), lV=lO.map(function(l){ return lc[l]||0; });
+    var lbEl=document.getElementById('cLBig'); if(lbEl) lbEl.textContent=t?(lV[0]/t*100).toFixed(1)+'%':'—';
+    mkC('cLic','doughnut',{labels:lO,datasets:[{data:lV,backgroundColor:lC,borderColor:'#fff',borderWidth:3}]},{cutout:'62%',plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){ return ' '+c.label+': '+c.raw.toLocaleString()+' ('+(t?(c.raw/t*100).toFixed(1):0)+'%)'; }}}}});
+    makeLeg('licLeg',lO,lC,lV,t);
+    // Designation
+    var td=this._top(this._cnt(data,'DESIGNATION'),8);
+    var dbEl=document.getElementById('cDBig'); if(dbEl) dbEl.textContent=Object.keys(this._cnt(data,'DESIGNATION')).length;
+    mkC('cDesig','bar',{labels:td.map(function(x){ return x[0].length>20?x[0].substring(0,18)+'...':x[0]; }),datasets:[{data:td.map(function(x){ return x[1]; }),backgroundColor:'rgba(0,122,138,.65)',borderRadius:3,borderColor:'#007a8a',borderWidth:1}]},{indexAxis:'y',scales:{x:{grid:{color:'rgba(30,50,100,.06)'},ticks:{color:'var(--muted)'}},y:{grid:{display:false},ticks:{color:'var(--text)',font:{size:10,family:'Tahoma'}}}}});
+    // Entity — 4 valid entities
+    var ec={};
+    data.forEach(function(r){ var e=normEnt(r.ENTITY); if(e) ec[e]=(ec[e]||0)+1; });
+    var te=Object.entries(ec).sort(function(a,b){ return b[1]-a[1]; });
+    var ebEl=document.getElementById('cEBig'); if(ebEl) ebEl.textContent=te.length;
+    mkC('cEnt','pie',{labels:te.map(function(x){ return x[0]; }),datasets:[{data:te.map(function(x){ return x[1]; }),backgroundColor:PAL,borderColor:'#fff',borderWidth:2}]},{plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){ return ' '+c.label+': '+c.raw.toLocaleString(); }}}}});
+    makeLeg('entLeg',te.map(function(x){ return x[0]; }),PAL,te.map(function(x){ return x[1]; }),t);
+    // Location
+    var lo=['ABU DHABI','DUBAI','AJMAN','OTHER'],lc2=['#1e4799','#007a8a','#4e42b8','#8fa3be'];
+    var locc=this._cnt(data,'STATUS'), lv=lo.map(function(l){ return locc[l]||0; });
+    var lcEl=document.getElementById('cLocBig'); if(lcEl) lcEl.textContent=t?(lv[0]/t*100).toFixed(1)+'%':'—';
+    mkC('cLoc','doughnut',{labels:lo,datasets:[{data:lv,backgroundColor:lc2,borderColor:'#fff',borderWidth:3}]},{cutout:'58%',plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){ return ' '+c.label+': '+c.raw.toLocaleString(); }}}}});
+    makeLeg('locLeg',lo,lc2,lv,t);
+    // Age
+    var ab={'<25':0,'25-30':0,'30-35':0,'35-40':0,'40-45':0,'45-50':0,'50-55':0,'55+':0};
+    var as=0,ac=0;
+    data.forEach(function(r){ var a=parseInt(r.AGE)||0; if(a>0){as+=a;ac++;} if(a<25)ab['<25']++; else if(a<30)ab['25-30']++; else if(a<35)ab['30-35']++; else if(a<40)ab['35-40']++; else if(a<45)ab['40-45']++; else if(a<50)ab['45-50']++; else if(a<55)ab['50-55']++; else if(a>0)ab['55+']+= 1; });
+    var agEl=document.getElementById('cAgeBig'); if(agEl) agEl.textContent=ac?(as/ac).toFixed(1):'—';
+    mkC('cAge','bar',{labels:Object.keys(ab),datasets:[{data:Object.values(ab),backgroundColor:'rgba(0,122,138,.6)',borderRadius:3,borderColor:'#007a8a',borderWidth:1}]},{scales:{x:{grid:{color:'rgba(30,50,100,.06)'},ticks:{color:'var(--muted)',font:{size:10,family:'Tahoma'}}},y:{grid:{color:'rgba(30,50,100,.06)'},ticks:{color:'var(--muted)'},beginAtZero:true}}});
+  }
+};
+
+// ============================================================
+// REPORT AGENT
+// ============================================================
+var ReportAgent={
+  generate:function(){
+    var month=document.getElementById('rpt-month').value;
+    var el=document.getElementById('rpt-output');
+    el.innerHTML='<div style="text-align:center;padding:32px;color:var(--muted)"><div class="spin" style="margin:0 auto 10px"></div><p>Compiling...</p></div>';
+    var active=getActiveEmployees(), t=active.length;
+    var curYear=new Date().getFullYear().toString();
+    var psbd=0,sira=0,ad=0;
+    active.forEach(function(r){ if(r['LIC AUTH']==='PSBD') psbd++; else if(r['LIC AUTH']==='SIRA') sira++; if(r.STATUS==='ABU DHABI') ad++; });
+    var exYear=APP.deletions.filter(function(d){ return String(d.DELETED_DATE||'').indexOf(curYear)>=0; }).length;
+    var ec={};
+    active.forEach(function(r){ var e=normEnt(r.ENTITY); if(e) ec[e]=(ec[e]||0)+1; });
+    var entRows=Object.entries(ec).sort(function(a,b){ return b[1]-a[1]; }).map(function(e){ return '<tr><td>'+esc(e[0])+'</td><td>'+e[1].toLocaleString()+'</td><td>'+(t?(e[1]/t*100).toFixed(1)+'%':'—')+'</td></tr>'; }).join('');
+    var ltypes={};
+    APP.hrDocs.forEach(function(l){ var tt=l.LETTER_TYPE||'Other'; ltypes[tt]=(ltypes[tt]||0)+1; });
+    var ltrRows=Object.entries(ltypes).map(function(e){ return '<tr><td>'+esc(e[0])+'</td><td>'+e[1]+'</td></tr>'; }).join('');
+    var co=APP.config.company_name||'United Group Holding', off=APP.config.hr_officer||'—', des=APP.config.designation||'HR Manager';
+    el.innerHTML='<div class="report-card"><div class="report-hdr"><div style="font-family:Tahoma,Arial,sans-serif;font-size:19px;font-weight:700;color:var(--navy)">United Group Holding</div><div style="font-size:12px;color:var(--muted);margin-top:3px">Monthly HR Report — <strong>'+esc(month)+'</strong></div><div style="font-size:10.5px;color:var(--muted2);margin-top:3px">Generated: '+new Date().toLocaleString('en-AE',{hour12:false})+'</div></div><div style="font-family:Tahoma,Arial,sans-serif;font-size:13px;color:var(--navy);font-weight:700;margin-bottom:9px;padding-bottom:4px;border-bottom:1px solid var(--border)">1. Active Workforce (Master - Deletion_Log)</div><div class="report-grid"><div class="rg-card"><div class="rg-val">'+t.toLocaleString()+'</div><div class="rg-label">Active Employees</div></div><div class="rg-card"><div class="rg-val">'+psbd.toLocaleString()+'</div><div class="rg-label">PSBD Licensed</div></div><div class="rg-card"><div class="rg-val">'+sira.toLocaleString()+'</div><div class="rg-label">SIRA Licensed</div></div><div class="rg-card"><div class="rg-val">'+exYear+'</div><div class="rg-label">Exits This Year</div></div></div><div style="font-family:Tahoma,Arial,sans-serif;font-size:13px;color:var(--navy);font-weight:700;margin-bottom:9px;margin-top:14px;padding-bottom:4px;border-bottom:1px solid var(--border)">2. Entity Breakdown</div><table class="rtable"><thead><tr><th>Entity</th><th>Headcount</th><th>% of Active</th></tr></thead><tbody>'+entRows+'</tbody></table><div style="font-family:Tahoma,Arial,sans-serif;font-size:13px;color:var(--navy);font-weight:700;margin-bottom:9px;margin-top:14px;padding-bottom:4px;border-bottom:1px solid var(--border)">3. Onboarding Pipeline</div><div class="report-grid" style="grid-template-columns:repeat(3,1fr)"><div class="rg-card"><div class="rg-val">'+APP.onboarding.length+'</div><div class="rg-label">Total</div></div><div class="rg-card"><div class="rg-val">'+OBAgent._pending()+'</div><div class="rg-label">Pending</div></div><div class="rg-card"><div class="rg-val">'+APP.onboarding.filter(function(c){ return c.STATUS==='Transferred'; }).length+'</div><div class="rg-label">Transferred</div></div></div><div style="font-family:Tahoma,Arial,sans-serif;font-size:13px;color:var(--navy);font-weight:700;margin-bottom:9px;margin-top:14px;padding-bottom:4px;border-bottom:1px solid var(--border)">4. HR Letters</div><table class="rtable"><thead><tr><th>Type</th><th>Count</th></tr></thead><tbody>'+ltrRows+'<tr><td><strong>Total</strong></td><td><strong>'+APP.hrDocs.length+'</strong></td></tr></tbody></table><div style="margin-top:18px;padding-top:12px;border-top:1px solid var(--border);font-size:11.5px;color:var(--muted)">Prepared by: <strong style="color:var(--navy)">'+esc(off)+'</strong> | '+esc(des)+' | '+esc(co)+'</div></div>';
+    toast('Report generated','success');
+  }
+};
+
+// ============================================================
+// CONFIG AGENT
+// ============================================================
+var CFG={
+  loadUI:function(){
+    var s=function(id,v){ var el=document.getElementById(id); if(el) el.value=v||''; };
+    s('cfg-co', APP.config.company_name);
+    s('cfg-off',APP.config.hr_officer);
+    s('cfg-des',APP.config.designation);
+    s('cfg-psbd-id', APP.config.psbd_template_id);
+    s('cfg-sira-id', APP.config.sira_template_id);
+  },
+  save:function(){
+    var cfg={
+      company_name: document.getElementById('cfg-co').value.trim()||'United Group Holding',
+      hr_officer:   document.getElementById('cfg-off').value.trim()||'HR Manager',
+      designation:  document.getElementById('cfg-des').value.trim()||'HR Manager'
+    };
+    GAS.saveConfig(cfg,function(result){ if(!result||!result.success){ toast('Error saving config','error'); return; } APP.config=Object.assign(APP.config,cfg); toast('Config saved','success'); });
+  },
+  saveTemplates:function(){
+    var psbdId = (document.getElementById('cfg-psbd-id')||{}).value||'';
+    var siraId = (document.getElementById('cfg-sira-id')||{}).value||'';
+    if(!psbdId||!siraId){ toast('Both File IDs are required','error'); return; }
+    GAS.saveTemplateFileIds(psbdId.trim(), siraId.trim(), function(result){
+      if(!result||!result.success){ toast('Error: '+(result?result.error:'Unknown'),'error'); return; }
+      APP.config.psbd_template_id = psbdId.trim();
+      APP.config.sira_template_id = siraId.trim();
+      OL_CACHE = {}; // clear template cache so fresh fetch happens
+      toast('Template IDs saved! Offer Letters are ready.','success');
+    });
+  }
+};
+
+// ============================================================
+// OFFER LETTER — Uses REAL PSBD / SIRA templates from Google Drive
+// EXACT fill coordinates (verified via pdfplumber baseline extraction):
+//   Page size: 595.32 x 841.92  (A4)
+//   pdf-lib uses bottom-left origin
+//
+//   DATE  value: x=453.000, y=733.736  (Helvetica Regular 10pt)
+//   NAME  value: x=144.860, y=715.116  (Helvetica Bold 10pt)
+//   POS   value: x=144.860, y=699.876  (Helvetica Bold 10pt)
+//   PP NO value: x=370.000, y=699.876  (Helvetica Bold 10pt)
+//
+//   Both PSBD & SIRA templates share identical field coordinates.
+//   Only salary (7) and location (8) differ between templates.
+// ============================================================
+// ============================================================
+// OFFER LETTER — EMBEDDED templates, exact PyMuPDF coordinates
+// Templates are base64 strings served from OfferLetterHelper.gs
+// Fetched once, cached in memory for instant re-use
+//
+// EXACT COORDINATES (PyMuPDF span["origin"] method):
+//   DATE  → x=453.520  y=733.740  Helvetica Regular 10.020pt
+//   NAME  → x=144.860  y=715.120  Helvetica Bold    10.020pt
+//   POS   → x=144.860  y=699.880  Helvetica Bold    10.020pt
+//   PP NO → x=376.000  y=699.880  Helvetica Bold    10.020pt
+//   (y is pdf-lib bottom-left: y_pdflib = 841.92 - y_mupdf)
+// ============================================================
+var olType = 'PSBD';
+var OL_CACHE = {}; // {PSBD: base64str, SIRA: base64str}
+
+function selectOL(t){
+  olType = t;
+  document.getElementById('ol-psbd').className = 'type-card'+(t==='PSBD'?' active-psbd':'');
+  document.getElementById('ol-sira').className = 'type-card'+(t==='SIRA'?' active-sira':'');
+  document.getElementById('ol-pos').textContent = t==='PSBD'?'SECURITY GUARD':'SECURITY GUARD - SIRA';
+  var btn = document.getElementById('ol-btn');
+  btn.className = t==='PSBD'?'btn btn-gold':'btn btn-primary';
+  btn.textContent = 'Download '+t+' Offer Letter';
+}
+
+function openOLModal(){
+  document.getElementById('ol-name').value = '';
+  document.getElementById('ol-pp').value   = '';
+  document.getElementById('ol-date').textContent = todayDisplay();
+  document.getElementById('ol-msg').textContent  = '';
+  selectOL('PSBD');
+  openM('m-ol');
+}
+
+function downloadOL(){
+  var name = document.getElementById('ol-name').value.trim();
+  var pp   = document.getElementById('ol-pp').value.trim();
+  var msg  = document.getElementById('ol-msg');
+  if(!name){ msg.style.color='var(--red)'; msg.textContent='Enter full name.'; return; }
+  if(!pp)  { msg.style.color='var(--red)'; msg.textContent='Enter passport number.'; return; }
+
+  var btn = document.getElementById('ol-btn');
+  btn.disabled = true;
+  msg.style.color = 'var(--teal)';
+
+  // DD/MM/YYYY
+  var now = new Date();
+  var dateStr = ('0'+now.getDate()).slice(-2)+'/'+('0'+(now.getMonth()+1)).slice(-2)+'/'+now.getFullYear();
+
+  // Use cache if available — instant
+  if(OL_CACHE[olType]){
+    msg.textContent = 'Generating...';
+    btn.textContent = 'Generating...';
+    _fillAndDownload(OL_CACHE[olType], name, pp, dateStr, msg, btn);
+    return;
+  }
+
+  // Fetch from GAS (embedded in OfferLetterHelper.gs — very fast, no Drive latency)
+  msg.textContent = 'Loading template...';
+  btn.innerHTML   = '<span class="spin-sm"></span> Loading...';
+
+  GAS.call('getOfferLetterTemplate', [olType], function(result){
+    if(!result || !result.success){
+      btn.disabled = false; btn.textContent = 'Download '+olType+' Offer Letter';
+      msg.style.color = 'var(--red)';
+      msg.textContent = 'Error: '+(result ? result.error : 'Could not load template');
+      return;
+    }
+    OL_CACHE[olType] = result.data; // cache for instant re-use
+    msg.textContent  = 'Filling fields...';
+    btn.textContent  = 'Filling fields...';
+    _fillAndDownload(result.data, name, pp, dateStr, msg, btn);
+  });
+}
+
+// ============================================================
+// FILL TEMPLATE — pdf-lib overlays 4 fields on USG template
+// ============================================================
+function _fillAndDownload(templateB64, name, pp, dateStr, msg, btn){
+  // base64 → Uint8Array
+  var binary = atob(templateB64);
+  var bytes  = new Uint8Array(binary.length);
+  for(var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+
+  PDFLib.PDFDocument.load(bytes).then(function(pdfDoc){
+    var page = pdfDoc.getPages()[0];
+
+    return Promise.all([
+      pdfDoc.embedFont(PDFLib.StandardFonts.HelveticaBold),
+      pdfDoc.embedFont(PDFLib.StandardFonts.Helvetica)
+    ]).then(function(fonts){
+      var fBold = fonts[0];
+      var fReg  = fonts[1];
+      var black = PDFLib.rgb(0, 0, 0);
+      var SZ    = 10.020; // matches Tahoma 10.020pt in original
+
+      // ── POSITION label (SIRA adds "- SIRA" suffix) ──
+      var posText = (olType === 'SIRA') ? 'SECURITY GUARD - SIRA' : 'SECURITY GUARD';
+
+      // DATE  → Helvetica Regular, x=453.520, y=733.740
+      page.drawText(dateStr, {
+        x: 453.520, y: 733.740, size: SZ, font: fReg, color: black
+      });
+
+      // NAME  → Helvetica Bold,    x=144.860, y=715.120
+      page.drawText(name.toUpperCase(), {
+        x: 144.860, y: 715.120, size: SZ, font: fBold, color: black
+      });
+
+      // POS   → Helvetica Bold,    x=144.860, y=699.880
+      page.drawText(posText, {
+        x: 144.860, y: 699.880, size: SZ, font: fBold, color: black
+      });
+
+      // PP NO → Helvetica Bold,    x=376.000, y=699.880
+      page.drawText(pp.toUpperCase(), {
+        x: 376.000, y: 699.880, size: SZ, font: fBold, color: black
+      });
+
+      return pdfDoc.save();
+    });
+
+  }).then(function(outBytes){
+    var blob = new Blob([outBytes], {type:'application/pdf'});
+    var url  = URL.createObjectURL(blob);
+    var a    = document.createElement('a');
+    a.href   = url;
+    a.download = 'OfferLetter_' + olType + '_' + name.replace(/\s+/g,'_') + '.pdf';
+    a.click();
+    URL.revokeObjectURL(url);
+
+    btn.disabled = false;
+    btn.textContent = 'Download ' + olType + ' Offer Letter';
+    msg.textContent = 'Downloaded successfully!';
+    Logger.write('OfferLetterAgent', 'GENERATE', olType + ' | ' + name + ' | ' + pp);
+
+    // Log to HR Docs locally
+    APP.hrDocs.unshift({
+      REF_NO: 'OL-'+Date.now().toString().slice(-8),
+      EMP_ID: 'ONBOARD', EMP_NAME: name,
+      LETTER_TYPE: 'Offer Letter', ISSUE_DATE: today(),
+      ISSUED_BY: APP.config.hr_officer||'HR',
+      NOTES: olType + ' | PP: ' + pp
+    });
+
+  }).catch(function(e){
+    btn.disabled = false;
+    btn.textContent = 'Download ' + olType + ' Offer Letter';
+    msg.style.color = 'var(--red)';
+    msg.textContent = 'PDF Error: ' + e.message;
+    console.error('Offer letter error:', e);
+  });
+}
+
+// ============================================================
+// AGENT MANAGER — 15 min refresh, no refresh during editing
+// ============================================================
+var AgentManager={
+  _lastSync:null, _timerInterval:null,
+
+  init:function(){
+    var self=this;
+    this._months();
+    this._showLoader(true);
+    this._startTimer();
+    // 15 MINUTE auto-refresh — skip if editing
+    setInterval(function(){
+      if(EDITING){ return; } // do NOT refresh during data entry
+      self.refreshAll();
+    }, 15*60*1000);
+    GAS.loadAll(function(){
+      self._showLoader(false);
+      self._lastSync=Date.now();
+      EmpAgent.render(true);
+      OBAgent.render();
+      LtrAgent.render();
+      DashAgent.refresh();
+      CFG.loadUI();
+      var sl=document.getElementById('sync-label');
+      if(sl) sl.textContent='Data Synced via Google';
+      toast('Dashboard loaded - '+getActiveEmployees().length.toLocaleString()+' active employees','success');
+    });
+  },
+
+  _startTimer:function(){
+    var self=this;
+    if(this._timerInterval) clearInterval(this._timerInterval);
+    this._timerInterval=setInterval(function(){
+      if(!self._lastSync) return;
+      var elapsed=Math.floor((Date.now()-self._lastSync)/1000);
+      var m=Math.floor(elapsed/60), s=elapsed%60;
+      var display=m>0?m+'m '+String(s).padStart(2,'0')+'s ago':String(s).padStart(2,'0')+'s ago';
+      var el=document.getElementById('sync-timer'); if(el) el.textContent=display;
+    },1000);
+  },
+
+  refreshAll:function(){
+    var self=this;
+    var sl=document.getElementById('sync-label'); if(sl) sl.textContent='Syncing...';
+    GAS.loadAll(function(){
+      self._lastSync=Date.now();
+      EmpAgent.render(true); OBAgent.render(); LtrAgent.render(); DashAgent.refresh();
+      var sl2=document.getElementById('sync-label'); if(sl2) sl2.textContent='Connected to live data via Google';
+      var el=document.getElementById('sync-timer'); if(el) el.textContent='just now';
+      toast('Data refreshed','info');
+    });
+  },
+
+  _months:function(){
+    var sel=document.getElementById('rpt-month'); if(!sel) return;
+    var mn=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    var now=new Date();
+    for(var i=0;i<12;i++){
+      var d=new Date(now.getFullYear(),now.getMonth()-i,1);
+      var opt=document.createElement('option');
+      opt.value=opt.textContent=mn[d.getMonth()]+' '+d.getFullYear();
+      sel.appendChild(opt);
+    }
+  },
+
+  _showLoader:function(show){
+    var loader=document.getElementById('main-loader');
+    var content=document.getElementById('main-content');
+    if(loader)  loader.style.display=show?'flex':'none';
+    if(content) content.style.display=show?'none':'block';
+  }
+};
+
+// ============================================================
+// NAVIGATION
+// ============================================================
+function navigate(view){
+  document.querySelectorAll('.view').forEach(function(v){ v.classList.remove('active'); });
+  document.querySelectorAll('.sb-item').forEach(function(i){ i.classList.remove('active'); });
+  var v=document.getElementById('view-'+view); if(v) v.classList.add('active');
+  var s=document.querySelector('[data-view="'+view+'"]'); if(s) s.classList.add('active');
+  var tt=document.getElementById('topbar-title');
+  var titles={dashboard:'Dashboard',masterdata:'EMPLOYEE RECORD',employees:'Active Employees',onboarding:'Onboarding Pipeline',letters:'HR Letters',reports:'Monthly Report',logs:'Activity Logs',setup:'System Configuration'};
+  if(tt) tt.textContent=titles[view]||view;
+  var cta=document.getElementById('top-cta');
+  if(cta){
+    if(view==='masterdata'||view==='employees'){ cta.textContent='+ Add Employee'; cta.onclick=function(){ EmpAgent.openAdd(); }; }
+    else if(view==='onboarding'){ cta.textContent='+ Add Candidate'; cta.onclick=function(){ OBAgent.openAdd(); }; }
+    else if(view==='letters'){ cta.textContent='Issue Letter'; cta.onclick=function(){ LtrAgent.openIssue(); }; }
+    else{ cta.textContent='Offer Letter'; cta.onclick=openOLModal; }
+  }
+  if(view==='logs') Logger.loadFromServer();
+}
+
+// ============================================================
+// EVENT DELEGATION
+// ============================================================
+document.addEventListener('click',function(e){
+  var t=e.target.closest('[data-action]'); if(!t) return;
+  var act=t.dataset.action;
+  if     (act==='edit-emp')  EmpAgent.openEdit(t.dataset.id);
+  else if(act==='del-emp')   EmpAgent.openDelete(t.dataset.id,t.dataset.name);
+  else if(act==='transfer')  OBAgent.openTransfer(t.dataset.obid,t.dataset.name);
+  else if(act==='edit-ob')   OBAgent.openEdit(t.dataset.obid);
+  else if(act==='cancel-ob') OBAgent.cancel(t.dataset.obid);
+  else if(act==='gen-ol')    OBAgent.openOLForId(t.dataset.obid,t.dataset.name,t.dataset.type,t.dataset.pp);
+  else if(act==='del-ltr')   LtrAgent.delEntry(t.dataset.ref);
+});
+
+window.addEventListener('DOMContentLoaded',function(){ AgentManager.init(); });
+</script>
