@@ -17,9 +17,9 @@
   </div>
   <div class="sb-sec">Overview</div>
   <div class="sb-item active" data-view="dashboard" onclick="navigate('dashboard')"><span class="ic">&#128202;</span>Dashboard</div>
-  <div class="sb-item" data-view="masterdata" onclick="navigate('masterdata')"><span class="ic">&#128196;</span>Employee Record<span class="sb-badge gold" id="nb-emp">0</span></div>
+  <div class="sb-item" data-view="masterdata" onclick="navigate('masterdata')"><span class="ic">&#128196;</span>MANPOWER MASTER DATA<span class="tcnt" id="emp-cnt">Loading...</span></div>
   <div class="sb-sec">HR Operations</div>
-  <div class="sb-item" data-view="employees" onclick="navigate('employees')"><span class="ic">&#128101;</span>Active Employees</div>
+  <div class="sb-item" data-view="employees" onclick="navigate('employees')"><span class="ic">&#128196;</span>ACTIVE MANPOWER<span class="sb-badge gold" id="nb-emp">0</span></div>
   <div class="sb-item" data-view="onboarding" onclick="navigate('onboarding')"><span class="ic">&#128260;</span>Onboarding<span class="sb-badge" id="nb-ob">0</span></div>
   <div class="sb-item" data-view="letters" onclick="navigate('letters')"><span class="ic">&#128196;</span>HR Letters</div>
   <div class="sb-sec">Intelligence</div>
@@ -101,7 +101,7 @@
     <!-- EMPLOYEE RECORD (HR Master Data) -->
     <div id="view-masterdata" class="view">
       <div class="sec-hdr">
-        <div class="sec-hdr-left"><h2>EMPLOYEE RECORD</h2><p>Active manpower: Master Data minus Deletion_Log, deduplicated.</p></div>
+        <div class="sec-hdr-left"><h2>ALL EMPLOYEE RECORD</h2> </div>
         <div class="sec-hdr-right"><button class="abtn gold" onclick="EmpAgent.openAdd()">&#10133; Add Employee</button></div>
       </div>
       <!-- ADVANCED FILTERS + SORT -->
@@ -133,8 +133,8 @@
       </div>
       <div class="tcard">
         <div class="ttop">
-          <h3>&#128203; Employee Register</h3>
-          <span class="tcnt" id="emp-cnt">Loading...</span>
+          <h3>&#128203; Employee Registered </h3>
+         
           <div class="tsw"><span class="tsi">&#128269;</span><input type="text" id="emp-tq" placeholder="Quick filter..." oninput="EmpAgent.render(true)"></div>
         </div>
         <div class="twrap lazy">
@@ -159,7 +159,7 @@
     <!-- ACTIVE EMPLOYEES -->
     <div id="view-employees" class="view">
       <div class="sec-hdr">
-        <div class="sec-hdr-left"><h2>Active Employees</h2><p>Active Manpower = Master Data &minus; Deletion_Log (deduplicated)</p></div>
+        <div class="sec-hdr-left"><h2>Active Employees</h2></div>
         <div class="sec-hdr-right"><button class="abtn gold" onclick="EmpAgent.openAdd()">&#10133; Add Employee</button></div>
       </div>
       <div class="controls">
@@ -177,7 +177,7 @@
         <button class="reset-btn" onclick="EmpAgent.resetF()" title="Reset" style="margin-left:auto">&#10005;</button>
       </div>
       <div class="tcard">
-        <div class="ttop"><h3>&#128101; Active Employees</h3><span class="tcnt" id="emp-cnt2">—</span></div>
+        <div class="ttop"><h3>&#128101; Active Employees</h3></div>
         <div class="twrap lazy">
           <table>
             <thead><tr><th>#</th><th>Emp ID</th><th>Name</th><th>License Auth</th><th>Emirates ID</th><th>Actions</th></tr></thead>
