@@ -622,6 +622,120 @@ function generateAndIssueLetter(data) {
 }
 
 // ============================================================
+// EXPERIENCE LETTER — for resigned / deleted employees
+// Template key reuses LTEMPL_EXPERIENCE_LETTER_DRIVE from Setup
+// Supports placeholders: {{DATE}} {{ID}} {{NAME}} {{FIRSTNAME}}
+//   {{DOJ}} {{DOL}} {{EMP_ID}} {{REF_NO}} {{DESIGNATION}}
+//   {{HR_OFFICER}} {{HR_DESIGNATION}} {{COMPANY}}
+// ============================================================
+function _generateExpLetter(templateId, data, cfg) {
+  var file = DriveApp.getFileById(templateId);
+  var copy = file.makeCopy('_EXP_TEMP_' + data.REF_NO);
+  try {
+    var doc  = DocumentApp.openById(copy.getId());
+    var body = doc.getBody();
+    body.setFontFamily('Tahoma');
+    body.setFontSize(12);
+    var map = {
+      '{{DATE}}':           data.ISSUE_DATE  || formatDate(new Date()),
+      '{{ID}}':             data.EMP_ID      || '',
+      '{{NAME}}':           data.EMP_NAME    || '',
+      '{{FIRSTNAME}}':      data.FIRSTNAME   || '',
+      '{{DOJ}}':            data.DOJ         || '',
+      '{{DOL}}':            data.DOL         || '',
+      '{{EMP_ID}}':         data.EMP_ID      || '',
+      '{{REF_NO}}':         data.REF_NO      || '',
+      '{{DESIGNATION}}':    data.DESIGNATION || '',
+      '{{ISSUED_BY}}':      data.ISSUED_BY   || '',
+      '{{HR_OFFICER}}':     cfg.hr_officer   || 'HR Manager',
+      '{{HR_DESIGNATION}}': cfg.designation  || 'HR Manager',
+      '{{COMPANY}}':        cfg.company_name || 'United Group Holding'
+    };
+    Object.keys(map).forEach(function(k){ body.replaceText(k, map[k]); });
+    doc.saveAndClose();
+    var pdfBytes = DriveApp.getFileById(copy.getId()).getAs('application/pdf').getBytes();
+    return Utilities.base64Encode(pdfBytes);
+  } finally {
+    try { copy.setTrashed(true); } catch(e2) {}
+  }
+}
+
+function generateExperienceLetterForEmp(empId) {
+  try {
+    _requireRole(['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER']);
+
+    // Read employee row from Deletion_Log
+    var sh = SS.getSheetByName(TABS.DEL_LOG);
+    if (!sh) return {success:false, error:'Deletion_Log sheet not found'};
+    var vals = sh.getDataRange().getValues();
+    if (vals.length < 2) return {success:false, error:'Deletion_Log is empty'};
+    var hdrs  = vals[0].map(function(h){ return String(h).trim(); });
+    var idCol = hdrs.indexOf('EMP_ID');
+    var emp   = null;
+    for (var i = 1; i < vals.length; i++) {
+      if (String(vals[i][idCol]).trim() === String(empId).trim()) {
+        emp = {};
+        for (var j = 0; j < hdrs.length; j++) emp[hdrs[j]] = String(vals[i][j]||'');
+        break;
+      }
+    }
+    if (!emp) return {success:false, error:'Employee ' + empId + ' not found in Deletion_Log'};
+
+    // Duplicate check — skip if Experience Letter already logged for this EMP_ID
+    var docSh = SS.getSheetByName(TABS.HR_DOCS);
+    if (docSh) {
+      var docVals = docSh.getDataRange().getValues();
+      var dHdrs  = docVals[0].map(function(h){ return String(h).trim(); });
+      var eCol   = dHdrs.indexOf('EMP_ID'), tCol = dHdrs.indexOf('LETTER_TYPE');
+      for (var k = 1; k < docVals.length; k++) {
+        if (String(docVals[k][eCol]).trim() === String(empId).trim() &&
+            String(docVals[k][tCol]).trim() === 'Experience Letter') {
+          return {success:false, alreadyExists:true,
+                  error:'Experience Letter already issued for ' + empId};
+        }
+      }
+    }
+
+    // Get template Drive ID from AppConfig
+    var cfg = getConfig();
+    var templateId = String(cfg['LTEMPL_EXPERIENCE_LETTER_DRIVE'] || '').trim();
+    if (!templateId) return {success:false,
+      error:'Experience Letter template not configured. Go to Setup → HR Letter Templates → Experience Letter and enter the Google Doc File ID.'};
+
+    // Build letter data
+    var cleanName = emp.FULL_NAME.trim().replace(/\s+/g,' ');
+    var firstName = cleanName.split(' ')[0];
+    var refNo     = 'EXP-' + new Date().getTime().toString().slice(-8);
+    var letterData = {
+      REF_NO:      refNo,
+      EMP_ID:      empId,
+      EMP_NAME:    cleanName,
+      FIRSTNAME:   firstName,
+      DOJ:         emp.DATE_OF_JOIN || '',
+      DOL:         emp.DELETED_DATE || '',
+      DESIGNATION: emp.DESIGNATION  || '',
+      ISSUE_DATE:  formatDate(new Date()),
+      ISSUED_BY:   cfg.hr_officer   || 'HR'
+    };
+
+    var pdfBase64 = _generateExpLetter(templateId, letterData, cfg);
+
+    // Log to HR Docs Tracker
+    var hrSh = getOrCreate(TABS.HR_DOCS,
+      ['REF_NO','EMP_ID','EMP_NAME','LETTER_TYPE','ISSUE_DATE','ISSUED_BY','NOTES','ENTITY']);
+    hrSh.appendRow([
+      refNo, empId, cleanName, 'Experience Letter',
+      formatDate(new Date()), letterData.ISSUED_BY,
+      'DOJ: ' + letterData.DOJ + ' | LWD: ' + letterData.DOL,
+      emp.GROUP || emp.ENTITY || ''
+    ]);
+    logActivity('LetterAgent', 'EXP_LETTER', refNo + '--' + empId, 'SUCCESS');
+
+    return {success:true, pdf:pdfBase64, refNo:refNo, name:cleanName};
+  } catch(e) { return {success:false, error:e.message}; }
+}
+
+// ============================================================
 // USER MANAGEMENT (SUPER_ADMIN only)
 // ============================================================
 function getUsers() {

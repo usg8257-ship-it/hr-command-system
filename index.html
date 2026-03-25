@@ -221,10 +221,11 @@
                 <th>Years of Service</th>
                 <th>Org</th>
                 <th>Reason</th>
+                <th>Exp Letter</th>
               </tr>
             </thead>
             <tbody id="res-tbody">
-              <tr><td colspan="9" style="text-align:center;padding:32px;color:var(--muted)">Navigate here to load records.</td></tr>
+              <tr><td colspan="10" style="text-align:center;padding:32px;color:var(--muted)">Navigate here to load records.</td></tr>
             </tbody>
           </table>
         </div>
@@ -259,7 +260,7 @@
     <!-- HR LETTERS — small popup (temporary) -->
     <div id="view-letters" class="view">
       <div class="sec-hdr">
-        <div class="sec-hdr-left"><h2>HR Letters</h2><p>Existing employees only. Feature will be enhanced in next version.</p></div>
+        <div class="sec-hdr-left"><h2>HR Letters</h2><p>Issue letters for active employees, or generate Experience Letters for resigned employees below.</p></div>
         <div class="sec-hdr-right"><button class="abtn gold" onclick="LtrAgent.openIssue()">&#128221; Issue Letter</button></div>
       </div>
       <div class="ls-grid">
@@ -278,6 +279,23 @@
         <div class="ttop"><h3>&#128196; Letters Log</h3><span class="tcnt" id="lt-cnt">0</span></div>
         <div class="twrap"><table><thead><tr><th>Ref No</th><th>Emp ID</th><th>Name</th><th>Letter Type</th><th>Issue Date</th><th>Issued By</th><th>Notes</th><th></th></tr></thead>
         <tbody id="lt-tbody"></tbody></table></div>
+      </div>
+
+      <!-- Experience Letters for resigned employees -->
+      <div class="tcard" style="margin-top:14px;border-left:3px solid var(--teal)">
+        <div class="ttop">
+          <h3>&#128196; Experience Letters &mdash; Resigned Employees</h3>
+          <span class="tcnt" id="exp-ltr-cnt">0 pending</span>
+        </div>
+        <p style="font-size:11.5px;color:var(--muted);padding:0 4px 12px">Generate and download experience letters for resigned/deleted employees. Requires the Experience Letter Google Doc template to be configured in <strong>Setup</strong>. Already-issued letters show a green tick.</p>
+        <div class="twrap lazy">
+          <table>
+            <thead><tr><th>Emp ID</th><th>Name</th><th>Designation</th><th>Last Working Date</th><th>Action</th></tr></thead>
+            <tbody id="exp-ltr-tbody">
+              <tr><td colspan="5" style="text-align:center;padding:24px;color:var(--muted)">Navigate to this section to load.</td></tr>
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
 
@@ -325,6 +343,7 @@
           <div style="background:rgba(0,201,184,.06);border:1px solid rgba(0,201,184,.2);border-radius:7px;padding:9px 13px;margin-bottom:11px;font-size:11px;color:var(--muted)">
             <strong style="color:var(--navy)">Placeholders:</strong>
             {NAME} {EMP_ID} {DESIGNATION} {PASSPORT_NO} {COMPANY} {ENTITY} {DATE_OF_JOIN} {SALARY} {DATE} {REF_NO} {ISSUED_BY} {HR_OFFICER} {HR_DESIGNATION}
+            &nbsp;&nbsp;<span style="color:var(--teal);font-weight:600">Experience Letter extras:</span> {{FIRSTNAME}} {{ID}} {{DOJ}} {{DOL}}
           </div>
           <div class="setup-ltpl-wrap">
           <div class="setup-ltpl" id="ltpl-WARNING_LETTER">
