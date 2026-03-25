@@ -17,9 +17,9 @@
   </div>
   <div class="sb-sec">Overview</div>
   <div class="sb-item active" data-view="dashboard" onclick="navigate('dashboard')"><span class="ic">&#128202;</span>Dashboard</div>
-  <div class="sb-item" data-view="masterdata" onclick="navigate('masterdata')"><span class="ic">&#128196;</span>Employee Record<span class="sb-badge gold" id="nb-emp">0</span></div>
+  <div class="sb-item" data-view="masterdata" onclick="navigate('masterdata')"><span class="ic">&#128196;</span>MANPOWER MASTER DATA<span class="tcnt" id="emp-cnt">Loading...</span></div>
   <div class="sb-sec">HR Operations</div>
-  <div class="sb-item" data-view="employees" onclick="navigate('employees')"><span class="ic">&#128101;</span>Active Employees</div>
+  <div class="sb-item" data-view="employees" onclick="navigate('employees')"><span class="ic">&#128196;</span>ACTIVE MANPOWER<span class="sb-badge gold" id="nb-emp">0</span></div>
   <div class="sb-item" data-view="onboarding" onclick="navigate('onboarding')"><span class="ic">&#128260;</span>Onboarding<span class="sb-badge" id="nb-ob">0</span></div>
   <div class="sb-item" data-view="letters" onclick="navigate('letters')"><span class="ic">&#128196;</span>HR Letters</div>
   <div class="sb-sec">Intelligence</div>
@@ -101,7 +101,7 @@
     <!-- EMPLOYEE RECORD (HR Master Data) -->
     <div id="view-masterdata" class="view">
       <div class="sec-hdr">
-        <div class="sec-hdr-left"><h2>EMPLOYEE RECORD</h2><p>Active manpower: Master Data minus Deletion_Log, deduplicated.</p></div>
+        <div class="sec-hdr-left"><h2>ALL EMPLOYEE RECORD</h2> </div>
         <div class="sec-hdr-right"><button class="abtn gold" onclick="EmpAgent.openAdd()">&#10133; Add Employee</button></div>
       </div>
       <!-- ADVANCED FILTERS + SORT -->
@@ -133,8 +133,8 @@
       </div>
       <div class="tcard">
         <div class="ttop">
-          <h3>&#128203; Employee Register</h3>
-          <span class="tcnt" id="emp-cnt">Loading...</span>
+          <h3>&#128203; Employee Registered </h3>
+         
           <div class="tsw"><span class="tsi">&#128269;</span><input type="text" id="emp-tq" placeholder="Quick filter..." oninput="EmpAgent.render(true)"></div>
         </div>
         <div class="twrap lazy">
@@ -159,7 +159,7 @@
     <!-- ACTIVE EMPLOYEES -->
     <div id="view-employees" class="view">
       <div class="sec-hdr">
-        <div class="sec-hdr-left"><h2>Active Employees</h2><p>Active Manpower = Master Data &minus; Deletion_Log (deduplicated)</p></div>
+        <div class="sec-hdr-left"><h2>Active Employees</h2></div>
         <div class="sec-hdr-right"><button class="abtn gold" onclick="EmpAgent.openAdd()">&#10133; Add Employee</button></div>
       </div>
       <div class="controls">
@@ -177,7 +177,7 @@
         <button class="reset-btn" onclick="EmpAgent.resetF()" title="Reset" style="margin-left:auto">&#10005;</button>
       </div>
       <div class="tcard">
-        <div class="ttop"><h3>&#128101; Active Employees</h3><span class="tcnt" id="emp-cnt2">—</span></div>
+        <div class="ttop"><h3>&#128101; Active Employees</h3></div>
         <div class="twrap lazy">
           <table>
             <thead><tr><th>#</th><th>Emp ID</th><th>Name</th><th>License Auth</th><th>Emirates ID</th><th>Actions</th></tr></thead>
@@ -265,10 +265,9 @@
     <!-- SETUP -->
     <div id="view-setup" class="view">
       <div class="sec-hdr"><div class="sec-hdr-left"><h2>System Configuration</h2></div></div>
-      <div style="max-width:540px">
+      <div style="max-width:660px">
         <div class="setup-step">
-          <div class="step-num">1</div>
-          <h3>Company Details</h3>
+          <div class="step-num">1</div><h3>Company Details</h3>
           <div class="fgrid" style="margin-top:9px">
             <div class="fg full"><label class="flabel">Company Name</label><input class="fi" id="cfg-co" placeholder="United Group Holding"/></div>
             <div class="fg"><label class="flabel">HR Signatory</label><input class="fi" id="cfg-off" placeholder="Name"/></div>
@@ -276,36 +275,117 @@
           </div>
           <button class="btn btn-navy" style="margin-top:11px" onclick="CFG.save()">&#128190; Save Config</button>
         </div>
-
-        <!-- OFFER LETTER TEMPLATES -->
-        <div class="setup-step" style="border-left:3px solid var(--gold)">
-          <div class="step-num" style="background:var(--gold)">2</div>
-          <h3>&#128196; Offer Letter Templates (Required)</h3>
-          <p style="margin-bottom:12px">Upload the PSBD and SIRA PDF templates to Google Drive, then paste their File IDs below.<br>
-          <strong style="color:var(--navy)">How to get File ID:</strong> Open the PDF in Google Drive &rarr; right-click &rarr; "Get link" &rarr; copy the ID from the URL <code style="background:var(--surface3);padding:1px 5px;border-radius:3px;font-size:10.5px">https://drive.google.com/file/d/<strong>THIS_IS_THE_ID</strong>/view</code></p>
-          <div style="background:rgba(0,122,138,.06);border:1px solid rgba(0,122,138,.2);border-radius:8px;padding:12px;margin-bottom:12px;font-size:11.5px;color:var(--muted);line-height:1.8">
-            &#128230; <strong style="color:var(--navy)">Upload steps:</strong><br>
-            1. Go to <strong>drive.google.com</strong><br>
-            2. Upload <code>Offer_Letter_PSBD.pdf</code> and <code>Offer_Letter_Sira.pdf</code><br>
-            3. Right-click each file &rarr; Share &rarr; "Anyone with link can view"<br>
-            4. Copy the File ID from the URL and paste below
+        <div class="setup-step" style="border-left:3px solid var(--teal)">
+          <div class="step-num" style="background:var(--teal)">2</div><h3>&#128221; HR Letter Templates</h3>
+          <p style="margin-bottom:10px">Configure a template per letter type. Use a Google Doc (Drive File ID) for formatted PDFs, or type the body directly. Placeholders auto-fill from employee records.</p>
+          <div style="background:rgba(0,201,184,.06);border:1px solid rgba(0,201,184,.2);border-radius:7px;padding:9px 13px;margin-bottom:11px;font-size:11px;color:var(--muted)">
+            <strong style="color:var(--navy)">Placeholders:</strong>
+            {NAME} {EMP_ID} {DESIGNATION} {PASSPORT_NO} {COMPANY} {ENTITY} {DATE_OF_JOIN} {SALARY} {DATE} {REF_NO} {ISSUED_BY} {HR_OFFICER} {HR_DESIGNATION}
           </div>
+          <div class="setup-ltpl-wrap">
+          <div class="setup-ltpl" id="ltpl-WARNING_LETTER">
+            <div class="setup-ltpl-hdr" onclick="this.parentElement.classList.toggle('open')">
+              <span>Warning Letter</span><span class="setup-ltpl-arrow">&#9660;</span>
+            </div>
+            <div class="setup-ltpl-body">
+              <div class="fgrid" style="margin-top:9px">
+                <div class="fg full"><label class="flabel">Google Doc File ID <span style="font-size:10px;font-weight:400;color:var(--muted)">(optional)</span></label>
+                  <input class="fi" id="ltcfg-drive-WARNING_LETTER" placeholder="Google Doc File ID..." style="font-family:monospace;font-size:11px"/></div>
+                <div class="fg full"><label class="flabel">In-App Letter Body <span style="font-size:10px;font-weight:400;color:var(--muted)">(used if no Drive ID)</span></label>
+                  <textarea class="fta" id="ltcfg-body-WARNING_LETTER" placeholder="Use: {NAME} {EMP_ID} {DESIGNATION} {COMPANY} {ENTITY} {DATE_OF_JOIN} {PASSPORT_NO} {SALARY} {DATE} {REF_NO} {ISSUED_BY} {HR_OFFICER}" style="min-height:100px;font-family:monospace;font-size:11.5px"></textarea></div>
+              </div>
+              <button class="btn btn-navy btn-sm" style="margin-top:8px" onclick="CFG.saveLetterTemplate('Warning Letter')">&#128190; Save Warning Letter Template</button>
+            </div>
+          </div>
+          <div class="setup-ltpl" id="ltpl-EXPERIENCE_LETTER">
+            <div class="setup-ltpl-hdr" onclick="this.parentElement.classList.toggle('open')">
+              <span>Experience Letter</span><span class="setup-ltpl-arrow">&#9660;</span>
+            </div>
+            <div class="setup-ltpl-body">
+              <div class="fgrid" style="margin-top:9px">
+                <div class="fg full"><label class="flabel">Google Doc File ID <span style="font-size:10px;font-weight:400;color:var(--muted)">(optional)</span></label>
+                  <input class="fi" id="ltcfg-drive-EXPERIENCE_LETTER" placeholder="Google Doc File ID..." style="font-family:monospace;font-size:11px"/></div>
+                <div class="fg full"><label class="flabel">In-App Letter Body <span style="font-size:10px;font-weight:400;color:var(--muted)">(used if no Drive ID)</span></label>
+                  <textarea class="fta" id="ltcfg-body-EXPERIENCE_LETTER" placeholder="Use: {NAME} {EMP_ID} {DESIGNATION} {COMPANY} {ENTITY} {DATE_OF_JOIN} {PASSPORT_NO} {SALARY} {DATE} {REF_NO} {ISSUED_BY} {HR_OFFICER}" style="min-height:100px;font-family:monospace;font-size:11.5px"></textarea></div>
+              </div>
+              <button class="btn btn-navy btn-sm" style="margin-top:8px" onclick="CFG.saveLetterTemplate('Experience Letter')">&#128190; Save Experience Letter Template</button>
+            </div>
+          </div>
+          <div class="setup-ltpl" id="ltpl-SALARY_CERTIFICATE">
+            <div class="setup-ltpl-hdr" onclick="this.parentElement.classList.toggle('open')">
+              <span>Salary Certificate</span><span class="setup-ltpl-arrow">&#9660;</span>
+            </div>
+            <div class="setup-ltpl-body">
+              <div class="fgrid" style="margin-top:9px">
+                <div class="fg full"><label class="flabel">Google Doc File ID <span style="font-size:10px;font-weight:400;color:var(--muted)">(optional)</span></label>
+                  <input class="fi" id="ltcfg-drive-SALARY_CERTIFICATE" placeholder="Google Doc File ID..." style="font-family:monospace;font-size:11px"/></div>
+                <div class="fg full"><label class="flabel">In-App Letter Body <span style="font-size:10px;font-weight:400;color:var(--muted)">(used if no Drive ID)</span></label>
+                  <textarea class="fta" id="ltcfg-body-SALARY_CERTIFICATE" placeholder="Use: {NAME} {EMP_ID} {DESIGNATION} {COMPANY} {ENTITY} {DATE_OF_JOIN} {PASSPORT_NO} {SALARY} {DATE} {REF_NO} {ISSUED_BY} {HR_OFFICER}" style="min-height:100px;font-family:monospace;font-size:11.5px"></textarea></div>
+              </div>
+              <button class="btn btn-navy btn-sm" style="margin-top:8px" onclick="CFG.saveLetterTemplate('Salary Certificate')">&#128190; Save Salary Certificate Template</button>
+            </div>
+          </div>
+          <div class="setup-ltpl" id="ltpl-EMPLOYMENT_CERTIFICATE">
+            <div class="setup-ltpl-hdr" onclick="this.parentElement.classList.toggle('open')">
+              <span>Employment Certificate</span><span class="setup-ltpl-arrow">&#9660;</span>
+            </div>
+            <div class="setup-ltpl-body">
+              <div class="fgrid" style="margin-top:9px">
+                <div class="fg full"><label class="flabel">Google Doc File ID <span style="font-size:10px;font-weight:400;color:var(--muted)">(optional)</span></label>
+                  <input class="fi" id="ltcfg-drive-EMPLOYMENT_CERTIFICATE" placeholder="Google Doc File ID..." style="font-family:monospace;font-size:11px"/></div>
+                <div class="fg full"><label class="flabel">In-App Letter Body <span style="font-size:10px;font-weight:400;color:var(--muted)">(used if no Drive ID)</span></label>
+                  <textarea class="fta" id="ltcfg-body-EMPLOYMENT_CERTIFICATE" placeholder="Use: {NAME} {EMP_ID} {DESIGNATION} {COMPANY} {ENTITY} {DATE_OF_JOIN} {PASSPORT_NO} {SALARY} {DATE} {REF_NO} {ISSUED_BY} {HR_OFFICER}" style="min-height:100px;font-family:monospace;font-size:11.5px"></textarea></div>
+              </div>
+              <button class="btn btn-navy btn-sm" style="margin-top:8px" onclick="CFG.saveLetterTemplate('Employment Certificate')">&#128190; Save Employment Certificate Template</button>
+            </div>
+          </div>
+          <div class="setup-ltpl" id="ltpl-NOC_LETTER">
+            <div class="setup-ltpl-hdr" onclick="this.parentElement.classList.toggle('open')">
+              <span>NOC Letter</span><span class="setup-ltpl-arrow">&#9660;</span>
+            </div>
+            <div class="setup-ltpl-body">
+              <div class="fgrid" style="margin-top:9px">
+                <div class="fg full"><label class="flabel">Google Doc File ID <span style="font-size:10px;font-weight:400;color:var(--muted)">(optional)</span></label>
+                  <input class="fi" id="ltcfg-drive-NOC_LETTER" placeholder="Google Doc File ID..." style="font-family:monospace;font-size:11px"/></div>
+                <div class="fg full"><label class="flabel">In-App Letter Body <span style="font-size:10px;font-weight:400;color:var(--muted)">(used if no Drive ID)</span></label>
+                  <textarea class="fta" id="ltcfg-body-NOC_LETTER" placeholder="Use: {NAME} {EMP_ID} {DESIGNATION} {COMPANY} {ENTITY} {DATE_OF_JOIN} {PASSPORT_NO} {SALARY} {DATE} {REF_NO} {ISSUED_BY} {HR_OFFICER}" style="min-height:100px;font-family:monospace;font-size:11.5px"></textarea></div>
+              </div>
+              <button class="btn btn-navy btn-sm" style="margin-top:8px" onclick="CFG.saveLetterTemplate('NOC Letter')">&#128190; Save NOC Letter Template</button>
+            </div>
+          </div>
+          <div class="setup-ltpl" id="ltpl-OTHERS">
+            <div class="setup-ltpl-hdr" onclick="this.parentElement.classList.toggle('open')">
+              <span>Others</span><span class="setup-ltpl-arrow">&#9660;</span>
+            </div>
+            <div class="setup-ltpl-body">
+              <div class="fgrid" style="margin-top:9px">
+                <div class="fg full"><label class="flabel">Google Doc File ID <span style="font-size:10px;font-weight:400;color:var(--muted)">(optional)</span></label>
+                  <input class="fi" id="ltcfg-drive-OTHERS" placeholder="Google Doc File ID..." style="font-family:monospace;font-size:11px"/></div>
+                <div class="fg full"><label class="flabel">In-App Letter Body <span style="font-size:10px;font-weight:400;color:var(--muted)">(used if no Drive ID)</span></label>
+                  <textarea class="fta" id="ltcfg-body-OTHERS" placeholder="Use: {NAME} {EMP_ID} {DESIGNATION} {COMPANY} {ENTITY} {DATE_OF_JOIN} {PASSPORT_NO} {SALARY} {DATE} {REF_NO} {ISSUED_BY} {HR_OFFICER}" style="min-height:100px;font-family:monospace;font-size:11.5px"></textarea></div>
+              </div>
+              <button class="btn btn-navy btn-sm" style="margin-top:8px" onclick="CFG.saveLetterTemplate('Others')">&#128190; Save Others Template</button>
+            </div>
+          </div>
+          </div>
+        </div>
+        <div class="setup-step" style="border-left:3px solid var(--gold)">
+          <div class="step-num" style="background:var(--gold)">3</div><h3>&#128196; Offer Letter Templates (Required)</h3>
+          <p style="margin-bottom:12px">Upload PSBD and SIRA PDF templates to Google Drive and paste their File IDs below.</p>
           <div class="fgrid">
             <div class="fg"><label class="flabel">PSBD Template File ID <span class="req">*</span></label><input class="fi" id="cfg-psbd-id" placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs..." style="font-family:monospace;font-size:11px"/></div>
             <div class="fg"><label class="flabel">SIRA Template File ID <span class="req">*</span></label><input class="fi" id="cfg-sira-id" placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs..." style="font-family:monospace;font-size:11px"/></div>
           </div>
           <div style="display:flex;gap:8px;margin-top:11px;align-items:center">
             <button class="btn btn-gold" onclick="CFG.saveTemplates()">&#128190; Save Template IDs</button>
-            <span style="font-size:11px;color:var(--muted)">Templates will be fetched from Drive when generating offer letters</span>
           </div>
         </div>
         <div class="setup-step">
-          <div class="step-num">3</div>
-          <h3>Required Sheet Tabs</h3>
+          <div class="step-num">4</div><h3>Required Sheet Tabs</h3>
           <ul style="color:var(--muted);font-size:12px;line-height:2.2;padding-left:15px;margin-top:7px">
             <li><strong style="color:var(--navy)">Master Data</strong> — ID, NAME, VISA, STATUS, ENTITY, LIC AUTH, DESIGNATION, DATE OF JOIN, NATIONALITY, BIRTH DATE, PASSPORT NO, EID NO, AGE, Days</li>
             <li><strong style="color:var(--navy)">Deletion_Log</strong> — LOG_ID, EMP_ID, FULL_NAME, PASSPORT_NO, REASON, DELETED_DATE, DELETED_BY</li>
-            <li><strong style="color:var(--navy)">Active_Manpower</strong> — Auto-generated by system</li>
+            <li><strong style="color:var(--navy)">Active_Manpower</strong> — Auto-generated</li>
             <li><strong style="color:var(--navy)">Onboarding</strong> — OB_ID, FULL_NAME, PASSPORT_NO, POSITION_TYPE, MOBILE, VISA_STATUS, EXP_JOIN_DATE, DATE_ADDED, STATUS, NOTES</li>
             <li><strong style="color:var(--navy)">HR Docs Tracker</strong> — REF_NO, EMP_ID, EMP_NAME, LETTER_TYPE, ISSUE_DATE, ISSUED_BY, NOTES</li>
             <li><strong style="color:var(--navy)">Summary</strong> — MONTH, TOTAL_EMP, PSBD, SIRA, NIL, ABU_DHABI, DUBAI, NEW_JOINS, EXITS, ONBOARDING, LETTERS_ISSUED, NOTES</li>
@@ -313,10 +393,6 @@
         </div>
       </div>
     </div>
-
-  </div>
-  </div>
-</div>
 
 <!-- ===== MODALS ===== -->
 
@@ -416,20 +492,25 @@
   </div>
 </div>
 
-<!-- HR Letter — simple popup (temporary) -->
+<!-- HR Letter — Issue Modal -->
 <div class="modal-overlay" id="m-ltr">
-  <div class="modal sm">
-    <div class="modal-hdr"><div class="modal-ttl">Issue HR Letter</div><button class="modal-close" onclick="closeM('m-ltr')">&#10005;</button></div>
+  <div class="modal md">
+    <div class="modal-hdr"><div class="modal-ttl">&#128196; Issue HR Letter</div><button class="modal-close" onclick="closeM('m-ltr')">&#10005;</button></div>
     <div class="modal-body">
-      <div class="ltr-mini">&#9432; This is a simplified letter issuance modal (learning phase). Full letter management will be enhanced in the next version.</div>
+      <div id="ltf-pdf-hint" style="display:none;background:rgba(0,201,184,.08);border:1px solid rgba(0,201,184,.3);border-radius:7px;padding:8px 12px;margin-bottom:10px;font-size:11.5px;color:var(--teal)">&#9989; Template configured — a filled PDF will be generated and downloaded.</div>
       <div class="fgrid">
         <div class="fg full"><label class="flabel">Letter Type <span class="req">*</span></label>
           <select class="fsel2" id="ltf-type" onchange="LtrAgent.onTypeChange()"><option value="">-- Select First --</option><option>Warning Letter</option><option>Experience Letter</option><option>Salary Certificate</option><option>Employment Certificate</option><option>NOC Letter</option><option>Others</option></select></div>
         <div class="fg"><label class="flabel">Employee ID <span class="req">*</span></label><input class="fi" id="ltf-empid" placeholder="Select type first" oninput="LtrAgent.autofill()" disabled/></div>
         <div class="fg"><label class="flabel">Employee Name</label><input class="fi" id="ltf-name" placeholder="Auto-filled" readonly/></div>
+        <div class="fg"><label class="flabel">Designation</label><input class="fi" id="ltf-des" placeholder="Auto-filled" readonly/></div>
+        <div class="fg"><label class="flabel">Passport No</label><input class="fi" id="ltf-pp" placeholder="Auto-filled" readonly/></div>
+        <div class="fg"><label class="flabel">Entity</label><input class="fi" id="ltf-entity" placeholder="Auto-filled" readonly/></div>
+        <div class="fg"><label class="flabel">Date of Join</label><input class="fi" id="ltf-doj" placeholder="Auto-filled" readonly/></div>
+        <div class="fg" id="ltf-sal-row" style="display:none"><label class="flabel">Monthly Salary (AED) <span class="req">*</span></label><input class="fi" id="ltf-sal" placeholder="e.g. 2500"/></div>
         <div class="fg"><label class="flabel">Issue Date</label><input class="fi" type="date" id="ltf-date"/></div>
-        <div class="fg full"><label class="flabel">Issued By</label><input class="fi" id="ltf-by" placeholder="HR Officer"/></div>
-        <div class="fg full"><label class="flabel">Notes</label><textarea class="fta" id="ltf-notes" placeholder="Purpose, remarks..." style="min-height:50px"></textarea></div>
+        <div class="fg"><label class="flabel">Issued By</label><input class="fi" id="ltf-by" placeholder="HR Officer"/></div>
+        <div class="fg full"><label class="flabel">Notes / Purpose</label><textarea class="fta" id="ltf-notes" placeholder="e.g. Required for bank account opening..." style="min-height:46px"></textarea></div>
       </div>
     </div>
     <div class="modal-ftr">

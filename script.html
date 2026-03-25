@@ -303,7 +303,9 @@ var GAS={
   saveConfig:            function(cfg,cb){ GAS.call('saveConfig',           [cfg],cb); },
   getActivityLog:        function(cb)    { GAS.call('getActivityLog',        [],cb); },
   getOfferLetterTemplate:function(type,cb){ GAS.call('getOfferLetterTemplate',[type],cb); },
-  saveTemplateFileIds:   function(p,s,cb){ GAS.call('saveTemplateFileIds',  [p,s],cb); }
+  saveTemplateFileIds:   function(p,s,cb){ GAS.call('saveTemplateFileIds',  [p,s],cb); },
+  saveLetterTemplate:    function(t,d,b,cb){ GAS.call('saveLetterTemplate',   [t,d,b],cb); },
+  generateAndIssueLetter:function(d,cb)    { GAS.call('generateAndIssueLetter',[d],   cb); }
 };
 
 // ============================================================
@@ -330,17 +332,19 @@ var Logger={
 // ============================================================
 var EmpAgent={
   _batch:100, _loaded:0, _sort:{col:'NAME',dir:'asc'},
-  _filtered:function(){
-    var q  =(document.getElementById('emp-q')  ||{}).value||'';
-    var qt =(document.getElementById('emp-tq') ||{}).value||'';
-    var ent=(document.getElementById('emp-ent')||{}).value||'';
-    var lic=(document.getElementById('emp-lic')||{}).value||'';
-    var sts=(document.getElementById('emp-sts')||{}).value||'';
+  _isMasterView:function(){
+    var v=document.getElementById('view-masterdata'); return v&&v.classList.contains('active');
+  },
+  _filteredMaster:function(){
+    var q  =(document.getElementById('emp-q')    ||{}).value||'';
+    var qt =(document.getElementById('emp-tq')   ||{}).value||'';
+    var ent=(document.getElementById('emp-ent')  ||{}).value||'';
+    var lic=(document.getElementById('emp-lic')  ||{}).value||'';
+    var sts=(document.getElementById('emp-sts')  ||{}).value||'';
     var nat=(document.getElementById('emp-nat-f')||{}).value||'';
     var doj=(document.getElementById('emp-doj-f')||{}).value||'';
     q=q.toLowerCase(); qt=qt.toLowerCase();
-    var active=getActiveEmployees();
-    var list=active.filter(function(r){
+    var list=APP.master.filter(function(r){
       if(q  && ![(r.NAME||''),(r.ID||''),(r['PASSPORT NO']||'')].some(function(v){ return v.toLowerCase().indexOf(q)>=0; })) return false;
       if(qt && ![(r.NAME||''),(r.ID||''),(r['EID NO']||'')].some(function(v){ return v.toLowerCase().indexOf(qt)>=0; })) return false;
       if(ent && normEnt(r.ENTITY)!==ent) return false;
@@ -350,28 +354,29 @@ var EmpAgent={
       if(doj && (r['DATE OF JOIN']||'').indexOf(doj)<0) return false;
       return true;
     });
-    // Sort
     var sc=this._sort.col, sd=this._sort.dir;
-    list.sort(function(a,b){
-      var av=String(a[sc]||'').toUpperCase(), bv=String(b[sc]||'').toUpperCase();
-      return sd==='asc'?av.localeCompare(bv):bv.localeCompare(av);
+    list.sort(function(a,b){ var av=String(a[sc]||'').toUpperCase(),bv=String(b[sc]||'').toUpperCase(); return sd==='asc'?av.localeCompare(bv):bv.localeCompare(av); });
+    return list;
+  },
+  _filteredActive:function(){
+    var q  =(document.getElementById('emp-q2')  ||{}).value||'';
+    var ent=(document.getElementById('emp-ent2')||{}).value||'';
+    var lic=(document.getElementById('emp-lic2')||{}).value||'';
+    q=q.toLowerCase();
+    var list=getActiveEmployees().filter(function(r){
+      if(q  && ![(r.NAME||''),(r.ID||''),(r['PASSPORT NO']||'')].some(function(v){ return v.toLowerCase().indexOf(q)>=0; })) return false;
+      if(ent && normEnt(r.ENTITY)!==ent) return false;
+      if(lic && r['LIC AUTH']!==lic) return false;
+      return true;
     });
+    var sc=this._sort.col, sd=this._sort.dir;
+    list.sort(function(a,b){ var av=String(a[sc]||'').toUpperCase(),bv=String(b[sc]||'').toUpperCase(); return sd==='asc'?av.localeCompare(bv):bv.localeCompare(av); });
     return list;
   },
   render:function(reset){
-    var tb=document.getElementById('emp-tbody'); if(!tb) return;
-    var list=this._filtered(), t=list.length;
-    if(reset) this._loaded=0;
-    var batch=Math.min(this._loaded+this._batch, t);
-    this._loaded=batch;
-    var active=getActiveEmployees();
-    var cnt=document.getElementById('emp-cnt'); if(cnt) cnt.textContent=t+' of '+active.length;
-    var nb=document.getElementById('nb-emp');  if(nb)  nb.textContent=active.length;
-    if(!t){ tb.innerHTML='<tr><td colspan="6" style="text-align:center;padding:32px;color:var(--muted)">No records found.</td></tr>'; return; }
     var licB=function(l){ var m={PSBD:'bp',SIRA:'bs',NIL:'bn',OTHER:'bo'}; return '<span class="badge '+(m[l]||'bn')+'">'+esc(l||'NIL')+'</span>'; };
-    var rows=list.slice(0,batch).map(function(r,i){
+    var makeRow=function(r,i){
       var id=esc(r.ID||''), nm=esc(r.NAME||'—');
-      var jd=r['DATE OF JOIN']||'—'; if(jd.length>10) jd=jd.substring(0,10);
       return '<tr>'+
         '<td style="color:var(--muted2);font-size:10px">'+(i+1)+'</td>'+
         '<td><span class="pph" title="PP: '+esc(r['PASSPORT NO']||'N/A')+'">'+id+'</span></td>'+
@@ -382,24 +387,42 @@ var EmpAgent={
           '<button class="btn btn-secondary btn-icon btn-sm" data-action="edit-emp" data-id="'+id+'" title="Edit">&#9998;</button>'+
           '<button class="btn btn-danger btn-icon btn-sm" data-action="del-emp" data-id="'+id+'" data-name="'+nm+'" title="Delete">&#128465;</button>'+
         '</div></td></tr>';
-    }).join('');
-    if(batch<t){
-      rows+='<tr class="load-more-row"><td colspan="6"><button class="btn btn-secondary" onclick="EmpAgent.loadMore()" style="width:100%">&#8595; Load more ('+t+' total, showing '+batch+')</button></td></tr>';
+    };
+    var empty='<tr><td colspan="6" style="text-align:center;padding:32px;color:var(--muted)">No records found.</td></tr>';
+    var active=getActiveEmployees();
+    var nb=document.getElementById('nb-emp'); if(nb) nb.textContent=active.length;
+
+    // — Employee Register: all master data, no pagination —
+    var tb=document.getElementById('emp-tbody');
+    if(tb){
+      var mlist=this._filteredMaster(), mt=mlist.length;
+      var cnt=document.getElementById('emp-cnt'); if(cnt) cnt.textContent=mt+' of '+APP.master.length;
+      tb.innerHTML=mt?mlist.map(makeRow).join(''):empty;
     }
-    tb.innerHTML=rows;
+
+    // — Active Employees: filtered active, with pagination —
+    var tb2=document.getElementById('emp-tbody2');
+    if(tb2){
+      var alist=this._filteredActive(), at=alist.length;
+      if(reset) this._loaded=0;
+      var batch=Math.min(this._loaded+this._batch, at);
+      this._loaded=batch;
+      var cnt2=document.getElementById('emp-cnt2'); if(cnt2) cnt2.textContent=at+' of '+active.length;
+      var rows=at?alist.slice(0,batch).map(makeRow).join(''):empty;
+      if(at&&batch<at) rows+='<tr class="load-more-row"><td colspan="6"><button class="btn btn-secondary" onclick="EmpAgent.loadMore()" style="width:100%">&#8595; Load more ('+at+' total, showing '+batch+')</button></td></tr>';
+      tb2.innerHTML=rows;
+    }
   },
   loadMore:function(){
-    var list=this._filtered(), t=list.length;
+    var list=this._filteredActive(), t=list.length;
     var newBatch=Math.min(this._loaded+this._batch,t);
     this._loaded=newBatch;
-    var tb=document.getElementById('emp-tbody'); if(!tb) return;
-    // Remove last "load more" row
-    var last=tb.querySelector('.load-more-row'); if(last) last.remove();
+    var tb2=document.getElementById('emp-tbody2'); if(!tb2) return;
+    var last=tb2.querySelector('.load-more-row'); if(last) last.remove();
     var licB=function(l){ var m={PSBD:'bp',SIRA:'bs',NIL:'bn',OTHER:'bo'}; return '<span class="badge '+(m[l]||'bn')+'">'+esc(l||'NIL')+'</span>'; };
     var prev=this._loaded-this._batch;
     var rows=list.slice(prev,newBatch).map(function(r,i){
       var id=esc(r.ID||''), nm=esc(r.NAME||'—');
-      var jd=r['DATE OF JOIN']||'—'; if(jd.length>10) jd=jd.substring(0,10);
       return '<tr>'+
         '<td style="color:var(--muted2);font-size:10px">'+(prev+i+1)+'</td>'+
         '<td><span class="pph" title="PP: '+esc(r['PASSPORT NO']||'N/A')+'">'+id+'</span></td>'+
@@ -411,10 +434,8 @@ var EmpAgent={
           '<button class="btn btn-danger btn-icon btn-sm" data-action="del-emp" data-id="'+id+'" data-name="'+nm+'" title="Delete">&#128465;</button>'+
         '</div></td></tr>';
     }).join('');
-    if(newBatch<t){
-      rows+='<tr class="load-more-row"><td colspan="6"><button class="btn btn-secondary" onclick="EmpAgent.loadMore()" style="width:100%">&#8595; Load more ('+t+' total, showing '+newBatch+')</button></td></tr>';
-    }
-    tb.insertAdjacentHTML('beforeend',rows);
+    if(newBatch<t) rows+='<tr class="load-more-row"><td colspan="6"><button class="btn btn-secondary" onclick="EmpAgent.loadMore()" style="width:100%">&#8595; Load more ('+t+' total, showing '+newBatch+')</button></td></tr>';
+    tb2.insertAdjacentHTML('beforeend',rows);
   },
   sortBy:function(col){
     if(this._sort.col===col) this._sort.dir=this._sort.dir==='asc'?'desc':'asc';
@@ -426,8 +447,8 @@ var EmpAgent={
     this.render(true);
   },
   resetF:function(){
-    ['emp-q','emp-tq','emp-nat-f','emp-doj-f'].forEach(function(id){ var el=document.getElementById(id); if(el) el.value=''; });
-    ['emp-ent','emp-lic','emp-sts'].forEach(function(id){ var el=document.getElementById(id); if(el) el.value=''; });
+    ['emp-q','emp-tq','emp-nat-f','emp-doj-f','emp-q2'].forEach(function(id){ var el=document.getElementById(id); if(el) el.value=''; });
+    ['emp-ent','emp-lic','emp-sts','emp-ent2','emp-lic2'].forEach(function(id){ var el=document.getElementById(id); if(el) el.value=''; });
     this._sort={col:'NAME',dir:'asc'};
     this.render(true);
   },
@@ -716,43 +737,89 @@ var LtrAgent={
     }).join('');
   },
   resetF:function(){ var q=document.getElementById('lt-q'); if(q) q.value=''; var t=document.getElementById('lt-type'); if(t) t.value=''; this.render(); },
-  // Simple popup modal (temporary)
   openIssue:function(){
-    ['ltf-empid','ltf-name','ltf-notes'].forEach(function(id){ var el=document.getElementById(id); if(el) el.value=''; });
+    ['ltf-empid','ltf-name','ltf-des','ltf-pp','ltf-entity','ltf-doj','ltf-sal','ltf-notes'].forEach(function(id){ var el=document.getElementById(id); if(el) el.value=''; });
     document.getElementById('ltf-type').value='';
     document.getElementById('ltf-date').value=today();
     document.getElementById('ltf-by').value=APP.config.hr_officer||'HR Manager';
     document.getElementById('ltf-empid').disabled=true;
     document.getElementById('ltf-empid').placeholder='Select letter type first';
+    var salRow=document.getElementById('ltf-sal-row'); if(salRow) salRow.style.display='none';
+    var hint=document.getElementById('ltf-pdf-hint'); if(hint) hint.style.display='none';
+    var btn=document.querySelector('#m-ltr .btn-gold'); if(btn){ btn.disabled=false; btn.textContent='Issue Letter'; }
     openM('m-ltr');
   },
   onTypeChange:function(){
     var type=document.getElementById('ltf-type').value;
     var ef=document.getElementById('ltf-empid');
     ef.disabled=!type; ef.placeholder=type?'Enter Employee ID':'Select letter type first';
-    if(!type){ ef.value=''; document.getElementById('ltf-name').value=''; }
+    if(!type){
+      ef.value='';
+      ['ltf-name','ltf-des','ltf-pp','ltf-entity','ltf-doj'].forEach(function(id){ var el=document.getElementById(id); if(el) el.value=''; });
+    }
+    var salRow=document.getElementById('ltf-sal-row');
+    if(salRow) salRow.style.display=(type==='Salary Certificate')?'':'none';
+    var key=type?type.toUpperCase().replace(/[^A-Z0-9]/g,'_'):'';
+    var hasTemplate=!!(key&&(APP.config['LTEMPL_'+key+'_DRIVE']||APP.config['LTEMPL_'+key+'_BODY']));
+    var hint=document.getElementById('ltf-pdf-hint'); if(hint) hint.style.display=(type&&hasTemplate)?'':'none';
+    var btn=document.querySelector('#m-ltr .btn-gold');
+    if(btn) btn.textContent=hasTemplate?'Generate & Issue':'Issue Letter';
   },
   autofill:function(){
     var id=document.getElementById('ltf-empid').value.trim();
     var emp=getActiveEmployees().find(function(e){ return e.ID===id; });
-    document.getElementById('ltf-name').value=emp?(emp.NAME||''):'';
-    if(id&&!emp) document.getElementById('ltf-name').value='(not found)';
+    var set=function(elId,val){ var el=document.getElementById(elId); if(el) el.value=val||''; };
+    if(emp){
+      set('ltf-name',   emp.NAME||'');
+      set('ltf-des',    emp['DESIGNATION']||'');
+      set('ltf-pp',     emp['PASSPORT NO']||'');
+      set('ltf-entity', emp.ENTITY||'');
+      set('ltf-doj',    emp['DATE OF JOIN']||'');
+    } else {
+      set('ltf-name',   id?'(not found)':'');
+      set('ltf-des',''); set('ltf-pp',''); set('ltf-entity',''); set('ltf-doj','');
+    }
   },
   issue:function(){
-    var type=document.getElementById('ltf-type').value;
+    var type =document.getElementById('ltf-type').value;
     var empId=document.getElementById('ltf-empid').value.trim();
-    if(!type){ toast('Select letter type first','error'); return; }
-    if(!empId){ toast('Employee ID required','error'); return; }
-    var nm=document.getElementById('ltf-name').value||'—';
+    if(!type)  { toast('Select letter type first','error'); return; }
+    if(!empId) { toast('Employee ID required','error'); return; }
+    var get=function(id){ var el=document.getElementById(id); return el?el.value.trim():''; };
     var ref='HR-'+Date.now().toString().slice(-8);
-    var dt=document.getElementById('ltf-date').value;
-    var by=document.getElementById('ltf-by').value.trim();
-    var notes=document.getElementById('ltf-notes').value.trim();
-    var data={REF_NO:ref,EMP_ID:empId,EMP_NAME:nm,LETTER_TYPE:type,ISSUE_DATE:dt,ISSUED_BY:by,NOTES:notes};
-    GAS.issueHRDoc(data,function(result){
+    var data={
+      REF_NO:      ref,
+      EMP_ID:      empId,
+      EMP_NAME:    get('ltf-name'),
+      LETTER_TYPE: type,
+      ISSUE_DATE:  get('ltf-date'),
+      ISSUED_BY:   get('ltf-by'),
+      NOTES:       get('ltf-notes'),
+      SALARY:      get('ltf-sal'),
+      DESIGNATION: get('ltf-des'),
+      PASSPORT_NO: get('ltf-pp'),
+      ENTITY:      get('ltf-entity'),
+      DATE_OF_JOIN:get('ltf-doj')
+    };
+    var key=type.toUpperCase().replace(/[^A-Z0-9]/g,'_');
+    var hasTemplate=!!(APP.config['LTEMPL_'+key+'_DRIVE']||APP.config['LTEMPL_'+key+'_BODY']);
+    var btn=document.querySelector('#m-ltr .btn-gold');
+    if(btn){ btn.disabled=true; btn.textContent='Processing...'; }
+    GAS.generateAndIssueLetter(data,function(result){
+      if(btn){ btn.disabled=false; btn.textContent=hasTemplate?'Generate & Issue':'Issue Letter'; }
       if(!result||!result.success){ toast('Error: '+(result?result.error:'Unknown'),'error'); return; }
-      APP.hrDocs.unshift(data);
-      toast(type+' issued ('+ref+')','success');
+      APP.hrDocs.unshift({REF_NO:ref,EMP_ID:empId,EMP_NAME:data.EMP_NAME,LETTER_TYPE:type,ISSUE_DATE:data.ISSUE_DATE,ISSUED_BY:data.ISSUED_BY,NOTES:data.NOTES});
+      if(result.pdf){
+        try{
+          var bytes=Uint8Array.from(atob(result.pdf),function(c){ return c.charCodeAt(0); });
+          var blob=new Blob([bytes],{type:'application/pdf'});
+          var a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+          a.download=type.replace(/\s+/g,'-')+'_'+empId+'_'+ref+'.pdf';
+          document.body.appendChild(a); a.click();
+          setTimeout(function(){ document.body.removeChild(a); URL.revokeObjectURL(a.href); },1000);
+        }catch(e2){}
+      }
+      toast(type+' issued ('+ref+')'+(result.pdf?' — PDF downloaded':''),'success');
       closeM('m-ltr'); LtrAgent.render();
     });
   },
@@ -796,9 +863,10 @@ var DashAgent={
       var natEl=document.getElementById('kNatHL');
       if(natEl) natEl.innerHTML='<span class="nat-flag">'+getFlag(topNat[0])+'</span><span><span class="nat-name">'+esc(topNat[0])+'</span><span class="nat-count">'+topNat[1].toLocaleString()+' ('+(t?(topNat[1]/t*100).toFixed(1):0)+'%)</span></span>';
     }
-    // Ex-employees this year from Deletion_Log
+    // Ex-employees: total count, with this-year breakdown in subtitle
+    var exTotal=APP.deletions.length;
     var exYear=APP.deletions.filter(function(d){ return String(d.DELETED_DATE||'').indexOf(curYear)>=0; }).length;
-    s('kEX',exYear.toLocaleString()); s('kEXsub',exYear+' resigned this year');
+    s('kEX',exTotal.toLocaleString()); s('kEXsub',exYear+' resigned this year');
     // Onboarding stats
     var pend=0,trans=0,canc=0;
     APP.onboarding.forEach(function(r){ if(r.STATUS==='Pending') pend++; else if(r.STATUS==='Transferred') trans++; else if(r.STATUS==='Cancelled') canc++; });
@@ -883,6 +951,7 @@ var CFG={
     s('cfg-des',APP.config.designation);
     s('cfg-psbd-id', APP.config.psbd_template_id);
     s('cfg-sira-id', APP.config.sira_template_id);
+    this.loadLetterTemplates();
   },
   save:function(){
     var cfg={
@@ -902,6 +971,27 @@ var CFG={
       APP.config.sira_template_id = siraId.trim();
       OL_CACHE = {}; // clear template cache so fresh fetch happens
       toast('Template IDs saved! Offer Letters are ready.','success');
+    });
+  },
+  loadLetterTemplates:function(){
+    var TYPES=['Warning Letter','Experience Letter','Salary Certificate','Employment Certificate','NOC Letter','Others'];
+    TYPES.forEach(function(type){
+      var key=type.toUpperCase().replace(/[^A-Z0-9]/g,'_');
+      var driveEl=document.getElementById('ltcfg-drive-'+key);
+      var bodyEl =document.getElementById('ltcfg-body-' +key);
+      if(driveEl) driveEl.value=APP.config['LTEMPL_'+key+'_DRIVE']||'';
+      if(bodyEl)  bodyEl.value =APP.config['LTEMPL_'+key+'_BODY'] ||'';
+    });
+  },
+  saveLetterTemplate:function(type){
+    var key=type.toUpperCase().replace(/[^A-Z0-9]/g,'_');
+    var driveId =(document.getElementById('ltcfg-drive-'+key)||{}).value||'';
+    var bodyText=(document.getElementById('ltcfg-body-' +key)||{}).value||'';
+    GAS.saveLetterTemplate(type,driveId.trim(),bodyText.trim(),function(result){
+      if(!result||!result.success){ toast('Error: '+(result?result.error:'Unknown'),'error'); return; }
+      var patch={}; patch['LTEMPL_'+key+'_DRIVE']=driveId.trim(); patch['LTEMPL_'+key+'_BODY']=bodyText.trim();
+      APP.config=Object.assign(APP.config,patch);
+      toast(type+' template saved','success');
     });
   }
 };
@@ -1166,6 +1256,7 @@ function navigate(view){
     else if(view==='letters'){ cta.textContent='Issue Letter'; cta.onclick=function(){ LtrAgent.openIssue(); }; }
     else{ cta.textContent='Offer Letter'; cta.onclick=openOLModal; }
   }
+  if(view==='masterdata'||view==='employees') EmpAgent.render(true);
   if(view==='logs') Logger.loadFromServer();
 }
 
