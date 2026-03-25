@@ -1854,9 +1854,50 @@ var RecruitmentAgent = {
 var ResignationAgent = {
   _data: [],
 
+  // Normalise any date string to DD/MM/YYYY
+  _fmt: function(s) {
+    if(!s || s === '—') return '—';
+    // Already DD/MM/YYYY
+    if(/^\d{2}\/\d{2}\/\d{4}$/.test(s)) return s;
+    // YYYY-MM-DD
+    var m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if(m) return m[3]+'/'+m[2]+'/'+m[1];
+    // Fallback: try JS Date parse (handles GAS toString output)
+    var d = new Date(s);
+    if(!isNaN(d)) return ('0'+d.getDate()).slice(-2)+'/'+('0'+(d.getMonth()+1)).slice(-2)+'/'+d.getFullYear();
+    return s;
+  },
+
+  // Parse a DD/MM/YYYY (or YYYY-MM-DD) string to a Date object
+  _toDate: function(s) {
+    if(!s) return null;
+    var m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+    if(m) return new Date(Number(m[3]), Number(m[2])-1, Number(m[1]));
+    m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if(m) return new Date(Number(m[1]), Number(m[2])-1, Number(m[3]));
+    var d = new Date(s);
+    return isNaN(d) ? null : d;
+  },
+
+  // Returns "X yr Y mo" or "X mo" calculated between join and exit dates
+  _yos: function(joinStr, exitStr) {
+    var join = this._toDate(joinStr);
+    var exit = this._toDate(exitStr);
+    if(!join || !exit || exit < join) return '—';
+    var years  = exit.getFullYear() - join.getFullYear();
+    var months = exit.getMonth()    - join.getMonth();
+    if(exit.getDate() < join.getDate()) months--;
+    if(months < 0) { years--; months += 12; }
+    if(years < 0)  return '—';
+    if(years === 0 && months === 0) return '< 1 mo';
+    if(years === 0) return months + ' mo';
+    if(months === 0) return years + ' yr' + (years !== 1 ? 's' : '');
+    return years + ' yr ' + months + ' mo';
+  },
+
   load: function() {
     var tb = document.getElementById('res-tbody');
-    if(tb) tb.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--muted)">Loading...</td></tr>';
+    if(tb) tb.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:20px;color:var(--muted)">Loading...</td></tr>';
     GAS.getResignations(function(r) {
       if(!r || !r.success) { toast('Error loading resignations','error'); return; }
       ResignationAgent._data = r.data || [];
@@ -1878,24 +1919,29 @@ var ResignationAgent = {
   },
 
   render: function() {
-    var tb  = document.getElementById('res-tbody');  if(!tb)  return;
+    var tb  = document.getElementById('res-tbody'); if(!tb) return;
     var cnt = document.getElementById('res-cnt');
     var data = this._filtered();
     if(cnt) cnt.textContent = data.length;
     if(!data.length) {
-      tb.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:32px;color:var(--muted)">No resignation records found.</td></tr>';
+      tb.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:32px;color:var(--muted)">No resignation records found.</td></tr>';
       return;
     }
+    var self = this;
     tb.innerHTML = data.map(function(r, idx) {
-      var org = r.GROUP || r.ENTITY || '—';
-      var entCls = {USG:'bp',UG:'bs',UST:'bo','USG-M':'bn'}[org]||'bn';
+      var org     = r.GROUP || r.ENTITY || '—';
+      var entCls  = {USG:'bp',UG:'bs',UST:'bo','USG-M':'bn'}[org]||'bn';
+      var joinFmt = self._fmt(r.DATE_OF_JOIN  || '');
+      var exitFmt = self._fmt(r.DELETED_DATE  || '');
+      var yos     = self._yos(r.DATE_OF_JOIN  || '', r.DELETED_DATE || '');
       return '<tr>'+
         '<td style="color:var(--muted2);font-size:11px;text-align:center">'+(idx+1)+'</td>'+
         '<td style="font-family:monospace;font-size:11.5px;font-weight:600;color:var(--navy)">'+esc(r.EMP_ID||'—')+'</td>'+
         '<td style="font-weight:600">'+esc(r.FULL_NAME||'—')+'</td>'+
         '<td style="font-size:11.5px;color:var(--muted)">'+esc(r.DESIGNATION||'—')+'</td>'+
-        '<td style="font-size:11.5px">'+esc(r.DATE_OF_JOIN||'—')+'</td>'+
-        '<td style="font-size:11.5px;font-weight:600;color:var(--red,#c83030)">'+esc(r.DELETED_DATE||'—')+'</td>'+
+        '<td style="font-size:11.5px">'+esc(joinFmt)+'</td>'+
+        '<td style="font-size:11.5px;font-weight:600;color:var(--red,#c83030)">'+esc(exitFmt)+'</td>'+
+        '<td style="font-size:11px;font-weight:600;color:var(--teal,#007a8a);white-space:nowrap">'+esc(yos)+'</td>'+
         '<td><span class="badge '+entCls+'">'+esc(org)+'</span></td>'+
         '<td style="font-size:11px;color:var(--muted);max-width:160px;word-break:break-word">'+esc(r.REASON||'—')+'</td>'+
       '</tr>';
