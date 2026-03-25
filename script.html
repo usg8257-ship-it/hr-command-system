@@ -329,7 +329,8 @@ var GAS={
   closeJob:              function(id,cb) { GAS.call('closeJob',              [id],  cb); },
   getApplications:       function(jid,cb){ GAS.call('getApplications',       [jid], cb); },
   updateApplicationStage:function(id,s,n,cb){ GAS.call('updateApplicationStage',[id,s,n], cb); },
-  transferAppToOnboarding:function(id,cb){ GAS.call('transferAppToOnboarding',[id], cb); }
+  transferAppToOnboarding:function(id,cb){ GAS.call('transferAppToOnboarding',[id], cb); },
+  getResignations:         function(cb)  { GAS.call('getResignations',         [],   cb); }
 };
 
 // ============================================================
@@ -1286,6 +1287,7 @@ function renderNav() {
     'dashboard':    ['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER','VIEWER'],
     'masterdata':   ['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER','VIEWER'],
     'employees':    ['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER','VIEWER'],
+    'resignations': ['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER','VIEWER'],
     'onboarding':   ['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER'],
     'letters':      ['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER'],
     'reports':      ['SUPER_ADMIN','HR_OFFICER'],
@@ -1351,6 +1353,7 @@ function navigate(view){
   var tt=document.getElementById('topbar-title');
   var titles={
     dashboard:'Dashboard', masterdata:'EMPLOYEE RECORD', employees:'Active Employees',
+    resignations:'Recent Resignations',
     onboarding:'Onboarding Pipeline', letters:'HR Letters', reports:'Monthly Report',
     logs:'Activity Logs', setup:'System Configuration',
     users:'User Management', leave:'Leave Management', recruitment:'Recruitment',
@@ -1367,6 +1370,7 @@ function navigate(view){
     else{ cta.style.display=''; cta.textContent='Offer Letter'; cta.onclick=openOLModal; }
   }
   if(view==='masterdata'||view==='employees') EmpAgent.render(true);
+  if(view==='resignations') ResignationAgent.load();
   if(view==='logs') Logger.loadFromServer();
   if(view==='leave') LeaveAgent.load('');
   if(view==='recruitment') RecruitmentAgent.loadJobs();
@@ -1831,6 +1835,7 @@ var RecruitmentAgent = {
       RecruitmentAgent.showApps(RecruitmentAgent._currentJobId);
     });
   },
+  // ---- keep existing method ----
   transferToOnboarding: function(appId) {
     if(!confirm('Transfer this applicant to the Onboarding pipeline?')) return;
     GAS.transferAppToOnboarding(appId, function(r) {
@@ -1840,6 +1845,67 @@ var RecruitmentAgent = {
       // Refresh onboarding
       GAS.call('getOnboarding',[],function(ob){ if(ob&&ob.success){ APP.onboarding=ob.data||[]; OBAgent.render(); } });
     });
+  }
+};
+
+// ============================================================
+// RESIGNATION AGENT — Deletion_Log viewer (newest first)
+// ============================================================
+var ResignationAgent = {
+  _data: [],
+
+  load: function() {
+    var tb = document.getElementById('res-tbody');
+    if(tb) tb.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--muted)">Loading...</td></tr>';
+    GAS.getResignations(function(r) {
+      if(!r || !r.success) { toast('Error loading resignations','error'); return; }
+      ResignationAgent._data = r.data || [];
+      ResignationAgent.render();
+    });
+  },
+
+  _filtered: function() {
+    var q   = (document.getElementById('res-q')||{}).value||'';
+    var qs  = q.toLowerCase();
+    var org = (document.getElementById('res-org')||{}).value||'';
+    return this._data.filter(function(r) {
+      var match = !qs ||
+        (r.EMP_ID||'').toLowerCase().indexOf(qs)>=0 ||
+        (r.FULL_NAME||'').toLowerCase().indexOf(qs)>=0;
+      var matchOrg = !org || (r.GROUP||r.ENTITY||'') === org;
+      return match && matchOrg;
+    });
+  },
+
+  render: function() {
+    var tb  = document.getElementById('res-tbody');  if(!tb)  return;
+    var cnt = document.getElementById('res-cnt');
+    var data = this._filtered();
+    if(cnt) cnt.textContent = data.length;
+    if(!data.length) {
+      tb.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:32px;color:var(--muted)">No resignation records found.</td></tr>';
+      return;
+    }
+    tb.innerHTML = data.map(function(r, idx) {
+      var org = r.GROUP || r.ENTITY || '—';
+      var entCls = {USG:'bp',UG:'bs',UST:'bo','USG-M':'bn'}[org]||'bn';
+      return '<tr>'+
+        '<td style="color:var(--muted2);font-size:11px;text-align:center">'+(idx+1)+'</td>'+
+        '<td style="font-family:monospace;font-size:11.5px;font-weight:600;color:var(--navy)">'+esc(r.EMP_ID||'—')+'</td>'+
+        '<td style="font-weight:600">'+esc(r.FULL_NAME||'—')+'</td>'+
+        '<td style="font-size:11.5px;color:var(--muted)">'+esc(r.DESIGNATION||'—')+'</td>'+
+        '<td style="font-size:11.5px">'+esc(r.DATE_OF_JOIN||'—')+'</td>'+
+        '<td style="font-size:11.5px;font-weight:600;color:var(--red,#c83030)">'+esc(r.DELETED_DATE||'—')+'</td>'+
+        '<td><span class="badge '+entCls+'">'+esc(org)+'</span></td>'+
+        '<td style="font-size:11px;color:var(--muted);max-width:160px;word-break:break-word">'+esc(r.REASON||'—')+'</td>'+
+      '</tr>';
+    }).join('');
+  },
+
+  resetF: function() {
+    var q=document.getElementById('res-q');   if(q)   q.value='';
+    var o=document.getElementById('res-org'); if(o)   o.value='';
+    this.render();
   }
 };
 </script>

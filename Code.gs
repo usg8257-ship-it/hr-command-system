@@ -296,10 +296,18 @@ function deleteEmployee(empId, reason) {
     var hdrs=vals[0].map(function(h){ return String(h).trim(); });
     var idCol=hdrs.indexOf('ID'), stsCol=hdrs.indexOf('STATUS');
     var ppCol=hdrs.indexOf('PASSPORT NO'), nmCol=hdrs.indexOf('NAME');
+    var desigCol=hdrs.indexOf('DESIGNATION'), joinCol=hdrs.indexOf('DATE OF JOIN'), entCol=hdrs.indexOf('ENTITY');
     for(var i=1;i<vals.length;i++){
       if(String(vals[i][idCol]).trim()===String(empId).trim()){
-        var delSh=getOrCreate(TABS.DEL_LOG,['LOG_ID','EMP_ID','FULL_NAME','PASSPORT_NO','REASON','DELETED_DATE','DELETED_BY']);
-        delSh.appendRow(['DEL-'+new Date().getTime(),empId,vals[i][nmCol]||'',vals[i][ppCol]||'',reason,formatDate(new Date()),deletedBy]);
+        var delSh=getOrCreate(TABS.DEL_LOG,['LOG_ID','EMP_ID','FULL_NAME','PASSPORT_NO','REASON','DELETED_DATE','DELETED_BY','DESIGNATION','DATE_OF_JOIN','GROUP']);
+        delSh.appendRow([
+          'DEL-'+new Date().getTime(), empId,
+          vals[i][nmCol]||'', vals[i][ppCol]||'',
+          reason, formatDate(new Date()), deletedBy,
+          desigCol>=0 ? vals[i][desigCol]||'' : '',
+          joinCol>=0  ? vals[i][joinCol]||''  : '',
+          entCol>=0   ? normaliseEntity(vals[i][entCol]) : ''
+        ]);
         if(stsCol>=0) sh.getRange(i+1,stsCol+1).setValue('DELETED');
         logActivity('EmployeeAgent','DELETE',empId+'|'+reason,'SUCCESS');
         return {success:true};
@@ -327,6 +335,24 @@ function getDeletionLog() {
       var row={}; for(var j=0;j<hdrs.length;j++) row[hdrs[j]]=String(vals[i][j]||'');
       rows.push(row);
     }
+    return {success:true,data:rows};
+  } catch(e){ return {success:false,error:e.message}; }
+}
+
+// Returns Deletion_Log sorted newest-first, enriched with extra fields
+function getResignations() {
+  try {
+    var sh=SS.getSheetByName(TABS.DEL_LOG); if(!sh) return {success:true,data:[]};
+    var vals=sh.getDataRange().getValues();
+    if(vals.length<2) return {success:true,data:[]};
+    var hdrs=vals[0].map(function(h){ return String(h).trim(); });
+    var rows=[];
+    for(var i=1;i<vals.length;i++){
+      var row={}; for(var j=0;j<hdrs.length;j++) row[hdrs[j]]=String(vals[i][j]||'');
+      rows.push(row);
+    }
+    // Sort newest DELETED_DATE first (DD/MM/YYYY or any comparable string — use row index as fallback)
+    rows.reverse();
     return {success:true,data:rows};
   } catch(e){ return {success:false,error:e.message}; }
 }

@@ -20,6 +20,7 @@
   <div class="sb-item" data-view="masterdata" onclick="navigate('masterdata')"><span class="ic">&#128196;</span>MANPOWER MASTER DATA<span class="tcnt" id="emp-cnt">Loading...</span></div>
   <div class="sb-sec">HR Operations</div>
   <div class="sb-item" data-view="employees" onclick="navigate('employees')"><span class="ic">&#128196;</span>ACTIVE MANPOWER<span class="sb-badge gold" id="nb-emp">0</span></div>
+  <div class="sb-item" data-view="resignations" onclick="navigate('resignations')"><span class="ic">&#128683;</span>Recent Resignations</div>
   <div class="sb-item" data-view="onboarding" onclick="navigate('onboarding')"><span class="ic">&#128260;</span>Onboarding<span class="sb-badge" id="nb-ob">0</span></div>
   <div class="sb-item" data-view="letters" onclick="navigate('letters')"><span class="ic">&#128196;</span>HR Letters</div>
   <div class="sb-item" data-view="leave" onclick="navigate('leave')"><span class="ic">&#128197;</span>Leave<span class="sb-badge" id="nb-leave">0</span></div>
@@ -186,6 +187,44 @@
           <table>
             <thead><tr><th>#</th><th>Emp ID</th><th>Name</th><th>License Auth</th><th>Emirates ID</th><th>Actions</th></tr></thead>
             <tbody id="emp-tbody2"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- RECENT RESIGNATIONS -->
+    <div id="view-resignations" class="view">
+      <div class="sec-hdr">
+        <div class="sec-hdr-left"><h2>Recent Resignations</h2><p>Deleted / cancelled employees — sorted newest first</p></div>
+      </div>
+      <div class="controls">
+        <div class="sw"><span class="si">&#128269;</span><input type="text" id="res-q" placeholder="Search ID or name..." oninput="ResignationAgent.render()"/></div>
+        <div class="fgrp"><span class="flbl">Org</span>
+          <select class="fsel" id="res-org" onchange="ResignationAgent.render()">
+            <option value="">All</option><option>USG</option><option>UG</option><option>UST</option><option>USG-M</option>
+          </select>
+        </div>
+        <button class="reset-btn" onclick="ResignationAgent.resetF()" title="Reset" style="margin-left:auto">&#10005;</button>
+      </div>
+      <div class="tcard">
+        <div class="ttop"><h3>&#128683; Resignation Records</h3><span class="tcnt" id="res-cnt">0</span></div>
+        <div class="twrap lazy">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>ID</th>
+                <th>Name</th>
+                <th>Designation</th>
+                <th>Date of Joining</th>
+                <th>Last Working Date</th>
+                <th>Org</th>
+                <th>Reason</th>
+              </tr>
+            </thead>
+            <tbody id="res-tbody">
+              <tr><td colspan="8" style="text-align:center;padding:32px;color:var(--muted)">Navigate here to load records.</td></tr>
+            </tbody>
           </table>
         </div>
       </div>
