@@ -21,7 +21,7 @@ function normEnt(raw){
 // ============================================================
 // APP STATE
 // ============================================================
-var APP={config:{},master:[],deletions:[],onboarding:[],hrDocs:[],summary:[],loaded:false};
+var APP={config:{},master:[],deletions:[],onboarding:[],hrDocs:[],summary:[],loaded:false,user:{email:'',name:'',role:'',entities:[],active:true}};
 // Track if any modal is open (to block auto-refresh during editing)
 var EDITING=false;
 
@@ -279,11 +279,17 @@ var GAS={
   call:function(fn,args,ok,err){
     google.script.run
       .withSuccessHandler(function(r){ if(ok) ok(r); })
-      .withFailureHandler(function(e){ toast('Server error: '+(e.message||e),'error'); if(err) err(e); })
+      .withFailureHandler(function(e){
+        var msg = e.message || String(e);
+        if(msg.indexOf('ACCESS_DENIED') === 0) toast('Access denied: insufficient permissions','error');
+        else toast('Server error: '+msg,'error');
+        if(err) err(e);
+      })
       [fn].apply(google.script.run,args||[]);
   },
   loadAll:function(cb){
     GAS.call('loadAllData',[],function(r){
+      if(r.user)          APP.user       =r.user;
       if(r.master     &&r.master.success)     APP.master     =r.master.data     ||[];
       if(r.deletions  &&r.deletions.success)  APP.deletions  =r.deletions.data  ||[];
       if(r.onboarding &&r.onboarding.success) APP.onboarding =r.onboarding.data ||[];
@@ -295,7 +301,7 @@ var GAS={
   },
   addEmployee:      function(d,cb){ GAS.call('addEmployee',     [d],cb); },
   updateEmployee:   function(d,cb){ GAS.call('updateEmployee',  [d],cb); },
-  deleteEmployee:   function(id,rsn,by,cb){ GAS.call('deleteEmployee',[id,rsn,by],cb); },
+  deleteEmployee:   function(id,rsn,cb){ GAS.call('deleteEmployee',[id,rsn],cb); },
   addOnboarding:    function(d,cb){ GAS.call('addOnboarding',   [d],cb); },
   updateOnboarding: function(d,cb){ GAS.call('updateOnboarding',[d],cb); },
   transferToMaster: function(obId,emp,cb){ GAS.call('transferToMaster',[obId,emp],cb); },
@@ -305,7 +311,25 @@ var GAS={
   getOfferLetterTemplate:function(type,cb){ GAS.call('getOfferLetterTemplate',[type],cb); },
   saveTemplateFileIds:   function(p,s,cb){ GAS.call('saveTemplateFileIds',  [p,s],cb); },
   saveLetterTemplate:    function(t,d,b,cb){ GAS.call('saveLetterTemplate',   [t,d,b],cb); },
-  generateAndIssueLetter:function(d,cb)    { GAS.call('generateAndIssueLetter',[d],   cb); }
+  generateAndIssueLetter:function(d,cb)    { GAS.call('generateAndIssueLetter',[d],   cb); },
+  // User management
+  getUsers:              function(cb)    { GAS.call('getUsers',              [],    cb); },
+  saveUser:              function(d,cb)  { GAS.call('saveUser',              [d],   cb); },
+  deleteUser:            function(e,cb)  { GAS.call('deleteUser',            [e],   cb); },
+  // Self-service
+  getMyEmployeeRecord:   function(cb)    { GAS.call('getMyEmployeeRecord',   [],    cb); },
+  updateMyExpiryDates:   function(d,cb)  { GAS.call('updateMyExpiryDates',   [d],   cb); },
+  // Leave
+  getLeave:              function(id,cb) { GAS.call('getLeave',              [id],  cb); },
+  addLeave:              function(d,cb)  { GAS.call('addLeave',              [d],   cb); },
+  updateLeaveStatus:     function(id,s,n,cb){ GAS.call('updateLeaveStatus',  [id,s,n], cb); },
+  // Recruitment
+  getJobs:               function(cb)    { GAS.call('getJobs',               [],    cb); },
+  saveJob:               function(d,cb)  { GAS.call('saveJob',               [d],   cb); },
+  closeJob:              function(id,cb) { GAS.call('closeJob',              [id],  cb); },
+  getApplications:       function(jid,cb){ GAS.call('getApplications',       [jid], cb); },
+  updateApplicationStage:function(id,s,n,cb){ GAS.call('updateApplicationStage',[id,s,n], cb); },
+  transferAppToOnboarding:function(id,cb){ GAS.call('transferAppToOnboarding',[id], cb); }
 };
 
 // ============================================================
@@ -478,7 +502,7 @@ var EmpAgent={
   openAdd:function(){
     document.getElementById('m-emp-ttl').textContent='Add Employee';
     document.getElementById('ef-editid').value='';
-    ['ef-id','ef-name','ef-pp','ef-eid','ef-desig','ef-nat','ef-days'].forEach(function(id){ var el=document.getElementById(id); if(el) el.value=''; });
+    ['ef-id','ef-name','ef-pp','ef-eid','ef-desig','ef-nat','ef-days','ef-email'].forEach(function(id){ var el=document.getElementById(id); if(el) el.value=''; });
     document.getElementById('ef-ent').value='USG';
     document.getElementById('ef-lic').value='NIL';
     document.getElementById('ef-loc').value='ABU DHABI';
@@ -502,6 +526,7 @@ var EmpAgent={
     document.getElementById('ef-birth').value =r['BIRTH DATE']||'';
     document.getElementById('ef-loc').value   =r.STATUS||'ABU DHABI';
     document.getElementById('ef-days').value  =r.Days||'';
+    var emailEl=document.getElementById('ef-email'); if(emailEl) emailEl.value=r.EMAIL||'';
     openM('m-emp');
   },
   save:function(){
@@ -517,7 +542,8 @@ var EmpAgent={
     if(!editId&&APP.master.some(function(e){ return e.ID===id; })){ toast('Employee ID exists','error'); return; }
     if(!editId&&APP.master.some(function(e){ return e['PASSPORT NO']===pp; })){ toast('Passport No exists','error'); return; }
     var loc=document.getElementById('ef-loc').value;
-    var data={ID:id,NAME:name.toUpperCase(),VISA:loc,STATUS:loc,ENTITY:document.getElementById('ef-ent').value,'LIC AUTH':document.getElementById('ef-lic').value,DESIGNATION:document.getElementById('ef-desig').value.trim()||'Security Guard','DATE OF JOIN':document.getElementById('ef-join').value,NATIONALITY:document.getElementById('ef-nat').value.trim().toUpperCase(),'BIRTH DATE':document.getElementById('ef-birth').value,'PASSPORT NO':pp.toUpperCase(),'EID NO':eid,AGE:'',Days:document.getElementById('ef-days').value||'0'};
+    var empEmail=(document.getElementById('ef-email')||{}).value||'';
+    var data={ID:id,NAME:name.toUpperCase(),VISA:loc,STATUS:loc,ENTITY:document.getElementById('ef-ent').value,'LIC AUTH':document.getElementById('ef-lic').value,DESIGNATION:document.getElementById('ef-desig').value.trim()||'Security Guard','DATE OF JOIN':document.getElementById('ef-join').value,NATIONALITY:document.getElementById('ef-nat').value.trim().toUpperCase(),'BIRTH DATE':document.getElementById('ef-birth').value,'PASSPORT NO':pp.toUpperCase(),'EID NO':eid,AGE:'',Days:document.getElementById('ef-days').value||'0',EMAIL:empEmail.toLowerCase().trim()};
     var btn=document.querySelector('#m-emp .btn-gold'); if(btn){ btn.disabled=true; btn.innerHTML='<span class="spin-sm"></span> Saving&hellip;'; }
     var done=function(result){
       if(btn){ btn.disabled=false; btn.textContent='Save Employee'; }
@@ -539,7 +565,7 @@ var EmpAgent={
     var reason=document.getElementById('del-reason').value;
     if(!reason){ toast('Select a reason','error'); return; }
     var emp=this.byId(id); if(!emp){ toast('Not found','error'); return; }
-    GAS.deleteEmployee(id,reason,APP.config.hr_officer||'HR',function(result){
+    GAS.deleteEmployee(id,reason,function(result){
       if(!result||!result.success){ toast('Error: '+(result?result.error:'Unknown'),'error'); return; }
       emp.STATUS='DELETED';
       APP.deletions.push({EMP_ID:id,FULL_NAME:emp.NAME,REASON:reason,DELETED_DATE:today()});
@@ -1177,12 +1203,22 @@ var AgentManager={
     this._startTimer();
     // 15 MINUTE auto-refresh — skip if editing
     setInterval(function(){
-      if(EDITING){ return; } // do NOT refresh during data entry
+      if(EDITING){ return; }
       self.refreshAll();
     }, 15*60*1000);
     GAS.loadAll(function(){
       self._showLoader(false);
       self._lastSync=Date.now();
+      var role = APP.user ? APP.user.role : 'NONE';
+      if(!APP.user || role === 'NONE') {
+        showAccessDenied();
+        return;
+      }
+      if(role === 'EMPLOYEE') {
+        showSelfServicePortal();
+        return;
+      }
+      renderNav();
       EmpAgent.render(true);
       OBAgent.render();
       LtrAgent.render();
@@ -1211,7 +1247,10 @@ var AgentManager={
     var sl=document.getElementById('sync-label'); if(sl) sl.textContent='Syncing...';
     GAS.loadAll(function(){
       self._lastSync=Date.now();
-      EmpAgent.render(true); OBAgent.render(); LtrAgent.render(); DashAgent.refresh();
+      var role = APP.user ? APP.user.role : 'NONE';
+      if(role !== 'NONE' && role !== 'EMPLOYEE') {
+        EmpAgent.render(true); OBAgent.render(); LtrAgent.render(); DashAgent.refresh();
+      }
       var sl2=document.getElementById('sync-label'); if(sl2) sl2.textContent='Connected to live data via Google';
       var el=document.getElementById('sync-timer'); if(el) el.textContent='just now';
       toast('Data refreshed','info');
@@ -1239,6 +1278,69 @@ var AgentManager={
 };
 
 // ============================================================
+// ROLE-BASED ACCESS HELPERS
+// ============================================================
+function renderNav() {
+  var role = APP.user ? APP.user.role : 'NONE';
+  var rules = {
+    'dashboard':    ['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER','VIEWER'],
+    'masterdata':   ['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER','VIEWER'],
+    'employees':    ['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER','VIEWER'],
+    'onboarding':   ['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER'],
+    'letters':      ['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER'],
+    'reports':      ['SUPER_ADMIN','HR_OFFICER'],
+    'logs':         ['SUPER_ADMIN','HR_OFFICER'],
+    'setup':        ['SUPER_ADMIN'],
+    'users':        ['SUPER_ADMIN'],
+    'leave':        ['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER','VIEWER'],
+    'recruitment':  ['SUPER_ADMIN','HR_OFFICER'],
+    'self-service': ['EMPLOYEE']
+  };
+  document.querySelectorAll('.sb-item[data-view]').forEach(function(item) {
+    var view = item.dataset.view;
+    var allowed = rules[view] || [];
+    item.style.display = (allowed.indexOf(role) >= 0) ? '' : 'none';
+  });
+}
+
+function canDo(action) {
+  var role = APP.user ? APP.user.role : 'NONE';
+  var matrix = {
+    'add_employee':    ['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER'],
+    'edit_employee':   ['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER'],
+    'delete_employee': ['SUPER_ADMIN','HR_OFFICER'],
+    'add_onboarding':  ['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER'],
+    'edit_onboarding': ['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER'],
+    'issue_letter':    ['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER'],
+    'manage_users':    ['SUPER_ADMIN'],
+    'manage_config':   ['SUPER_ADMIN'],
+    'view_logs':       ['SUPER_ADMIN','HR_OFFICER'],
+    'approve_leave':   ['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER'],
+    'manage_jobs':     ['SUPER_ADMIN','HR_OFFICER'],
+    'transfer_app':    ['SUPER_ADMIN','HR_OFFICER']
+  };
+  return (matrix[action] || []).indexOf(role) >= 0;
+}
+
+function showAccessDenied() {
+  AgentManager._showLoader(false);
+  document.getElementById('main-content').style.display = 'block';
+  document.querySelectorAll('.view').forEach(function(v){ v.classList.remove('active'); });
+  var v = document.getElementById('view-access-denied'); if(v) v.classList.add('active');
+  document.querySelectorAll('.sb-item').forEach(function(i){ i.style.display='none'; });
+  var emailEl = document.getElementById('ad-email');
+  if(emailEl && APP.user) emailEl.textContent = 'Logged in as: ' + (APP.user.email||'Unknown');
+}
+
+function showSelfServicePortal() {
+  AgentManager._showLoader(false);
+  document.getElementById('main-content').style.display = 'block';
+  renderNav();
+  navigate('self-service');
+  SelfServiceAgent.init();
+}
+
+// ============================================================
 // NAVIGATION
 // ============================================================
 function navigate(view){
@@ -1247,17 +1349,28 @@ function navigate(view){
   var v=document.getElementById('view-'+view); if(v) v.classList.add('active');
   var s=document.querySelector('[data-view="'+view+'"]'); if(s) s.classList.add('active');
   var tt=document.getElementById('topbar-title');
-  var titles={dashboard:'Dashboard',masterdata:'EMPLOYEE RECORD',employees:'Active Employees',onboarding:'Onboarding Pipeline',letters:'HR Letters',reports:'Monthly Report',logs:'Activity Logs',setup:'System Configuration'};
+  var titles={
+    dashboard:'Dashboard', masterdata:'EMPLOYEE RECORD', employees:'Active Employees',
+    onboarding:'Onboarding Pipeline', letters:'HR Letters', reports:'Monthly Report',
+    logs:'Activity Logs', setup:'System Configuration',
+    users:'User Management', leave:'Leave Management', recruitment:'Recruitment',
+    'self-service':'My Profile'
+  };
   if(tt) tt.textContent=titles[view]||view;
   var cta=document.getElementById('top-cta');
   if(cta){
-    if(view==='masterdata'||view==='employees'){ cta.textContent='+ Add Employee'; cta.onclick=function(){ EmpAgent.openAdd(); }; }
-    else if(view==='onboarding'){ cta.textContent='+ Add Candidate'; cta.onclick=function(){ OBAgent.openAdd(); }; }
-    else if(view==='letters'){ cta.textContent='Issue Letter'; cta.onclick=function(){ LtrAgent.openIssue(); }; }
-    else{ cta.textContent='Offer Letter'; cta.onclick=openOLModal; }
+    if((view==='masterdata'||view==='employees') && canDo('add_employee')){ cta.style.display=''; cta.textContent='+ Add Employee'; cta.onclick=function(){ EmpAgent.openAdd(); }; }
+    else if(view==='onboarding' && canDo('add_onboarding')){ cta.style.display=''; cta.textContent='+ Add Candidate'; cta.onclick=function(){ OBAgent.openAdd(); }; }
+    else if(view==='letters' && canDo('issue_letter')){ cta.style.display=''; cta.textContent='Issue Letter'; cta.onclick=function(){ LtrAgent.openIssue(); }; }
+    else if(view==='leave'){ cta.style.display=''; cta.textContent='+ Apply Leave'; cta.onclick=function(){ LeaveAgent.openAdd(); }; }
+    else if(view==='recruitment' && canDo('manage_jobs')){ cta.style.display=''; cta.textContent='+ Post Job'; cta.onclick=function(){ RecruitmentAgent.openAddJob(); }; }
+    else{ cta.style.display=''; cta.textContent='Offer Letter'; cta.onclick=openOLModal; }
   }
   if(view==='masterdata'||view==='employees') EmpAgent.render(true);
   if(view==='logs') Logger.loadFromServer();
+  if(view==='leave') LeaveAgent.load('');
+  if(view==='recruitment') RecruitmentAgent.loadJobs();
+  if(view==='users') UserMgmtAgent.load();
 }
 
 // ============================================================
@@ -1266,14 +1379,467 @@ function navigate(view){
 document.addEventListener('click',function(e){
   var t=e.target.closest('[data-action]'); if(!t) return;
   var act=t.dataset.action;
-  if     (act==='edit-emp')  EmpAgent.openEdit(t.dataset.id);
-  else if(act==='del-emp')   EmpAgent.openDelete(t.dataset.id,t.dataset.name);
-  else if(act==='transfer')  OBAgent.openTransfer(t.dataset.obid,t.dataset.name);
-  else if(act==='edit-ob')   OBAgent.openEdit(t.dataset.obid);
-  else if(act==='cancel-ob') OBAgent.cancel(t.dataset.obid);
-  else if(act==='gen-ol')    OBAgent.openOLForId(t.dataset.obid,t.dataset.name,t.dataset.type,t.dataset.pp);
-  else if(act==='del-ltr')   LtrAgent.delEntry(t.dataset.ref);
+  if     (act==='edit-emp')      EmpAgent.openEdit(t.dataset.id);
+  else if(act==='del-emp')       EmpAgent.openDelete(t.dataset.id,t.dataset.name);
+  else if(act==='transfer')      OBAgent.openTransfer(t.dataset.obid,t.dataset.name);
+  else if(act==='edit-ob')       OBAgent.openEdit(t.dataset.obid);
+  else if(act==='cancel-ob')     OBAgent.cancel(t.dataset.obid);
+  else if(act==='gen-ol')        OBAgent.openOLForId(t.dataset.obid,t.dataset.name,t.dataset.type,t.dataset.pp);
+  else if(act==='del-ltr')       LtrAgent.delEntry(t.dataset.ref);
+  else if(act==='edit-user')     UserMgmtAgent.openEdit(t.dataset.email);
+  else if(act==='del-user')      UserMgmtAgent.deactivate(t.dataset.email);
+  else if(act==='approve-leave') LeaveAgent.openStatus(t.dataset.leaveid,'Approved');
+  else if(act==='reject-leave')  LeaveAgent.openStatus(t.dataset.leaveid,'Rejected');
+  else if(act==='close-job')     RecruitmentAgent.closeJob(t.dataset.jobid);
+  else if(act==='edit-job')      RecruitmentAgent.openEditJob(t.dataset.jobid);
+  else if(act==='view-apps')     RecruitmentAgent.showApps(t.dataset.jobid);
+  else if(act==='move-stage')    RecruitmentAgent.openMoveStage(t.dataset.appid,t.dataset.name);
+  else if(act==='transfer-app')  RecruitmentAgent.transferToOnboarding(t.dataset.appid);
 });
 
 window.addEventListener('DOMContentLoaded',function(){ AgentManager.init(); });
+
+// ============================================================
+// USER MANAGEMENT AGENT
+// ============================================================
+var UserMgmtAgent = {
+  _data: [],
+  load: function() {
+    GAS.getUsers(function(r) {
+      if(!r || !r.success) { toast('Error loading users','error'); return; }
+      UserMgmtAgent._data = r.data || [];
+      UserMgmtAgent.render();
+    });
+  },
+  render: function() {
+    var tb = document.getElementById('users-tbody'); if(!tb) return;
+    var cnt = document.getElementById('users-cnt'); if(cnt) cnt.textContent = this._data.length + ' users';
+    if(!this._data.length) {
+      tb.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--muted)">No users configured yet.</td></tr>';
+      return;
+    }
+    var roleCls = {SUPER_ADMIN:'bp',HR_OFFICER:'bs',ENTITY_MANAGER:'bo',VIEWER:'bn',EMPLOYEE:'bg2'};
+    tb.innerHTML = this._data.map(function(u) {
+      return '<tr>'+
+        '<td style="font-size:11.5px">'+esc(u.EMAIL)+'</td>'+
+        '<td style="font-weight:600">'+esc(u.DISPLAY_NAME||'—')+'</td>'+
+        '<td><span class="badge '+(roleCls[u.ROLE]||'bn')+'">'+esc(u.ROLE)+'</span></td>'+
+        '<td style="font-size:11px;color:var(--muted)">'+esc(u.ENTITIES)+'</td>'+
+        '<td>'+(u.ACTIVE==='TRUE'||u.ACTIVE==='true'?'<span class="badge bg2">Yes</span>':'<span class="badge br">No</span>')+'</td>'+
+        '<td><div class="act-btns">'+
+          '<button class="btn btn-secondary btn-icon btn-sm" data-action="edit-user" data-email="'+esc(u.EMAIL)+'" title="Edit">&#9998;</button>'+
+          '<button class="btn btn-danger btn-icon btn-sm" data-action="del-user" data-email="'+esc(u.EMAIL)+'" title="Deactivate">&#10060;</button>'+
+        '</div></td></tr>';
+    }).join('');
+  },
+  openAdd: function() {
+    document.getElementById('uf-email').value = '';
+    document.getElementById('uf-name').value = '';
+    document.getElementById('uf-role').value = '';
+    document.getElementById('uf-entities').value = 'ALL';
+    document.getElementById('uf-active').value = 'TRUE';
+    document.getElementById('uf-edit-email').value = '';
+    document.getElementById('m-user-ttl').textContent = 'Add User';
+    openM('m-user');
+  },
+  openEdit: function(email) {
+    var u = this._data.find(function(x){ return x.EMAIL === email; });
+    if(!u) return;
+    document.getElementById('uf-email').value = u.EMAIL;
+    document.getElementById('uf-email').readOnly = true;
+    document.getElementById('uf-name').value = u.DISPLAY_NAME||'';
+    document.getElementById('uf-role').value = u.ROLE||'';
+    document.getElementById('uf-entities').value = u.ENTITIES||'ALL';
+    document.getElementById('uf-active').value = (u.ACTIVE==='TRUE'||u.ACTIVE==='true') ? 'TRUE' : 'FALSE';
+    document.getElementById('uf-edit-email').value = u.EMAIL;
+    document.getElementById('m-user-ttl').textContent = 'Edit User';
+    openM('m-user');
+  },
+  save: function() {
+    var email = document.getElementById('uf-email').value.trim().toLowerCase();
+    var name  = document.getElementById('uf-name').value.trim();
+    var role  = document.getElementById('uf-role').value;
+    var ents  = document.getElementById('uf-entities').value.trim();
+    var active= document.getElementById('uf-active').value;
+    if(!email || !role) { toast('Email and role are required','error'); return; }
+    var data = {EMAIL:email, DISPLAY_NAME:name, ROLE:role, ENTITIES:ents||'ALL', ACTIVE:active};
+    GAS.saveUser(data, function(r) {
+      if(!r || !r.success) { toast('Error: '+(r?r.error:'Unknown'),'error'); return; }
+      toast('User saved','success');
+      closeM('m-user');
+      document.getElementById('uf-email').readOnly = false;
+      UserMgmtAgent.load();
+    });
+  },
+  deactivate: function(email) {
+    if(!confirm('Deactivate user: '+email+'?')) return;
+    GAS.deleteUser(email, function(r) {
+      if(!r || !r.success) { toast('Error: '+(r?r.error:'Unknown'),'error'); return; }
+      toast('User deactivated','success');
+      UserMgmtAgent.load();
+    });
+  }
+};
+
+// ============================================================
+// SELF-SERVICE AGENT
+// ============================================================
+var SelfServiceAgent = {
+  _record: null,
+  init: function() {
+    var welcome = document.getElementById('ss-welcome');
+    if(welcome) welcome.textContent = 'Welcome, ' + esc(APP.user.name || APP.user.email);
+    GAS.getMyEmployeeRecord(function(r) {
+      if(!r || !r.success || !r.data || !r.data.length) {
+        var card = document.getElementById('ss-profile-card');
+        if(card) card.innerHTML = '<p style="color:var(--red);padding:16px 0">No employee record is linked to your Google account. Please contact HR to link your email.</p>';
+        return;
+      }
+      SelfServiceAgent._record = r.data[0];
+      SelfServiceAgent.render();
+      // Load leave for self-service
+      GAS.getLeave('', function(lr) {
+        if(lr && lr.success) { LeaveAgent._data = lr.data||[]; LeaveAgent.renderSelfService(); }
+      });
+    });
+  },
+  render: function() {
+    var r = this._record; if(!r) return;
+    var card = document.getElementById('ss-profile-card'); if(!card) return;
+    var licCls = {PSBD:'bp',SIRA:'bs',NIL:'bn',OTHER:'bo'}[r['LIC AUTH']||'NIL']||'bn';
+    var initials = (r.NAME||'?').substring(0,2).toUpperCase();
+    card.innerHTML =
+      '<div class="empdetail-head">'+
+        '<div class="empdetail-avatar">'+esc(initials)+'</div>'+
+        '<div class="empdetail-headinfo">'+
+          '<div class="ename">'+esc(r.NAME||'—')+'</div>'+
+          '<div class="emeta"><span class="badge '+licCls+'" style="margin-right:5px">'+esc(r['LIC AUTH']||'NIL')+'</span>'+esc(r.DESIGNATION||'—')+' &bull; '+esc(r.ENTITY||'—')+'</div>'+
+        '</div>'+
+      '</div>'+
+      '<div class="empdetail-grid" style="margin-top:12px">'+
+        '<div class="empdetail-row"><div class="empdetail-label">Employee ID</div><div class="empdetail-val">'+esc(r.ID||'—')+'</div></div>'+
+        '<div class="empdetail-row"><div class="empdetail-label">Passport No</div><div class="empdetail-val" style="font-family:monospace">'+esc(r['PASSPORT NO']||'—')+'</div></div>'+
+        '<div class="empdetail-row"><div class="empdetail-label">Emirates ID</div><div class="empdetail-val" style="font-family:monospace;color:var(--teal)">'+esc(r['EID NO']||'—')+'</div></div>'+
+        '<div class="empdetail-row"><div class="empdetail-label">Nationality</div><div class="empdetail-val">'+getFlag(r.NATIONALITY||'')+' '+esc(r.NATIONALITY||'—')+'</div></div>'+
+        '<div class="empdetail-row"><div class="empdetail-label">Date of Joining</div><div class="empdetail-val">'+esc(r['DATE OF JOIN']||'—')+'</div></div>'+
+        '<div class="empdetail-row"><div class="empdetail-label">Visa Status</div><div class="empdetail-val">'+esc(r.VISA||r.STATUS||'—')+'</div></div>'+
+      '</div>';
+    // Pre-fill expiry fields
+    var s = function(id,v){ var el=document.getElementById(id); if(el) el.value=v||''; };
+    s('ss-pp-exp',   r['PASSPORT EXPIRY']||'');
+    s('ss-eid-exp',  r['EID EXPIRY']||'');
+    s('ss-visa-exp', r['VISA EXPIRY']||'');
+  },
+  saveExpiry: function() {
+    var data = {
+      'PASSPORT EXPIRY': (document.getElementById('ss-pp-exp')||{}).value||'',
+      'EID EXPIRY':       (document.getElementById('ss-eid-exp')||{}).value||'',
+      'VISA EXPIRY':      (document.getElementById('ss-visa-exp')||{}).value||''
+    };
+    GAS.updateMyExpiryDates(data, function(r) {
+      if(!r || !r.success) { toast('Error: '+(r?r.error:'Unknown'),'error'); return; }
+      toast('Expiry dates updated successfully','success');
+    });
+  }
+};
+
+// ============================================================
+// LEAVE AGENT
+// ============================================================
+var LeaveAgent = {
+  _data: [],
+  _pendingStatusLeaveId: null,
+  load: function(empId) {
+    GAS.getLeave(empId||'', function(r) {
+      if(!r || !r.success) { toast('Error loading leave records','error'); return; }
+      LeaveAgent._data = r.data || [];
+      LeaveAgent.render();
+    });
+  },
+  _filtered: function() {
+    var q  = (document.getElementById('lv-q')||{}).value||'';
+    var qs = q.toLowerCase();
+    var sts= (document.getElementById('lv-sts')||{}).value||'';
+    var typ= (document.getElementById('lv-type')||{}).value||'';
+    return this._data.filter(function(r) {
+      var match = !qs || (r.EMP_ID||'').toLowerCase().indexOf(qs)>=0 || (r.EMP_NAME||'').toLowerCase().indexOf(qs)>=0;
+      var matchSts = !sts || r.STATUS === sts;
+      var matchTyp = !typ || r.LEAVE_TYPE === typ;
+      return match && matchSts && matchTyp;
+    });
+  },
+  render: function() {
+    var tb = document.getElementById('lv-tbody'); if(!tb) return;
+    var data = this._filtered();
+    var cnt = document.getElementById('lv-cnt'); if(cnt) cnt.textContent = data.length;
+    if(!data.length) { tb.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--muted)">No leave records found.</td></tr>'; return; }
+    var stsMap = {Pending:'bo',Approved:'bg2',Rejected:'br'};
+    var canApprove = canDo('approve_leave');
+    tb.innerHTML = data.map(function(r) {
+      var stsCls = stsMap[r.STATUS]||'bn';
+      var actBtns = '';
+      if(canApprove && r.STATUS === 'Pending') {
+        actBtns = '<button class="btn btn-sm" style="background:var(--green-dim);color:var(--green);border:1px solid rgba(19,110,66,.2);font-size:10px" data-action="approve-leave" data-leaveid="'+esc(r.LEAVE_ID)+'" title="Approve">&#10003;</button>'+
+                  '<button class="btn btn-danger btn-sm" style="font-size:10px" data-action="reject-leave" data-leaveid="'+esc(r.LEAVE_ID)+'" title="Reject">&#10007;</button>';
+      }
+      return '<tr>'+
+        '<td style="font-size:10.5px;font-family:monospace">'+esc(r.LEAVE_ID)+'</td>'+
+        '<td>'+esc(r.EMP_NAME||r.EMP_ID||'—')+'</td>'+
+        '<td>'+esc(r.LEAVE_TYPE||'—')+'</td>'+
+        '<td>'+esc(r.START_DATE||'—')+'</td>'+
+        '<td>'+esc(r.END_DATE||'—')+'</td>'+
+        '<td style="text-align:center">'+esc(r.DAYS||'—')+'</td>'+
+        '<td><span class="badge '+stsCls+'">'+esc(r.STATUS||'—')+'</span></td>'+
+        '<td><div class="act-btns">'+actBtns+'</div></td>'+
+      '</tr>';
+    }).join('');
+  },
+  renderSelfService: function() {
+    var sec = document.getElementById('ss-leave-section'); if(!sec) return;
+    var pending = this._data.filter(function(r){ return r.STATUS==='Pending'; }).length;
+    sec.innerHTML =
+      '<div class="setup-step" style="margin-top:14px">'+
+        '<div class="step-num">2</div>'+
+        '<h3>Leave Requests <span class="badge bo" style="font-size:10px;margin-left:6px">'+pending+' pending</span></h3>'+
+        '<p>View your leave history and submit new requests.</p>'+
+        '<div style="margin:10px 0">'+
+          '<button class="btn btn-gold" onclick="LeaveAgent.openAdd()">+ Apply for Leave</button>'+
+        '</div>'+
+        '<div class="twrap lazy" style="max-height:220px">'+
+        '<table><thead><tr><th>Type</th><th>Start</th><th>End</th><th>Days</th><th>Status</th></tr></thead>'+
+        '<tbody>'+
+        (this._data.length ? this._data.map(function(r){
+          var sc = {Pending:'bo',Approved:'bg2',Rejected:'br'}[r.STATUS]||'bn';
+          return '<tr><td>'+esc(r.LEAVE_TYPE)+'</td><td>'+esc(r.START_DATE)+'</td><td>'+esc(r.END_DATE)+'</td><td>'+esc(r.DAYS)+'</td><td><span class="badge '+sc+'">'+esc(r.STATUS)+'</span></td></tr>';
+        }).join('') : '<tr><td colspan="5" style="text-align:center;padding:12px;color:var(--muted)">No leave records yet.</td></tr>')+
+        '</tbody></table></div>'+
+      '</div>';
+  },
+  resetF: function() {
+    var q=document.getElementById('lv-q'); if(q) q.value='';
+    var s=document.getElementById('lv-sts'); if(s) s.value='';
+    var t=document.getElementById('lv-type'); if(t) t.value='';
+    this.render();
+  },
+  openAdd: function() {
+    var role = APP.user ? APP.user.role : '';
+    var isEmp = role === 'EMPLOYEE';
+    var empIdField = document.getElementById('lvf-empid');
+    if(empIdField) {
+      if(isEmp) { empIdField.readOnly = true; empIdField.value = 'Auto-assigned'; }
+      else { empIdField.readOnly = false; empIdField.value = ''; }
+    }
+    var ef = document.getElementById('lvf-empname'); if(ef) ef.value = '';
+    var st = document.getElementById('lvf-start'); if(st) st.value = '';
+    var en = document.getElementById('lvf-end'); if(en) en.value = '';
+    var dy = document.getElementById('lvf-days'); if(dy) dy.value = '';
+    var tp = document.getElementById('lvf-type'); if(tp) tp.value = '';
+    var nt = document.getElementById('lvf-notes'); if(nt) nt.value = '';
+    openM('m-leave');
+  },
+  calcDays: function() {
+    var s = document.getElementById('lvf-start'); var e = document.getElementById('lvf-end');
+    var d = document.getElementById('lvf-days');
+    if(!s||!e||!d) return;
+    if(s.value && e.value) {
+      var diff = Math.round((new Date(e.value) - new Date(s.value))/(1000*60*60*24)) + 1;
+      d.value = diff > 0 ? diff : '';
+    }
+  },
+  save: function() {
+    var type  = (document.getElementById('lvf-type')||{}).value;
+    var start = (document.getElementById('lvf-start')||{}).value;
+    var end   = (document.getElementById('lvf-end')||{}).value;
+    var days  = (document.getElementById('lvf-days')||{}).value;
+    var notes = (document.getElementById('lvf-notes')||{}).value;
+    var empId = (document.getElementById('lvf-empid')||{}).value;
+    var empName=(document.getElementById('lvf-empname')||{}).value;
+    if(!type||!start||!end) { toast('Leave type, start and end dates required','error'); return; }
+    var data = {LEAVE_TYPE:type, START_DATE:start, END_DATE:end, DAYS:days, NOTES:notes};
+    var role = APP.user ? APP.user.role : '';
+    if(role !== 'EMPLOYEE') { data.EMP_ID = empId; data.EMP_NAME = empName; }
+    GAS.addLeave(data, function(r) {
+      if(!r || !r.success) { toast('Error: '+(r?r.error:'Unknown'),'error'); return; }
+      toast('Leave submitted','success');
+      closeM('m-leave');
+      LeaveAgent.load('');
+    });
+  },
+  openStatus: function(leaveId, defaultStatus) {
+    this._pendingStatusLeaveId = leaveId;
+    var sel = document.getElementById('lvs-status'); if(sel) sel.value = defaultStatus||'Approved';
+    var nt = document.getElementById('lvs-notes'); if(nt) nt.value = '';
+    openM('m-leave-status');
+  },
+  confirmStatus: function() {
+    var id  = this._pendingStatusLeaveId;
+    var sts = (document.getElementById('lvs-status')||{}).value;
+    var notes=(document.getElementById('lvs-notes')||{}).value;
+    if(!id||!sts) { toast('Select a status','error'); return; }
+    GAS.updateLeaveStatus(id, sts, notes, function(r) {
+      if(!r || !r.success) { toast('Error: '+(r?r.error:'Unknown'),'error'); return; }
+      toast('Status updated to '+sts,'success');
+      closeM('m-leave-status');
+      LeaveAgent.load('');
+    });
+  }
+};
+
+// ============================================================
+// RECRUITMENT / ATS AGENT
+// ============================================================
+var RecruitmentAgent = {
+  _jobs: [], _apps: [], _currentJobId: '',
+  loadJobs: function() {
+    GAS.getJobs(function(r) {
+      if(!r || !r.success) { toast('Error loading jobs','error'); return; }
+      RecruitmentAgent._jobs = r.data || [];
+      RecruitmentAgent.renderJobs();
+    });
+  },
+  showApps: function(jobId) {
+    RecruitmentAgent._currentJobId = jobId||'';
+    var jp = document.getElementById('rec-jobs-panel'); if(jp) jp.style.display='none';
+    var ap = document.getElementById('rec-apps-panel'); if(ap) ap.style.display='';
+    GAS.getApplications(jobId||'', function(r) {
+      if(!r || !r.success) { toast('Error loading applications','error'); return; }
+      RecruitmentAgent._apps = r.data || [];
+      RecruitmentAgent.renderApps();
+    });
+  },
+  showJobsPanel: function() {
+    var jp = document.getElementById('rec-jobs-panel'); if(jp) jp.style.display='';
+    var ap = document.getElementById('rec-apps-panel'); if(ap) ap.style.display='none';
+  },
+  renderJobs: function() {
+    var tb = document.getElementById('jobs-tbody'); if(!tb) return;
+    var cnt = document.getElementById('jobs-cnt'); if(cnt) cnt.textContent = this._jobs.length;
+    if(!this._jobs.length) { tb.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--muted)">No jobs posted yet.</td></tr>'; return; }
+    var stsMap = {Active:'bg2', Closed:'bn', Draft:'bo'};
+    tb.innerHTML = this._jobs.map(function(j) {
+      return '<tr>'+
+        '<td style="font-family:monospace;font-size:10.5px">'+esc(j.JOB_ID)+'</td>'+
+        '<td style="font-weight:600">'+esc(j.TITLE)+'</td>'+
+        '<td>'+esc(j.ENTITY)+'</td>'+
+        '<td>'+esc(j.LOCATION)+'</td>'+
+        '<td>'+esc(j.JOB_TYPE)+'</td>'+
+        '<td><span class="badge '+(stsMap[j.STATUS]||'bn')+'">'+esc(j.STATUS)+'</span></td>'+
+        '<td style="font-size:10.5px;color:var(--muted)">'+esc(j.POSTED_DATE)+'</td>'+
+        '<td><div class="act-btns">'+
+          '<button class="btn btn-secondary btn-icon btn-sm" data-action="view-apps" data-jobid="'+esc(j.JOB_ID)+'" title="View Applications">&#128203;</button>'+
+          '<button class="btn btn-secondary btn-icon btn-sm" data-action="edit-job" data-jobid="'+esc(j.JOB_ID)+'" title="Edit">&#9998;</button>'+
+          (j.STATUS==='Active'?'<button class="btn btn-danger btn-icon btn-sm" data-action="close-job" data-jobid="'+esc(j.JOB_ID)+'" title="Close Job">&#10006;</button>':'')+
+        '</div></td>'+
+      '</tr>';
+    }).join('');
+  },
+  renderApps: function() {
+    var tb = document.getElementById('apps-tbody'); if(!tb) return;
+    var cnt = document.getElementById('apps-cnt'); if(cnt) cnt.textContent = this._apps.length;
+    var jobTitle = document.getElementById('apps-job-title');
+    if(jobTitle && this._currentJobId) {
+      var job = this._jobs.find(function(j){ return j.JOB_ID === RecruitmentAgent._currentJobId; });
+      if(jobTitle) jobTitle.textContent = job ? job.TITLE : this._currentJobId;
+    }
+    if(!this._apps.length) { tb.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--muted)">No applications found.</td></tr>'; return; }
+    var stageMap = {New:'bn',Screening:'bo',Interview:'bs',Offer:'bp',Hired:'bg2',Rejected:'br',Transferred:'bg2'};
+    tb.innerHTML = this._apps.map(function(a) {
+      var stCls = stageMap[a.STAGE]||'bn';
+      var canTransfer = (a.STAGE === 'Offer' || a.STAGE === 'Hired') && a.STAGE !== 'Transferred';
+      return '<tr>'+
+        '<td style="font-weight:600">'+esc(a.FULL_NAME||'—')+'</td>'+
+        '<td style="font-size:11px">'+esc(a.EMAIL||'—')+'</td>'+
+        '<td>'+esc(a.JOB_TITLE||'—')+'</td>'+
+        '<td style="font-size:11px;color:var(--muted)">'+esc(a.APPLIED_DATE||'—')+'</td>'+
+        '<td><span class="badge '+stCls+'">'+esc(a.STAGE||'—')+'</span></td>'+
+        '<td><div class="act-btns">'+
+          '<button class="btn btn-secondary btn-sm" data-action="move-stage" data-appid="'+esc(a.APP_ID)+'" data-name="'+esc(a.FULL_NAME)+'" style="font-size:10px">Move Stage</button>'+
+          (canTransfer?'<button class="btn btn-gold btn-sm" data-action="transfer-app" data-appid="'+esc(a.APP_ID)+'" style="font-size:10px" title="Transfer to Onboarding">→ Onboard</button>':'')+
+          (a.CV_DRIVE_LINK?'<a class="btn btn-secondary btn-sm" href="'+esc(a.CV_DRIVE_LINK)+'" target="_blank" style="font-size:10px">CV</a>':'')+
+        '</div></td>'+
+      '</tr>';
+    }).join('');
+  },
+  openAddJob: function() {
+    ['jf-title','jf-entity','jf-location','jf-type','jf-desc','jf-req'].forEach(function(id){
+      var el=document.getElementById(id); if(el) el.value='';
+    });
+    var sts = document.getElementById('jf-status'); if(sts) sts.value='Active';
+    document.getElementById('jf-jobid').value = '';
+    document.getElementById('m-job-ttl').textContent = 'Post New Job';
+    openM('m-job');
+  },
+  openEditJob: function(jobId) {
+    var j = this._jobs.find(function(x){ return x.JOB_ID === jobId; });
+    if(!j) return;
+    document.getElementById('jf-jobid').value  = j.JOB_ID;
+    document.getElementById('jf-title').value  = j.TITLE||'';
+    document.getElementById('jf-entity').value = j.ENTITY||'';
+    document.getElementById('jf-location').value=j.LOCATION||'';
+    document.getElementById('jf-type').value   = j.JOB_TYPE||'';
+    document.getElementById('jf-status').value = j.STATUS||'Active';
+    document.getElementById('jf-desc').value   = j.DESCRIPTION||'';
+    document.getElementById('jf-req').value    = j.REQUIREMENTS||'';
+    document.getElementById('m-job-ttl').textContent = 'Edit Job';
+    openM('m-job');
+  },
+  saveJob: function() {
+    var title = (document.getElementById('jf-title')||{}).value||'';
+    if(!title) { toast('Job title required','error'); return; }
+    var data = {
+      JOB_ID:       (document.getElementById('jf-jobid')||{}).value||'',
+      TITLE:        title,
+      ENTITY:       (document.getElementById('jf-entity')||{}).value||'',
+      LOCATION:     (document.getElementById('jf-location')||{}).value||'',
+      JOB_TYPE:     (document.getElementById('jf-type')||{}).value||'',
+      STATUS:       (document.getElementById('jf-status')||{}).value||'Active',
+      DESCRIPTION:  (document.getElementById('jf-desc')||{}).value||'',
+      REQUIREMENTS: (document.getElementById('jf-req')||{}).value||''
+    };
+    GAS.saveJob(data, function(r) {
+      if(!r || !r.success) { toast('Error: '+(r?r.error:'Unknown'),'error'); return; }
+      toast('Job saved','success');
+      closeM('m-job');
+      RecruitmentAgent.loadJobs();
+    });
+  },
+  closeJob: function(jobId) {
+    if(!confirm('Close this job posting?')) return;
+    GAS.closeJob(jobId, function(r) {
+      if(!r || !r.success) { toast('Error: '+(r?r.error:'Unknown'),'error'); return; }
+      toast('Job closed','success');
+      RecruitmentAgent.loadJobs();
+    });
+  },
+  _pendingStageAppId: null,
+  openMoveStage: function(appId, name) {
+    this._pendingStageAppId = appId;
+    var lbl = document.getElementById('ms-name'); if(lbl) lbl.textContent = name;
+    var ns = document.getElementById('ms-stage'); if(ns) ns.value = '';
+    var nt = document.getElementById('ms-notes'); if(nt) nt.value = '';
+    openM('m-move-stage');
+  },
+  confirmMoveStage: function() {
+    var id    = this._pendingStageAppId;
+    var stage = (document.getElementById('ms-stage')||{}).value;
+    var notes = (document.getElementById('ms-notes')||{}).value;
+    if(!id||!stage) { toast('Select a stage','error'); return; }
+    GAS.updateApplicationStage(id, stage, notes, function(r) {
+      if(!r || !r.success) { toast('Error: '+(r?r.error:'Unknown'),'error'); return; }
+      toast('Stage updated to '+stage,'success');
+      closeM('m-move-stage');
+      RecruitmentAgent.showApps(RecruitmentAgent._currentJobId);
+    });
+  },
+  transferToOnboarding: function(appId) {
+    if(!confirm('Transfer this applicant to the Onboarding pipeline?')) return;
+    GAS.transferAppToOnboarding(appId, function(r) {
+      if(!r || !r.success) { toast('Error: '+(r?r.error:'Unknown'),'error'); return; }
+      toast('Transferred to Onboarding: '+r.obId,'success');
+      RecruitmentAgent.showApps(RecruitmentAgent._currentJobId);
+      // Refresh onboarding
+      GAS.call('getOnboarding',[],function(ob){ if(ob&&ob.success){ APP.onboarding=ob.data||[]; OBAgent.render(); } });
+    });
+  }
+};
 </script>
