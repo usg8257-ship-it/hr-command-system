@@ -207,11 +207,18 @@
         <button class="reset-btn" onclick="ResignationAgent.resetF()" title="Reset" style="margin-left:auto">&#10005;</button>
       </div>
       <div class="tcard">
-        <div class="ttop"><h3>&#128683; Resignation Records</h3><span class="tcnt" id="res-cnt">0</span></div>
+        <div class="ttop">
+          <h3>&#128683; Resignation Records</h3>
+          <div style="display:flex;align-items:center;gap:8px">
+            <span class="tcnt" id="res-cnt">0</span>
+            <button class="btn btn-gold btn-sm" id="res-bulk-btn" onclick="ResignationAgent.generateBulk()" style="display:none;font-size:11px">&#128196; Generate Selected (<span id="res-bulk-count">0</span>)</button>
+          </div>
+        </div>
         <div class="twrap lazy">
           <table>
             <thead>
               <tr>
+                <th style="width:32px"><input type="checkbox" id="res-sel-all" onchange="ResignationAgent.toggleSelectAll(this.checked)" title="Select all pending"/></th>
                 <th>#</th>
                 <th>ID</th>
                 <th>Name</th>
@@ -225,7 +232,7 @@
               </tr>
             </thead>
             <tbody id="res-tbody">
-              <tr><td colspan="10" style="text-align:center;padding:32px;color:var(--muted)">Navigate here to load records.</td></tr>
+              <tr><td colspan="11" style="text-align:center;padding:32px;color:var(--muted)">Navigate here to load records.</td></tr>
             </tbody>
           </table>
         </div>

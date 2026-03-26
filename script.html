@@ -2062,14 +2062,18 @@ var ResignationAgent = {
     var data = this._filtered();
     if(cnt) cnt.textContent = data.length;
     if(!data.length) {
-      tb.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:32px;color:var(--muted)">No resignation records found.</td></tr>';
+      tb.innerHTML = '<tr><td colspan="11" style="text-align:center;padding:32px;color:var(--muted)">No resignation records found.</td></tr>';
       return;
     }
     // Build set of EMP_IDs that already have an Experience Letter
     var issuedSet = {};
     APP.hrDocs.forEach(function(l){
-      if(l.LETTER_TYPE === 'Experience Letter') issuedSet[l.EMP_ID] = false;
+      if(l.LETTER_TYPE === 'Experience Letter') issuedSet[l.EMP_ID] = true;
     });
+    // Reset bulk controls
+    var selAll = document.getElementById('res-sel-all'); if(selAll) selAll.checked = false;
+    var bulkBtn = document.getElementById('res-bulk-btn'); if(bulkBtn) bulkBtn.style.display = 'none';
+    var bulkCnt = document.getElementById('res-bulk-count'); if(bulkCnt) bulkCnt.textContent = '0';
     var self = this;
     tb.innerHTML = data.map(function(r, idx) {
       var org     = r.GROUP || r.ENTITY || '—';
@@ -2078,6 +2082,9 @@ var ResignationAgent = {
       var exitFmt = self._fmt(r.DELETED_DATE  || '');
       var yos     = self._yos(r.DATE_OF_JOIN  || '', r.DELETED_DATE || '');
       var issued  = issuedSet[r.EMP_ID];
+      var chkTd = issued
+        ? '<td></td>'
+        : '<td><input type="checkbox" class="res-chk" data-empid="'+esc(r.EMP_ID||'')+'" data-name="'+esc((r.FULL_NAME||'').replace(/"/g,'&quot;'))+'" onchange="ResignationAgent.updateBulkCount()"/></td>';
       var btnHtml = issued
         ? '<span class="badge bg2" style="font-size:9.5px;padding:3px 8px">&#10003; Issued</span>'
         : '<button class="btn btn-secondary btn-sm" style="font-size:10.5px;white-space:nowrap" '+
@@ -2085,6 +2092,7 @@ var ResignationAgent = {
             'onclick="genExpLetter(\''+esc(r.EMP_ID||'')+'\',\''+esc((r.FULL_NAME||'').replace(/'/g,''))+'\')">'+
             '&#128196; Exp Letter</button>';
       return '<tr>'+
+        chkTd+
         '<td style="color:var(--muted2);font-size:11px;text-align:center">'+(idx+1)+'</td>'+
         '<td style="font-family:monospace;font-size:11.5px;font-weight:600;color:var(--navy)">'+esc(r.EMP_ID||'—')+'</td>'+
         '<td style="font-weight:600">'+esc(r.FULL_NAME||'—')+'</td>'+
@@ -2097,6 +2105,43 @@ var ResignationAgent = {
         '<td>'+btnHtml+'</td>'+
       '</tr>';
     }).join('');
+  },
+
+  updateBulkCount: function() {
+    var checked = document.querySelectorAll('.res-chk:checked');
+    var btn = document.getElementById('res-bulk-btn');
+    var cnt = document.getElementById('res-bulk-count');
+    if(cnt) cnt.textContent = checked.length;
+    if(btn) btn.style.display = checked.length ? '' : 'none';
+  },
+  toggleSelectAll: function(checked) {
+    document.querySelectorAll('.res-chk').forEach(function(c){ c.checked = checked; });
+    this.updateBulkCount();
+  },
+  generateBulk: function() {
+    var items = [];
+    document.querySelectorAll('.res-chk:checked').forEach(function(c){
+      items.push({id: c.dataset.empid, name: c.dataset.name});
+    });
+    if(!items.length){ toast('No employees selected','error'); return; }
+    var btn = document.getElementById('res-bulk-btn');
+    if(btn) btn.disabled = true;
+    toast('Generating '+items.length+' letter'+(items.length>1?'s':'')+'…','info');
+    var idx = 0;
+    function next() {
+      if(idx >= items.length){
+        toast('All '+items.length+' letter'+(items.length>1?'s':'')+' generated!','success');
+        if(btn){ btn.disabled = false; btn.style.display = 'none'; }
+        var selAll = document.getElementById('res-sel-all'); if(selAll) selAll.checked = false;
+        GAS.call('getHRDocs',[],function(dr){
+          if(dr&&dr.success){ APP.hrDocs=dr.data||[]; LtrAgent.render(); ResignationAgent.render(); }
+        });
+        return;
+      }
+      var item = items[idx++];
+      genExpLetter(item.id, item.name, next);
+    }
+    next();
   },
 
   resetF: function() {
