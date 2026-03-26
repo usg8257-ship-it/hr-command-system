@@ -637,7 +637,7 @@ function _generateExpLetter(templateId, data, cfg) {
     body.setFontFamily('Tahoma');
     body.setFontSize(12);
     var map = {
-      '{{DATE}}':           data.ISSUE_DATE  || formatDate(new Date()),
+      '{{DATE}}': 'Date: ' +data.ISSUE_DATE  || formatDate(new Date()),
       '{{ID}}':             data.EMP_ID      || '',
       '{{NAME}}':           data.EMP_NAME    || '',
       '{{FIRSTNAME}}':      data.FIRSTNAME   || '',
@@ -658,6 +658,19 @@ function _generateExpLetter(templateId, data, cfg) {
   } finally {
     try { copy.setTrashed(true); } catch(e2) {}
   }
+}
+
+function toProperCase(text) {
+  if (!text) return '';
+  return text.toLowerCase().replace(/\b\w/g, function(char) {
+    return char.toUpperCase();
+  });
+}
+
+function formatDate(date) {
+  // If date is provided and valid, use it; otherwise use current date
+  var d = date ? new Date(date) : new Date();
+  return Utilities.formatDate(d, Session.getScriptTimeZone(), "dd/MM/yyyy");
 }
 
 function generateExperienceLetterForEmp(empId) {
@@ -689,7 +702,7 @@ function generateExperienceLetterForEmp(empId) {
 
     // Build letter data
     var cleanName = emp.FULL_NAME.trim().replace(/\s+/g,' ');
-    var firstName = cleanName.split(' ')[0];
+    var firstName = toProperCase(cleanName.split(' ')[0]);
     var refNo     = 'EXP-' + new Date().getTime().toString().slice(-8);
     var letterData = {
       REF_NO:      refNo,
@@ -697,7 +710,7 @@ function generateExperienceLetterForEmp(empId) {
       EMP_NAME:    cleanName,
       FIRSTNAME:   firstName,
       DOJ:         emp.DATE_OF_JOIN || '',
-      DOL:         emp.DELETED_DATE || '',
+      DOL:         formatDate(emp.DELETED_DATE) || '',
       DESIGNATION: emp.DESIGNATION  || '',
       ISSUE_DATE:  formatDate(new Date()),
       ISSUED_BY:   cfg.hr_officer   || 'HR'
