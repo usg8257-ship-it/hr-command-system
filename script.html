@@ -79,43 +79,70 @@ function _downloadPdf(base64, filename) {
   a.href = url; a.download = filename; a.click();
   URL.revokeObjectURL(url);
 }
-// Download only the 2nd page of a PDF (for experience letters — page 1 is blank/template cover)
-function _downloadExpPdf(base64, filename) {
+// Extract page 2 (skip blank template cover) and open result modal with Download + Print
+function _openExpPdfResult(base64, filename) {
   var bytes = new Uint8Array(atob(base64).split('').map(function(c){ return c.charCodeAt(0); }));
   PDFLib.PDFDocument.load(bytes).then(function(srcDoc){
-    if(srcDoc.getPageCount() < 2){ _downloadPdf(base64, filename); return; }
+    var pageIdx = srcDoc.getPageCount() >= 2 ? 1 : 0;
     return PDFLib.PDFDocument.create().then(function(newDoc){
-      return newDoc.copyPages(srcDoc, [1]).then(function(copied){
+      return newDoc.copyPages(srcDoc, [pageIdx]).then(function(copied){
         newDoc.addPage(copied[0]);
         return newDoc.save();
       });
-    }).then(function(pdfBytes){
-      var blob = new Blob([pdfBytes], {type:'application/pdf'});
-      var url  = URL.createObjectURL(blob);
-      var a    = document.createElement('a');
-      a.href = url; a.download = filename; a.click();
-      URL.revokeObjectURL(url);
     });
-  }).catch(function(){ _downloadPdf(base64, filename); });
+  }).then(function(pdfBytes){
+    var blob = new Blob([pdfBytes], {type:'application/pdf'});
+    _openPdfResult(URL.createObjectURL(blob), filename);
+  }).catch(function(){
+    var blob = new Blob([bytes], {type:'application/pdf'});
+    _openPdfResult(URL.createObjectURL(blob), filename);
+  });
+}
+
+// Merge multiple raw base64 PDFs (each stripping blank first page), then invoke cb(blobUrl)
+function _mergeBulkExpPdfs(base64Array, cb) {
+  PDFLib.PDFDocument.create().then(function(mergedDoc){
+    var chain = Promise.resolve();
+    base64Array.forEach(function(b64){
+      chain = chain.then(function(){
+        var b = new Uint8Array(atob(b64).split('').map(function(c){ return c.charCodeAt(0); }));
+        return PDFLib.PDFDocument.load(b).then(function(srcDoc){
+          var pi = srcDoc.getPageCount() >= 2 ? 1 : 0;
+          return mergedDoc.copyPages(srcDoc, [pi]).then(function(cp){ mergedDoc.addPage(cp[0]); });
+        }).catch(function(){});
+      });
+    });
+    return chain.then(function(){ return mergedDoc.save(); });
+  }).then(function(pdfBytes){
+    cb(URL.createObjectURL(new Blob([pdfBytes], {type:'application/pdf'})));
+  });
+}
+
+// Show PDF result modal wired to a blob URL
+function _openPdfResult(url, filename) {
+  var dl = document.getElementById('pdf-download-btn');
+  if(dl) dl.onclick = function(){ var a=document.createElement('a'); a.href=url; a.download=filename; a.click(); };
+  var pr = document.getElementById('pdf-print-btn');
+  if(pr) pr.onclick = function(){ var w=window.open(url); if(w) w.onload=function(){ w.print(); }; };
+  var lbl = document.getElementById('pdf-result-label');
+  if(lbl) lbl.textContent = filename;
+  openM('m-pdf-result');
 }
 
 function genExpLetter(empId, name, onDone) {
-  // Disable the button while processing
   var btn = document.querySelector('[data-exltr="'+empId+'"]');
   if(btn){ btn.disabled = true; btn.textContent = '…'; }
   if(!onDone) toast('Generating experience letter for '+esc(name||empId)+'…','info');
   GAS.generateExperienceLetterForEmp(empId, function(r) {
     if(btn){ btn.disabled = false; btn.innerHTML = '&#128196; Generate'; }
-    if(!r) { toast('No response from server','error'); if(typeof onDone==='function') onDone(); return; }
-    if(!r.success) { toast('Error: '+r.error,'error'); if(typeof onDone==='function') onDone(); return; }
-    if(r.pdf) _downloadExpPdf(r.pdf,
-      'Experience_Letter_'+(name||empId).replace(/\s+/g,'_')+'.pdf');
+    if(!r) { toast('No response from server','error'); if(typeof onDone==='function') onDone(null); return; }
+    if(!r.success) { toast('Error: '+r.error,'error'); if(typeof onDone==='function') onDone(null); return; }
     toast('Generated: '+r.refNo,'success');
     if(typeof onDone === 'function') {
-      // Bulk mode: caller handles the final refresh
-      onDone();
+      onDone(r.pdf || null);  // bulk mode: pass raw base64 to caller for merging
     } else {
-      // Single mode: refresh panel immediately
+      // Single mode: show download + print modal
+      if(r.pdf) _openExpPdfResult(r.pdf, 'Experience_Letter_'+(name||empId).replace(/\s+/g,'_')+'.pdf');
       GAS.call('getHRDocs',[],function(dr){
         if(dr&&dr.success){ APP.hrDocs=dr.data||[]; LtrAgent.render(); LtrAgent.renderExpPanel(); }
       });
@@ -980,19 +1007,25 @@ var LtrAgent={
     var btn = document.getElementById('bulk-exp-btn');
     if(btn) btn.disabled = true;
     toast('Generating '+items.length+' letter'+(items.length>1?'s':'')+'…','info');
-    var idx = 0;
+    var idx = 0, collectedPdfs = [];
     function next() {
       if(idx >= items.length){
-        toast('All '+items.length+' letter'+(items.length>1?'s':'')+' generated!','success');
-        if(btn){ btn.disabled = false; btn.style.display = 'none'; }
-        var selAll = document.getElementById('exp-sel-all'); if(selAll) selAll.checked = false;
-        GAS.call('getHRDocs',[],function(dr){
-          if(dr&&dr.success){ APP.hrDocs=dr.data||[]; LtrAgent.render(); LtrAgent.renderExpPanel(); }
+        if(!collectedPdfs.length){ toast('No PDFs generated','error'); if(btn) btn.disabled=false; return; }
+        toast('Merging '+collectedPdfs.length+' PDFs…','info');
+        var mFile = 'Experience_Letters_'+collectedPdfs.length+'_employees.pdf';
+        _mergeBulkExpPdfs(collectedPdfs, function(url){
+          _openPdfResult(url, mFile);
+          if(btn){ btn.disabled=false; btn.style.display='none'; }
+          var sa=document.getElementById('exp-sel-all'); if(sa) sa.checked=false;
+          GAS.call('getHRDocs',[],function(dr){
+            if(dr&&dr.success){ APP.hrDocs=dr.data||[]; LtrAgent.render(); LtrAgent.renderExpPanel(); }
+          });
         });
         return;
       }
       var item = items[idx++];
-      genExpLetter(item.id, item.name, next);
+      toast('('+(idx)+'/'+items.length+') '+esc(item.name)+'…','info');
+      genExpLetter(item.id, item.name, function(pdf){ if(pdf) collectedPdfs.push(pdf); next(); });
     }
     next();
   }
@@ -2106,19 +2139,25 @@ var ResignationAgent = {
     var btn = document.getElementById('res-bulk-btn');
     if(btn) btn.disabled = true;
     toast('Generating '+items.length+' letter'+(items.length>1?'s':'')+'…','info');
-    var idx = 0;
+    var idx = 0, collectedPdfs = [];
     function next() {
       if(idx >= items.length){
-        toast('All '+items.length+' letter'+(items.length>1?'s':'')+' generated!','success');
-        if(btn){ btn.disabled = false; btn.style.display = 'none'; }
-        var selAll = document.getElementById('res-sel-all'); if(selAll) selAll.checked = false;
-        GAS.call('getHRDocs',[],function(dr){
-          if(dr&&dr.success){ APP.hrDocs=dr.data||[]; LtrAgent.render(); ResignationAgent.render(); }
+        if(!collectedPdfs.length){ toast('No PDFs generated','error'); if(btn) btn.disabled=false; return; }
+        toast('Merging '+collectedPdfs.length+' PDFs…','info');
+        var mFile = 'Experience_Letters_'+collectedPdfs.length+'_employees.pdf';
+        _mergeBulkExpPdfs(collectedPdfs, function(url){
+          _openPdfResult(url, mFile);
+          if(btn){ btn.disabled=false; btn.style.display='none'; }
+          var sa=document.getElementById('res-sel-all'); if(sa) sa.checked=false;
+          GAS.call('getHRDocs',[],function(dr){
+            if(dr&&dr.success){ APP.hrDocs=dr.data||[]; LtrAgent.render(); ResignationAgent.render(); }
+          });
         });
         return;
       }
       var item = items[idx++];
-      genExpLetter(item.id, item.name, next);
+      toast('('+(idx)+'/'+items.length+') '+esc(item.name)+'…','info');
+      genExpLetter(item.id, item.name, function(pdf){ if(pdf) collectedPdfs.push(pdf); next(); });
     }
     next();
   },

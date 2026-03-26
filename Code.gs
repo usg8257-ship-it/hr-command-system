@@ -709,7 +709,7 @@ function generateExperienceLetterForEmp(empId) {
       EMP_ID:      empId,
       EMP_NAME:    cleanName,
       FIRSTNAME:   firstName,
-      DOJ:         emp.DATE_OF_JOIN || '',
+      DOJ:         emp.DATE_OF_JOIN ? formatDate(emp.DATE_OF_JOIN) : '',
       DOL:         formatDate(emp.DELETED_DATE) || '',
       DESIGNATION: emp.DESIGNATION  || '',
       ISSUE_DATE:  formatDate(new Date()),

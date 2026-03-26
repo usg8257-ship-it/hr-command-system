@@ -797,6 +797,26 @@
   </div>
 </div>
 
+<!-- PDF RESULT MODAL — Download + Print -->
+<div class="modal-overlay" id="m-pdf-result">
+  <div class="modal sm">
+    <div class="modal-hdr">
+      <div class="modal-ttl">&#128196; PDF Ready</div>
+      <button class="modal-close" onclick="closeM('m-pdf-result')">&#10005;</button>
+    </div>
+    <div class="modal-body" style="text-align:center;padding:20px 24px">
+      <div style="font-size:44px;margin-bottom:10px">&#128196;</div>
+      <p style="color:var(--muted);font-size:13px;margin-bottom:6px">Your experience letter PDF is ready.</p>
+      <p id="pdf-result-label" style="font-size:10.5px;color:var(--muted2);font-family:monospace;word-break:break-all"></p>
+    </div>
+    <div class="modal-ftr">
+      <button class="btn btn-secondary" onclick="closeM('m-pdf-result')">Close</button>
+      <button class="btn btn-secondary" id="pdf-print-btn">&#128438; Print</button>
+      <button class="btn btn-gold" id="pdf-download-btn">&#11015; Download</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast-box" id="tbox"></div>
 <?!= include('script'); ?>
 </body>
