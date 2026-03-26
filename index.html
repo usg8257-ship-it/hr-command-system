@@ -7,6 +7,7 @@
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <?!= include('styles'); ?>
 </head>
 <body>
@@ -188,6 +189,44 @@
         </div>
         <button class="reset-btn" onclick="EmpAgent.resetF()" title="Reset" style="margin-left:auto">&#10005;</button>
       </div>
+      <!-- Excel Export Panel -->
+      <div class="tcard" style="margin-bottom:12px;border-left:3px solid #136e42">
+        <div class="ttop" style="cursor:pointer;user-select:none" onclick="var p=document.getElementById('xls-panel');p.style.display=p.style.display==='none'?'flex':'none';this.querySelector('.xls-arrow').textContent=p.style.display==='none'?'&#9660;':'&#9650;'">
+          <h3>&#128202; Export to Excel</h3>
+          <span style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted)">Filter &amp; export master data as .xlsx <span class="xls-arrow">&#9650;</span></span>
+        </div>
+        <div id="xls-panel" style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;padding:12px 16px 14px;border-top:1px solid var(--border)">
+          <div class="fgrp">
+            <span class="flbl">Birth Month</span>
+            <select class="fsel" id="xls-birth-month">
+              <option value="">All Months</option>
+              <option value="1">January</option><option value="2">February</option><option value="3">March</option>
+              <option value="4">April</option><option value="5">May</option><option value="6">June</option>
+              <option value="7">July</option><option value="8">August</option><option value="9">September</option>
+              <option value="10">October</option><option value="11">November</option><option value="12">December</option>
+            </select>
+          </div>
+          <div class="fgrp">
+            <span class="flbl">Joining Year</span>
+            <select class="fsel" id="xls-join-year"><option value="">All Years</option></select>
+          </div>
+          <div class="fgrp">
+            <span class="flbl">Designation</span>
+            <select class="fsel" id="xls-desig" style="max-width:180px"><option value="">All Designations</option></select>
+          </div>
+          <div class="fgrp">
+            <span class="flbl">Organization</span>
+            <select class="fsel" id="xls-org">
+              <option value="">All Companies</option>
+              <option value="USG">USG</option><option value="UG">UG</option>
+              <option value="UST">UST</option><option value="USG-M">USG-M</option>
+            </select>
+          </div>
+          <button class="btn btn-gold" onclick="ExcelAgent.export()" style="height:30px;padding:0 18px;font-size:12px">&#128202; Export Excel</button>
+          <span style="font-size:10.5px;color:var(--muted2);align-self:center;line-height:1.5">All filters are optional &amp; combinable.<br>Exports full master data columns for matched records.</span>
+        </div>
+      </div>
+
       <div class="tcard">
         <div class="ttop"><h3>&#128101; Active Employees</h3><span class="tcnt" id="emp-cnt2"></span></div>
         <div class="twrap lazy">

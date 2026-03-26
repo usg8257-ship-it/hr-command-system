@@ -1077,6 +1077,147 @@ var LtrAgent={
 };
 
 // ============================================================
+// ============================================================
+// EXCEL EXPORT AGENT
+// ============================================================
+var ExcelAgent={
+  _MONTHS:['January','February','March','April','May','June','July','August','September','October','November','December'],
+  _MONTHS_SHORT:['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],
+
+  // Called when navigating to Active Employees view — populates dynamic dropdowns
+  populateFilters:function(){
+    var active=getActiveEmployees();
+
+    // Joining years — extracted from DATE OF JOIN
+    var yrSel=document.getElementById('xls-join-year');
+    if(yrSel){
+      var years={};
+      active.forEach(function(r){
+        var m=String(r['DATE OF JOIN']||'').match(/(\d{4})/);
+        if(m) years[m[1]]=true;
+      });
+      yrSel.innerHTML='<option value="">All Years</option>';
+      Object.keys(years).sort().reverse().forEach(function(y){
+        yrSel.innerHTML+='<option value="'+y+'">'+y+'</option>';
+      });
+    }
+
+    // Designations — unique sorted list from active employees
+    var desSel=document.getElementById('xls-desig');
+    if(desSel){
+      var desigs={};
+      active.forEach(function(r){
+        var d=String(r.DESIGNATION||'').trim();
+        if(d&&d!=='Unknown'&&d!=='nan') desigs[d]=true;
+      });
+      desSel.innerHTML='<option value="">All Designations</option>';
+      Object.keys(desigs).sort().forEach(function(d){
+        desSel.innerHTML+='<option value="'+esc(d)+'">'+esc(d)+'</option>';
+      });
+    }
+  },
+
+  // Parse month number (1–12) from any date string
+  _month:function(s){
+    if(!s||s==='—') return null;
+    var m=String(s).match(/^(\d{2})\/(\d{2})\/(\d{4})$/); if(m) return parseInt(m[2],10);
+    m=String(s).match(/^(\d{4})-(\d{2})-(\d{2})/);        if(m) return parseInt(m[2],10);
+    var d=new Date(s); if(!isNaN(d)) return d.getMonth()+1;
+    return null;
+  },
+
+  // Parse 4-digit year from any date string
+  _year:function(s){
+    var m=String(s||'').match(/(\d{4})/); return m?m[1]:null;
+  },
+
+  export:function(){
+    if(typeof XLSX==='undefined'){ toast('Excel library still loading — please retry in a moment.','error'); return; }
+
+    var bm  =(document.getElementById('xls-birth-month')||{}).value||'';
+    var jy  =(document.getElementById('xls-join-year')  ||{}).value||'';
+    var des =(document.getElementById('xls-desig')       ||{}).value||'';
+    var org =(document.getElementById('xls-org')         ||{}).value||'';
+
+    // Begin with the same filtered list used by the active table (inherits search, company, license filters)
+    var list=EmpAgent._filteredActive();
+
+    // Apply export-specific filters
+    if(bm){
+      var bmN=parseInt(bm,10);
+      list=list.filter(function(r){ return ExcelAgent._month(r['BIRTH DATE']||'')===bmN; });
+    }
+    if(jy)  list=list.filter(function(r){ return ExcelAgent._year(r['DATE OF JOIN']||'')===jy; });
+    if(des) list=list.filter(function(r){ return String(r.DESIGNATION||'').trim()===des; });
+    if(org) list=list.filter(function(r){ return normEnt(r.ENTITY)===org; });
+
+    if(!list.length){ toast('No records match the selected filters.','error'); return; }
+
+    // Full column set from master sheet
+    var COLS=[
+      {h:'Emp ID',          k:'ID'},
+      {h:'Full Name',       k:'NAME'},
+      {h:'Designation',     k:'DESIGNATION'},
+      {h:'Date of Joining', k:'DATE OF JOIN',  fmt:true},
+      {h:'Date of Birth',   k:'BIRTH DATE',    fmt:true},
+      {h:'Age',             k:'AGE'},
+      {h:'Nationality',     k:'NATIONALITY'},
+      {h:'Organization',    k:'ENTITY',        norm:true},
+      {h:'License Auth',    k:'LIC AUTH'},
+      {h:'Location / Visa', k:'STATUS'},
+      {h:'Passport No',     k:'PASSPORT NO'},
+      {h:'Emirates ID',     k:'EID NO'},
+      {h:'Email',           k:'EMAIL'},
+      {h:'Days of Service', k:'Days'},
+      {h:'Visa',            k:'VISA'}
+    ];
+
+    var headers=COLS.map(function(c){ return c.h; });
+    var rows=list.map(function(r){
+      return COLS.map(function(c){
+        var v=r[c.k]!=null?String(r[c.k]):'';
+        if(c.fmt&&v) v=fmtD(v);
+        if(c.norm&&v) v=normEnt(v)||v;
+        return v;
+      });
+    });
+
+    var wb=XLSX.utils.book_new();
+    var ws=XLSX.utils.aoa_to_sheet([headers].concat(rows));
+
+    // Column widths
+    ws['!cols']=[
+      {wch:10},{wch:28},{wch:24},{wch:14},{wch:14},
+      {wch:6},{wch:14},{wch:10},{wch:12},{wch:14},
+      {wch:14},{wch:20},{wch:28},{wch:8},{wch:14}
+    ];
+
+    // Freeze header row
+    ws['!freeze']={xSplit:0,ySplit:1,topLeftCell:'A2',activeCell:'A2',sqref:'A2'};
+
+    XLSX.utils.book_append_sheet(wb,ws,'Active Manpower');
+
+    // Build descriptive filename
+    var parts=['Active_Manpower'];
+    if(org)  parts.push(org);
+    if(bm)   parts.push('Birth_'+ExcelAgent._MONTHS_SHORT[parseInt(bm,10)-1]);
+    if(jy)   parts.push('Join_'+jy);
+    if(des)  parts.push(des.replace(/[^a-zA-Z0-9]/g,'_').substring(0,18));
+    parts.push(new Date().toISOString().split('T')[0]);
+    var filename=parts.join('_')+'.xlsx';
+
+    // Write and trigger download
+    var out=XLSX.write(wb,{bookType:'xlsx',type:'array'});
+    var blob=new Blob([out],{type:'application/octet-stream'});
+    var url=URL.createObjectURL(blob);
+    var a=document.createElement('a'); a.href=url; a.download=filename; a.click();
+    URL.revokeObjectURL(url);
+
+    toast(list.length.toLocaleString()+' records exported \u2192 '+filename,'success');
+  }
+};
+
+// ============================================================
 // DASHBOARD AGENT
 // ============================================================
 var PAL=['#1e4799','#007a8a','#c83030','#2a5bbf','#b87000','#4e42b8','#136e42','#d45c00','#7a94b8','#3a8fbf'];
@@ -1577,6 +1718,7 @@ function navigate(view){
     else{ cta.style.display=''; cta.textContent='Offer Letter'; cta.onclick=openOLModal; }
   }
   if(view==='masterdata'||view==='employees') EmpAgent.render(true);
+  if(view==='employees') ExcelAgent.populateFilters();
   if(view==='resignations') ResignationAgent.load();
   if(view==='letters') LtrAgent.renderExpPanel();
   if(view==='logs') Logger.loadFromServer();
