@@ -58,6 +58,13 @@
         <div class="gsearch-results" id="gsearch-results"></div>
       </div>
       <div class="sync-badge"><div class="dot"></div><span id="sync-label">Loading...</span>&nbsp;&middot;&nbsp;<span id="sync-timer" class="sync-timer">--</span></div>
+      <select id="dash-org" onchange="DashAgent.refresh()" title="Filter Dashboard by Company" style="height:28px;font-size:11px;padding:0 8px;border-radius:6px;border:1px solid var(--border);background:var(--bg2);color:var(--text);cursor:pointer;font-family:Tahoma,Arial,sans-serif">
+        <option value="">&#127970; All Companies</option>
+        <option value="UG">UG</option>
+        <option value="UST">UST</option>
+        <option value="USG">USG</option>
+        <option value="USG-M">USG-M</option>
+      </select>
       <button class="btn btn-secondary btn-sm" onclick="AgentManager.refreshAll()">&#8635; Refresh</button>
       <button class="btn btn-navy btn-sm" id="top-cta" onclick="EmpAgent.openAdd()">+ Add Employee</button>
     </div>

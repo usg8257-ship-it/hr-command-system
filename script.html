@@ -1093,10 +1093,13 @@ function makeLeg(id,labels,colors,vals,t){
 
 var DashAgent={
   refresh:function(){
-    var active=getActiveEmployees(), t=active.length;
+    var allActive=getActiveEmployees();
+    var orgFilter=(document.getElementById('dash-org')||{}).value||'';
+    var active=orgFilter?allActive.filter(function(r){ return normEnt(r.ENTITY)===orgFilter; }):allActive;
+    var t=active.length;
     var curYear=new Date().getFullYear().toString();
     var s=function(id,v){ var el=document.getElementById(id); if(el) el.textContent=v; };
-    s('kT',t.toLocaleString()); s('kTsub','Active headcount');
+    s('kT',t.toLocaleString()); s('kTsub',orgFilter?orgFilter+' — active headcount':'All companies — active headcount');
     // Visa KPIs
     var adVisa=active.filter(function(r){ return (r.VISA||r.STATUS||'').toUpperCase().indexOf('ABU DHABI')>=0; }).length;
     var dxbVisa=active.filter(function(r){ return (r.VISA||r.STATUS||'').toUpperCase().indexOf('DUBAI')>=0; }).length;
@@ -1113,9 +1116,10 @@ var DashAgent={
       var natEl=document.getElementById('kNatHL');
       if(natEl) natEl.innerHTML='<span class="nat-flag">'+getFlag(topNat[0])+'</span><span><span class="nat-name">'+esc(topNat[0])+'</span><span class="nat-count">'+topNat[1].toLocaleString()+' ('+(t?(topNat[1]/t*100).toFixed(1):0)+'%)</span></span>';
     }
-    // Ex-employees: total count, with this-year breakdown in subtitle
-    var exTotal=APP.deletions.length;
-    var exYear=APP.deletions.filter(function(d){ return String(d.DELETED_DATE||'').indexOf(curYear)>=0; }).length;
+    // Ex-employees: filter by org if selected (uses ENTITY field if available)
+    var dels=orgFilter?APP.deletions.filter(function(d){ return normEnt(d.ENTITY||d.ORG||'')===orgFilter; }):APP.deletions;
+    var exTotal=dels.length;
+    var exYear=dels.filter(function(d){ return String(d.DELETED_DATE||'').indexOf(curYear)>=0; }).length;
     s('kEX',exTotal.toLocaleString()); s('kEXsub',exYear+' resigned this year');
     // Onboarding stats
     var pend=0,trans=0,canc=0;
