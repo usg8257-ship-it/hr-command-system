@@ -99,22 +99,27 @@ function _downloadExpPdf(base64, filename) {
   }).catch(function(){ _downloadPdf(base64, filename); });
 }
 
-function genExpLetter(empId, name) {
+function genExpLetter(empId, name, onDone) {
   // Disable the button while processing
   var btn = document.querySelector('[data-exltr="'+empId+'"]');
   if(btn){ btn.disabled = true; btn.textContent = '…'; }
-  toast('Generating experience letter for '+esc(name||empId)+'…','info');
+  if(!onDone) toast('Generating experience letter for '+esc(name||empId)+'…','info');
   GAS.generateExperienceLetterForEmp(empId, function(r) {
-    if(btn){ btn.disabled = false; btn.innerHTML = '&#128196; Exp Letter'; }
-    if(!r) { toast('No response from server','error'); return; }
-    if(!r.success) { toast('Error: '+r.error,'error'); return; }
+    if(btn){ btn.disabled = false; btn.innerHTML = '&#128196; Generate'; }
+    if(!r) { toast('No response from server','error'); if(typeof onDone==='function') onDone(); return; }
+    if(!r.success) { toast('Error: '+r.error,'error'); if(typeof onDone==='function') onDone(); return; }
     if(r.pdf) _downloadExpPdf(r.pdf,
       'Experience_Letter_'+(name||empId).replace(/\s+/g,'_')+'.pdf');
     toast('Generated: '+r.refNo,'success');
-    // Refresh local HR Docs so letters section stays current
-    GAS.call('getHRDocs',[],function(dr){
-      if(dr&&dr.success){ APP.hrDocs=dr.data||[]; LtrAgent.render(); LtrAgent.renderExpPanel(); }
-    });
+    if(typeof onDone === 'function') {
+      // Bulk mode: caller handles the final refresh
+      onDone();
+    } else {
+      // Single mode: refresh panel immediately
+      GAS.call('getHRDocs',[],function(dr){
+        if(dr&&dr.success){ APP.hrDocs=dr.data||[]; LtrAgent.render(); LtrAgent.renderExpPanel(); }
+      });
+    }
   });
 }
 
@@ -250,6 +255,8 @@ var GlobalSearch = {
         '<div class="empdetail-row"><div class="empdetail-label">Date of Joining</div><div class="empdetail-val">'+fmtD(r['DATE OF JOIN']||'—')+'</div></div>'+
         '<div class="empdetail-row"><div class="empdetail-label">Date of Birth</div><div class="empdetail-val">'+fmtD(r['BIRTH DATE']||'—')+'</div></div>'+
         '<div class="empdetail-row"><div class="empdetail-label">Age</div><div class="empdetail-val">'+esc(r.AGE||'—')+'</div></div>'+
+        '<div class="empdetail-row"><div class="empdetail-label">Location / Visa</div><div class="empdetail-val">'+esc(r.STATUS||'—')+'</div></div>'+
+        '<div class="empdetail-row"><div class="empdetail-label">Days of Service</div><div class="empdetail-val">'+esc(r.Days||'—')+'</div></div>'+
       '</div>';
 
     // Wire edit button
@@ -468,6 +475,7 @@ var EmpAgent={
         '<td>'+licB(r['LIC AUTH']||'NIL')+'</td>'+
         '<td class="eid-cell" id="eid-cell-'+id+'"><span id="eid-text-'+id+'" style="cursor:pointer" title="Click to edit" onclick="EmpAgent.editEID(\''+id+'\')">'+esc(r['EID NO']||'—')+'</span></td>'+
         '<td><div class="act-btns">'+
+          '<button class="btn btn-secondary btn-icon btn-sm" data-action="view-emp" data-id="'+id+'" title="View Details">&#128100;</button>'+
           '<button class="btn btn-secondary btn-icon btn-sm" data-action="edit-emp" data-id="'+id+'" title="Edit">&#9998;</button>'+
           '<button class="btn btn-danger btn-icon btn-sm" data-action="del-emp" data-id="'+id+'" data-name="'+nm+'" title="Delete">&#128465;</button>'+
         '</div></td></tr>';
@@ -514,6 +522,7 @@ var EmpAgent={
         '<td>'+licB(r['LIC AUTH']||'NIL')+'</td>'+
         '<td class="eid-cell" id="eid-cell-'+id+'"><span id="eid-text-'+id+'" style="cursor:pointer" onclick="EmpAgent.editEID(\''+id+'\')">'+esc(r['EID NO']||'—')+'</span></td>'+
         '<td><div class="act-btns">'+
+          '<button class="btn btn-secondary btn-icon btn-sm" data-action="view-emp" data-id="'+id+'" title="View Details">&#128100;</button>'+
           '<button class="btn btn-secondary btn-icon btn-sm" data-action="edit-emp" data-id="'+id+'" title="Edit">&#9998;</button>'+
           '<button class="btn btn-danger btn-icon btn-sm" data-action="del-emp" data-id="'+id+'" data-name="'+nm+'" title="Delete">&#128465;</button>'+
         '</div></td></tr>';
@@ -568,13 +577,21 @@ var EmpAgent={
     document.getElementById('ef-loc').value='ABU DHABI';
     document.getElementById('ef-join').value=today();
     document.getElementById('ef-birth').value='';
+    // Auto-generate next sequential Employee ID
+    var nums=(APP.master||[]).map(function(r){ return parseInt(r.ID,10); }).filter(function(n){ return !isNaN(n); });
+    var nextId=nums.length?(Math.max.apply(null,nums)+1):1001;
+    var idEl=document.getElementById('ef-id');
+    idEl.value=String(nextId);
+    idEl.readOnly=false; idEl.style.opacity=''; idEl.style.cursor='';
     openM('m-emp');
   },
   openEdit:function(id){
     var r=this.byId(id); if(!r){ toast('Not found','error'); return; }
     document.getElementById('m-emp-ttl').textContent='Edit Employee';
     document.getElementById('ef-editid').value=id;
-    document.getElementById('ef-id').value    =r.ID||'';
+    var idEl=document.getElementById('ef-id');
+    idEl.value=r.ID||'';
+    idEl.readOnly=true; idEl.style.opacity='0.6'; idEl.style.cursor='not-allowed';
     document.getElementById('ef-name').value  =r.NAME||'';
     document.getElementById('ef-pp').value    =r['PASSPORT NO']||'';
     document.getElementById('ef-eid').value   =r['EID NO']||'';
@@ -923,14 +940,21 @@ var LtrAgent={
     // Use APP.deletions as the source (already loaded)
     var rows = APP.deletions || [];
     if(!rows.length){
-      tb.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--muted)">No resignation records found.</td></tr>';
+      tb.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--muted)">No resignation records found.</td></tr>';
       if(cnt) cnt.textContent = '0 pending';
       return;
     }
     var pending = rows.filter(function(r){ return !issuedSet[r.EMP_ID]; }).length;
     if(cnt) cnt.textContent = pending + ' pending';
+    // Reset select-all and bulk button
+    var selAll = document.getElementById('exp-sel-all'); if(selAll) selAll.checked = false;
+    var bulkBtn = document.getElementById('bulk-exp-btn'); if(bulkBtn) bulkBtn.style.display = 'none';
+    var bulkCnt = document.getElementById('bulk-exp-count'); if(bulkCnt) bulkCnt.textContent = '0';
     tb.innerHTML = rows.map(function(r) {
       var issued = issuedSet[r.EMP_ID];
+      var chkTd = issued
+        ? '<td></td>'
+        : '<td><input type="checkbox" class="exp-chk" data-empid="'+esc(r.EMP_ID||'')+'" data-name="'+esc((r.FULL_NAME||'').replace(/"/g,'&quot;'))+'" onchange="LtrAgent.updateBulkCount()"/></td>';
       var actionHtml = issued
         ? '<span class="badge bg2" style="font-size:9.5px;padding:3px 8px">&#10003; Issued</span>'
         : '<button class="btn btn-gold btn-sm" style="font-size:10.5px;white-space:nowrap" '+
@@ -938,6 +962,7 @@ var LtrAgent={
             'onclick="genExpLetter(\''+esc(r.EMP_ID||'')+'\',\''+esc((r.FULL_NAME||'').replace(/'/g,''))+'\')">'+
             '&#128196; Generate</button>';
       return '<tr>'+
+        chkTd+
         '<td style="font-family:monospace;font-size:11px;font-weight:600;color:var(--navy)">'+esc(r.EMP_ID||'—')+'</td>'+
         '<td style="font-weight:600">'+esc(r.FULL_NAME||'—')+'</td>'+
         '<td style="font-size:11px;color:var(--muted)">'+esc(r.DESIGNATION||'—')+'</td>'+
@@ -945,6 +970,42 @@ var LtrAgent={
         '<td>'+actionHtml+'</td>'+
       '</tr>';
     }).join('');
+  },
+  updateBulkCount: function() {
+    var checked = document.querySelectorAll('.exp-chk:checked');
+    var btn = document.getElementById('bulk-exp-btn');
+    var cnt = document.getElementById('bulk-exp-count');
+    if(cnt) cnt.textContent = checked.length;
+    if(btn) btn.style.display = checked.length ? '' : 'none';
+  },
+  toggleSelectAll: function(checked) {
+    document.querySelectorAll('.exp-chk').forEach(function(c){ c.checked = checked; });
+    this.updateBulkCount();
+  },
+  generateBulk: function() {
+    var items = [];
+    document.querySelectorAll('.exp-chk:checked').forEach(function(c){
+      items.push({id: c.dataset.empid, name: c.dataset.name});
+    });
+    if(!items.length){ toast('No employees selected','error'); return; }
+    var btn = document.getElementById('bulk-exp-btn');
+    if(btn) btn.disabled = true;
+    toast('Generating '+items.length+' letter'+(items.length>1?'s':'')+'…','info');
+    var idx = 0;
+    function next() {
+      if(idx >= items.length){
+        toast('All '+items.length+' letter'+(items.length>1?'s':'')+' generated!','success');
+        if(btn){ btn.disabled = false; btn.style.display = 'none'; }
+        var selAll = document.getElementById('exp-sel-all'); if(selAll) selAll.checked = false;
+        GAS.call('getHRDocs',[],function(dr){
+          if(dr&&dr.success){ APP.hrDocs=dr.data||[]; LtrAgent.render(); LtrAgent.renderExpPanel(); }
+        });
+        return;
+      }
+      var item = items[idx++];
+      genExpLetter(item.id, item.name, next);
+    }
+    next();
   }
 };
 
@@ -1459,7 +1520,8 @@ function navigate(view){
 document.addEventListener('click',function(e){
   var t=e.target.closest('[data-action]'); if(!t) return;
   var act=t.dataset.action;
-  if     (act==='edit-emp')      EmpAgent.openEdit(t.dataset.id);
+  if     (act==='view-emp')      GlobalSearch.showDetail(t.dataset.id);
+  else if(act==='edit-emp')      EmpAgent.openEdit(t.dataset.id);
   else if(act==='del-emp')       EmpAgent.openDelete(t.dataset.id,t.dataset.name);
   else if(act==='transfer')      OBAgent.openTransfer(t.dataset.obid,t.dataset.name);
   else if(act==='edit-ob')       OBAgent.openEdit(t.dataset.obid);
