@@ -47,6 +47,15 @@ function getActiveEmployees(){
 function esc(v){ return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function today(){ return new Date().toISOString().split('T')[0]; }
 function todayDisplay(){ return new Date().toLocaleDateString('en-AE',{day:'2-digit',month:'long',year:'numeric'}); }
+// Normalise any date string to DD/MM/YYYY for display
+function fmtD(s){
+  if(!s||s==='—') return s||'—';
+  var m;
+  m=String(s).match(/^(\d{2})\/(\d{2})\/(\d{4})$/); if(m) return s;
+  m=String(s).match(/^(\d{4})-(\d{2})-(\d{2})/);    if(m) return m[3]+'/'+m[2]+'/'+m[1];
+  var d=new Date(s); if(!isNaN(d)) return ('0'+d.getDate()).slice(-2)+'/'+('0'+(d.getMonth()+1)).slice(-2)+'/'+d.getFullYear();
+  return s;
+}
 function genId(p){ return (p||'ID')+'-'+Date.now().toString().slice(-8); }
 
 function toast(msg,type){
@@ -70,6 +79,25 @@ function _downloadPdf(base64, filename) {
   a.href = url; a.download = filename; a.click();
   URL.revokeObjectURL(url);
 }
+// Download only the 2nd page of a PDF (for experience letters — page 1 is blank/template cover)
+function _downloadExpPdf(base64, filename) {
+  var bytes = new Uint8Array(atob(base64).split('').map(function(c){ return c.charCodeAt(0); }));
+  PDFLib.PDFDocument.load(bytes).then(function(srcDoc){
+    if(srcDoc.getPageCount() < 2){ _downloadPdf(base64, filename); return; }
+    return PDFLib.PDFDocument.create().then(function(newDoc){
+      return newDoc.copyPages(srcDoc, [1]).then(function(copied){
+        newDoc.addPage(copied[0]);
+        return newDoc.save();
+      });
+    }).then(function(pdfBytes){
+      var blob = new Blob([pdfBytes], {type:'application/pdf'});
+      var url  = URL.createObjectURL(blob);
+      var a    = document.createElement('a');
+      a.href = url; a.download = filename; a.click();
+      URL.revokeObjectURL(url);
+    });
+  }).catch(function(){ _downloadPdf(base64, filename); });
+}
 
 function genExpLetter(empId, name) {
   // Disable the button while processing
@@ -80,7 +108,7 @@ function genExpLetter(empId, name) {
     if(btn){ btn.disabled = false; btn.innerHTML = '&#128196; Exp Letter'; }
     if(!r) { toast('No response from server','error'); return; }
     if(!r.success) { toast('Error: '+r.error,'error'); return; }
-    if(r.pdf) _downloadPdf(r.pdf,
+    if(r.pdf) _downloadExpPdf(r.pdf,
       'Experience_Letter_'+(name||empId).replace(/\s+/g,'_')+'.pdf');
     toast('Generated: '+r.refNo,'success');
     // Refresh local HR Docs so letters section stays current
@@ -219,8 +247,8 @@ var GlobalSearch = {
         '<div class="empdetail-row"><div class="empdetail-label">Emirates ID</div><div class="empdetail-val" style="font-family:monospace;font-size:12px;color:var(--teal)">'+esc(r['EID NO']||'—')+'</div></div>'+
         '<div class="empdetail-row"><div class="empdetail-label">Nationality</div><div class="empdetail-val">'+getFlag(r.NATIONALITY||'')+' '+esc(r.NATIONALITY||'—')+'</div></div>'+
         '<div class="empdetail-row"><div class="empdetail-label">Designation</div><div class="empdetail-val">'+esc(r.DESIGNATION||'—')+'</div></div>'+
-        '<div class="empdetail-row"><div class="empdetail-label">Date of Joining</div><div class="empdetail-val">'+esc(r['DATE OF JOIN']||'—')+'</div></div>'+
-        '<div class="empdetail-row"><div class="empdetail-label">Date of Birth</div><div class="empdetail-val">'+esc(r['BIRTH DATE']||'—')+'</div></div>'+
+        '<div class="empdetail-row"><div class="empdetail-label">Date of Joining</div><div class="empdetail-val">'+fmtD(r['DATE OF JOIN']||'—')+'</div></div>'+
+        '<div class="empdetail-row"><div class="empdetail-label">Date of Birth</div><div class="empdetail-val">'+fmtD(r['BIRTH DATE']||'—')+'</div></div>'+
         '<div class="empdetail-row"><div class="empdetail-label">Age</div><div class="empdetail-val">'+esc(r.AGE||'—')+'</div></div>'+
       '</div>';
 
@@ -259,8 +287,8 @@ var GlobalSearch = {
         '<div class="empdetail-row"><div class="empdetail-label">Passport No</div><div class="empdetail-val" style="font-family:monospace;font-size:12px">'+esc(c.PASSPORT_NO||'—')+'</div></div>'+
         '<div class="empdetail-row"><div class="empdetail-label">Mobile</div><div class="empdetail-val">'+esc(c.MOBILE||'—')+'</div></div>'+
         '<div class="empdetail-row"><div class="empdetail-label">Visa Status</div><div class="empdetail-val">'+esc(c.VISA_STATUS||'—')+'</div></div>'+
-        '<div class="empdetail-row"><div class="empdetail-label">Expected Join</div><div class="empdetail-val">'+esc(c.EXP_JOIN_DATE||'—')+'</div></div>'+
-        '<div class="empdetail-row"><div class="empdetail-label">Date Added</div><div class="empdetail-val">'+esc(c.DATE_ADDED||'—')+'</div></div>'+
+        '<div class="empdetail-row"><div class="empdetail-label">Expected Join</div><div class="empdetail-val">'+fmtD(c.EXP_JOIN_DATE||'—')+'</div></div>'+
+        '<div class="empdetail-row"><div class="empdetail-label">Date Added</div><div class="empdetail-val">'+fmtD(c.DATE_ADDED||'—')+'</div></div>'+
       '</div>';
 
     var editBtn = document.getElementById('empdetail-edit-btn');
@@ -639,7 +667,7 @@ var OBAgent={
       var canAct=r.STATUS==='Pending';
       var trBtn=canAct?'<button class="btn btn-primary btn-sm" data-action="transfer" data-obid="'+obid+'" data-name="'+nm+'" title="Transfer to Master">&rarr;</button>':'';
       var olBtn=canAct?'<button class="btn btn-gold btn-sm" data-action="gen-ol" data-obid="'+obid+'" data-name="'+nm+'" data-type="'+esc(r.POSITION_TYPE||'PSBD')+'" data-pp="'+esc(r.PASSPORT_NO||'')+'" title="Generate Offer Letter">&#128196;</button>':'';
-      return '<tr><td style="font-family:monospace;font-size:10px;color:var(--gold)">'+esc(r.OB_ID||'—')+'</td><td style="font-weight:600">'+nm+'</td><td style="font-family:monospace;font-size:10.5px">'+esc(r.PASSPORT_NO||'—')+'</td><td>'+tB(r.POSITION_TYPE)+'</td><td style="font-size:11px">'+esc(r.MOBILE||'—')+'</td><td style="font-size:11px">'+esc(r.VISA_STATUS||'—')+'</td><td style="font-size:11px">'+esc(r.EXP_JOIN_DATE||'—')+'</td><td style="font-size:10px;color:var(--muted)">'+esc(r.DATE_ADDED||'—')+'</td><td>'+sB(r.STATUS)+'</td><td><div class="act-btns">'+trBtn+olBtn+'<button class="btn btn-secondary btn-icon btn-sm" data-action="edit-ob" data-obid="'+obid+'" title="Edit">&#9998;</button><button class="btn btn-danger btn-icon btn-sm" data-action="cancel-ob" data-obid="'+obid+'" title="Cancel">&#10005;</button></div></td></tr>';
+      return '<tr><td style="font-family:monospace;font-size:10px;color:var(--gold)">'+esc(r.OB_ID||'—')+'</td><td style="font-weight:600">'+nm+'</td><td style="font-family:monospace;font-size:10.5px">'+esc(r.PASSPORT_NO||'—')+'</td><td>'+tB(r.POSITION_TYPE)+'</td><td style="font-size:11px">'+esc(r.MOBILE||'—')+'</td><td style="font-size:11px">'+esc(r.VISA_STATUS||'—')+'</td><td style="font-size:11px">'+fmtD(r.EXP_JOIN_DATE||'—')+'</td><td style="font-size:10px;color:var(--muted)">'+fmtD(r.DATE_ADDED||'—')+'</td><td>'+sB(r.STATUS)+'</td><td><div class="act-btns">'+trBtn+olBtn+'<button class="btn btn-secondary btn-icon btn-sm" data-action="edit-ob" data-obid="'+obid+'" title="Edit">&#9998;</button><button class="btn btn-danger btn-icon btn-sm" data-action="cancel-ob" data-obid="'+obid+'" title="Cancel">&#10005;</button></div></td></tr>';
     }).join('');
   },
   resetF:function(){
@@ -791,7 +819,7 @@ var LtrAgent={
     var cnt=document.getElementById('lt-cnt'); if(cnt) cnt.textContent=list.length;
     if(!list.length){ tb.innerHTML='<tr><td colspan="8" style="text-align:center;padding:32px;color:var(--muted)">No letters issued yet.</td></tr>'; return; }
     tb.innerHTML=list.map(function(l){
-      return '<tr><td style="font-family:monospace;font-size:10px;color:var(--gold)">'+esc(l.REF_NO||'—')+'</td><td style="font-family:monospace;font-size:10.5px">'+esc(l.EMP_ID||'—')+'</td><td style="font-weight:600">'+esc(l.EMP_NAME||'—')+'</td><td><span class="badge bo">'+esc(l.LETTER_TYPE||'—')+'</span></td><td style="font-size:11px">'+esc(l.ISSUE_DATE||'—')+'</td><td style="font-size:11px">'+esc(l.ISSUED_BY||'—')+'</td><td style="font-size:10.5px;color:var(--muted)">'+esc(l.NOTES||'—')+'</td><td><button class="btn btn-danger btn-icon btn-sm" data-action="del-ltr" data-ref="'+esc(l.REF_NO||'')+'" title="Remove">&#10005;</button></td></tr>';
+      return '<tr><td style="font-family:monospace;font-size:10px;color:var(--gold)">'+esc(l.REF_NO||'—')+'</td><td style="font-family:monospace;font-size:10.5px">'+esc(l.EMP_ID||'—')+'</td><td style="font-weight:600">'+esc(l.EMP_NAME||'—')+'</td><td><span class="badge bo">'+esc(l.LETTER_TYPE||'—')+'</span></td><td style="font-size:11px">'+fmtD(l.ISSUE_DATE||'—')+'</td><td style="font-size:11px">'+esc(l.ISSUED_BY||'—')+'</td><td style="font-size:10.5px;color:var(--muted)">'+esc(l.NOTES||'—')+'</td><td><button class="btn btn-danger btn-icon btn-sm" data-action="del-ltr" data-ref="'+esc(l.REF_NO||'')+'" title="Remove">&#10005;</button></td></tr>';
     }).join('');
   },
   resetF:function(){ var q=document.getElementById('lt-q'); if(q) q.value=''; var t=document.getElementById('lt-type'); if(t) t.value=''; this.render(); },
@@ -913,7 +941,7 @@ var LtrAgent={
         '<td style="font-family:monospace;font-size:11px;font-weight:600;color:var(--navy)">'+esc(r.EMP_ID||'—')+'</td>'+
         '<td style="font-weight:600">'+esc(r.FULL_NAME||'—')+'</td>'+
         '<td style="font-size:11px;color:var(--muted)">'+esc(r.DESIGNATION||'—')+'</td>'+
-        '<td style="font-size:11px">'+esc(r.DELETED_DATE||'—')+'</td>'+
+        '<td style="font-size:11px">'+fmtD(r.DELETED_DATE||'—')+'</td>'+
         '<td>'+actionHtml+'</td>'+
       '</tr>';
     }).join('');
@@ -1573,7 +1601,7 @@ var SelfServiceAgent = {
         '<div class="empdetail-row"><div class="empdetail-label">Passport No</div><div class="empdetail-val" style="font-family:monospace">'+esc(r['PASSPORT NO']||'—')+'</div></div>'+
         '<div class="empdetail-row"><div class="empdetail-label">Emirates ID</div><div class="empdetail-val" style="font-family:monospace;color:var(--teal)">'+esc(r['EID NO']||'—')+'</div></div>'+
         '<div class="empdetail-row"><div class="empdetail-label">Nationality</div><div class="empdetail-val">'+getFlag(r.NATIONALITY||'')+' '+esc(r.NATIONALITY||'—')+'</div></div>'+
-        '<div class="empdetail-row"><div class="empdetail-label">Date of Joining</div><div class="empdetail-val">'+esc(r['DATE OF JOIN']||'—')+'</div></div>'+
+        '<div class="empdetail-row"><div class="empdetail-label">Date of Joining</div><div class="empdetail-val">'+fmtD(r['DATE OF JOIN']||'—')+'</div></div>'+
         '<div class="empdetail-row"><div class="empdetail-label">Visa Status</div><div class="empdetail-val">'+esc(r.VISA||r.STATUS||'—')+'</div></div>'+
       '</div>';
     // Pre-fill expiry fields
@@ -1638,8 +1666,8 @@ var LeaveAgent = {
         '<td style="font-size:10.5px;font-family:monospace">'+esc(r.LEAVE_ID)+'</td>'+
         '<td>'+esc(r.EMP_NAME||r.EMP_ID||'—')+'</td>'+
         '<td>'+esc(r.LEAVE_TYPE||'—')+'</td>'+
-        '<td>'+esc(r.START_DATE||'—')+'</td>'+
-        '<td>'+esc(r.END_DATE||'—')+'</td>'+
+        '<td>'+fmtD(r.START_DATE||'—')+'</td>'+
+        '<td>'+fmtD(r.END_DATE||'—')+'</td>'+
         '<td style="text-align:center">'+esc(r.DAYS||'—')+'</td>'+
         '<td><span class="badge '+stsCls+'">'+esc(r.STATUS||'—')+'</span></td>'+
         '<td><div class="act-btns">'+actBtns+'</div></td>'+
@@ -1662,7 +1690,7 @@ var LeaveAgent = {
         '<tbody>'+
         (this._data.length ? this._data.map(function(r){
           var sc = {Pending:'bo',Approved:'bg2',Rejected:'br'}[r.STATUS]||'bn';
-          return '<tr><td>'+esc(r.LEAVE_TYPE)+'</td><td>'+esc(r.START_DATE)+'</td><td>'+esc(r.END_DATE)+'</td><td>'+esc(r.DAYS)+'</td><td><span class="badge '+sc+'">'+esc(r.STATUS)+'</span></td></tr>';
+          return '<tr><td>'+esc(r.LEAVE_TYPE)+'</td><td>'+fmtD(r.START_DATE)+'</td><td>'+fmtD(r.END_DATE)+'</td><td>'+esc(r.DAYS)+'</td><td><span class="badge '+sc+'">'+esc(r.STATUS)+'</span></td></tr>';
         }).join('') : '<tr><td colspan="5" style="text-align:center;padding:12px;color:var(--muted)">No leave records yet.</td></tr>')+
         '</tbody></table></div>'+
       '</div>';
@@ -1776,7 +1804,7 @@ var RecruitmentAgent = {
         '<td>'+esc(j.LOCATION)+'</td>'+
         '<td>'+esc(j.JOB_TYPE)+'</td>'+
         '<td><span class="badge '+(stsMap[j.STATUS]||'bn')+'">'+esc(j.STATUS)+'</span></td>'+
-        '<td style="font-size:10.5px;color:var(--muted)">'+esc(j.POSTED_DATE)+'</td>'+
+        '<td style="font-size:10.5px;color:var(--muted)">'+fmtD(j.POSTED_DATE)+'</td>'+
         '<td><div class="act-btns">'+
           '<button class="btn btn-secondary btn-icon btn-sm" data-action="view-apps" data-jobid="'+esc(j.JOB_ID)+'" title="View Applications">&#128203;</button>'+
           '<button class="btn btn-secondary btn-icon btn-sm" data-action="edit-job" data-jobid="'+esc(j.JOB_ID)+'" title="Edit">&#9998;</button>'+
@@ -1802,7 +1830,7 @@ var RecruitmentAgent = {
         '<td style="font-weight:600">'+esc(a.FULL_NAME||'—')+'</td>'+
         '<td style="font-size:11px">'+esc(a.EMAIL||'—')+'</td>'+
         '<td>'+esc(a.JOB_TITLE||'—')+'</td>'+
-        '<td style="font-size:11px;color:var(--muted)">'+esc(a.APPLIED_DATE||'—')+'</td>'+
+        '<td style="font-size:11px;color:var(--muted)">'+fmtD(a.APPLIED_DATE||'—')+'</td>'+
         '<td><span class="badge '+stCls+'">'+esc(a.STAGE||'—')+'</span></td>'+
         '<td><div class="act-btns">'+
           '<button class="btn btn-secondary btn-sm" data-action="move-stage" data-appid="'+esc(a.APP_ID)+'" data-name="'+esc(a.FULL_NAME)+'" style="font-size:10px">Move Stage</button>'+
