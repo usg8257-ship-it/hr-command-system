@@ -185,7 +185,17 @@
         <div class="ttop"><h3>&#128101; Active Employees</h3><span class="tcnt" id="emp-cnt2"></span></div>
         <div class="twrap lazy">
           <table>
-            <thead><tr><th>#</th><th>Emp ID</th><th>Name</th><th>License Auth</th><th>Emirates ID</th><th>Actions</th></tr></thead>
+            <thead><tr>
+              <th style="width:32px">#</th>
+              <th onclick="EmpAgent.sortByActive('ID')" style="cursor:pointer" title="Sort by ID">ID &#8597;</th>
+              <th onclick="EmpAgent.sortByActive('NAME')" style="cursor:pointer" title="Sort by Name">Name &#8597;</th>
+              <th>Designation</th>
+              <th>Date of Joining</th>
+              <th>Org</th>
+              <th>License</th>
+              <th>Emirates ID</th>
+              <th>Actions</th>
+            </tr></thead>
             <tbody id="emp-tbody2"></tbody>
           </table>
         </div>

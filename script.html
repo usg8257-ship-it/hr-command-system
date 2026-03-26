@@ -449,7 +449,8 @@ var Logger={
 // EMPLOYEE AGENT — lazy load 100/batch
 // ============================================================
 var EmpAgent={
-  _pageSize:50, _masterPage:0, _activePage:0, _sort:{col:'NAME',dir:'asc'},
+  _pageSize:50, _masterPage:0, _activePage:0,
+  _sort:{col:'NAME',dir:'asc'}, _sortActive:{col:'ID',dir:'desc'},
   _isMasterView:function(){
     var v=document.getElementById('view-masterdata'); return v&&v.classList.contains('active');
   },
@@ -487,13 +488,19 @@ var EmpAgent={
       if(lic && r['LIC AUTH']!==lic) return false;
       return true;
     });
-    var sc=this._sort.col, sd=this._sort.dir;
-    list.sort(function(a,b){ var av=String(a[sc]||'').toUpperCase(),bv=String(b[sc]||'').toUpperCase(); return sd==='asc'?av.localeCompare(bv):bv.localeCompare(av); });
+    var sc=this._sortActive.col, sd=this._sortActive.dir;
+    list.sort(function(a,b){
+      if(sc==='ID'){ var ai=parseInt(a.ID,10)||0,bi=parseInt(b.ID,10)||0; return sd==='asc'?ai-bi:bi-ai; }
+      var av=String(a[sc]||'').toUpperCase(),bv=String(b[sc]||'').toUpperCase();
+      return sd==='asc'?av.localeCompare(bv):bv.localeCompare(av);
+    });
     return list;
   },
   render:function(reset){
     var self=this;
     var licB=function(l){ var m={PSBD:'bp',SIRA:'bs',NIL:'bn',OTHER:'bo'}; return '<span class="badge '+(m[l]||'bn')+'">'+esc(l||'NIL')+'</span>'; };
+    var entB=function(e){ var en=normEnt(e)||'—'; var m={USG:'bp',UG:'bs',UST:'bo','USG-M':'bn'}; return '<span class="badge '+(m[en]||'bn')+'">'+esc(en)+'</span>'; };
+    // Master table row (6 cols)
     var makeRow=function(r,i){
       var id=esc(r.ID||''), nm=esc(r.NAME||'—');
       return '<tr>'+
@@ -508,7 +515,26 @@ var EmpAgent={
           '<button class="btn btn-danger btn-icon btn-sm" data-action="del-emp" data-id="'+id+'" data-name="'+nm+'" title="Delete">&#128465;</button>'+
         '</div></td></tr>';
     };
-    var empty='<tr><td colspan="6" style="text-align:center;padding:32px;color:var(--muted)">No records found.</td></tr>';
+    // Active table row (9 cols)
+    var makeActiveRow=function(r,i){
+      var id=esc(r.ID||''), nm=esc(r.NAME||'—');
+      return '<tr>'+
+        '<td style="color:var(--muted2);font-size:10px">'+(i+1)+'</td>'+
+        '<td style="font-family:monospace;font-size:11.5px;font-weight:600;color:var(--navy)">'+id+'</td>'+
+        '<td style="font-weight:600">'+nm.substring(0,26)+(nm.length>26?'&hellip;':'')+'</td>'+
+        '<td style="font-size:11.5px;color:var(--muted)">'+esc(r.DESIGNATION||'—')+'</td>'+
+        '<td style="font-size:11.5px">'+esc(fmtD(r['DATE OF JOIN']||'—'))+'</td>'+
+        '<td>'+entB(r.ENTITY)+'</td>'+
+        '<td>'+licB(r['LIC AUTH']||'NIL')+'</td>'+
+        '<td class="eid-cell" id="eid-cell2-'+id+'"><span style="font-family:monospace;font-size:11px">'+esc(r['EID NO']||'—')+'</span></td>'+
+        '<td><div class="act-btns">'+
+          '<button class="btn btn-secondary btn-icon btn-sm" data-action="view-emp" data-id="'+id+'" title="View Details">&#128100;</button>'+
+          '<button class="btn btn-secondary btn-icon btn-sm" data-action="edit-emp" data-id="'+id+'" title="Edit">&#9998;</button>'+
+          '<button class="btn btn-danger btn-icon btn-sm" data-action="del-emp" data-id="'+id+'" data-name="'+nm+'" title="Delete">&#128465;</button>'+
+        '</div></td></tr>';
+    };
+    var emptyM='<tr><td colspan="6" style="text-align:center;padding:32px;color:var(--muted)">No records found.</td></tr>';
+    var emptyA='<tr><td colspan="9" style="text-align:center;padding:32px;color:var(--muted)">No records found.</td></tr>';
     var active=getActiveEmployees();
     var nb=document.getElementById('nb-emp'); if(nb) nb.textContent=active.length;
     if(reset){ this._masterPage=0; this._activePage=0; }
@@ -521,7 +547,7 @@ var EmpAgent={
       var mp=this._masterPage, ps=this._pageSize;
       mp=Math.min(mp, mt>0?Math.ceil(mt/ps)-1:0); this._masterPage=mp;
       var mSlice=mlist.slice(mp*ps,(mp+1)*ps);
-      tb.innerHTML=mt?mSlice.map(function(r,i){ return makeRow(r,mp*ps+i); }).join(''):empty;
+      tb.innerHTML=mt?mSlice.map(function(r,i){ return makeRow(r,mp*ps+i); }).join(''):emptyM;
       self._renderPagination(mt,mp,ps,'emp-pgn','master');
     }
 
@@ -533,13 +559,19 @@ var EmpAgent={
       var ap=this._activePage, ps2=this._pageSize;
       ap=Math.min(ap, at>0?Math.ceil(at/ps2)-1:0); this._activePage=ap;
       var aSlice=alist.slice(ap*ps2,(ap+1)*ps2);
-      tb2.innerHTML=at?aSlice.map(function(r,i){ return makeRow(r,ap*ps2+i); }).join(''):empty;
+      tb2.innerHTML=at?aSlice.map(function(r,i){ return makeActiveRow(r,ap*ps2+i); }).join(''):emptyA;
       self._renderPagination(at,ap,ps2,'emp-pgn2','active');
     }
   },
   goPage:function(table,page){
     if(table==='master') this._masterPage=page;
     else this._activePage=page;
+    this.render(false);
+  },
+  sortByActive:function(col){
+    if(this._sortActive.col===col) this._sortActive.dir=this._sortActive.dir==='asc'?'desc':'asc';
+    else{ this._sortActive.col=col; this._sortActive.dir=col==='ID'?'desc':'asc'; }
+    this._activePage=0;
     this.render(false);
   },
   _renderPagination:function(total,page,pageSize,pgnId,table){
