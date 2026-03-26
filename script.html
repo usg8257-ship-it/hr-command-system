@@ -449,7 +449,7 @@ var Logger={
 // EMPLOYEE AGENT — lazy load 100/batch
 // ============================================================
 var EmpAgent={
-  _batch:100, _loaded:0, _sort:{col:'NAME',dir:'asc'},
+  _pageSize:50, _masterPage:0, _activePage:0, _sort:{col:'NAME',dir:'asc'},
   _isMasterView:function(){
     var v=document.getElementById('view-masterdata'); return v&&v.classList.contains('active');
   },
@@ -492,6 +492,7 @@ var EmpAgent={
     return list;
   },
   render:function(reset){
+    var self=this;
     var licB=function(l){ var m={PSBD:'bp',SIRA:'bs',NIL:'bn',OTHER:'bo'}; return '<span class="badge '+(m[l]||'bn')+'">'+esc(l||'NIL')+'</span>'; };
     var makeRow=function(r,i){
       var id=esc(r.ID||''), nm=esc(r.NAME||'—');
@@ -510,52 +511,64 @@ var EmpAgent={
     var empty='<tr><td colspan="6" style="text-align:center;padding:32px;color:var(--muted)">No records found.</td></tr>';
     var active=getActiveEmployees();
     var nb=document.getElementById('nb-emp'); if(nb) nb.textContent=active.length;
+    if(reset){ this._masterPage=0; this._activePage=0; }
 
-    // — Employee Register: all master data, no pagination —
+    // — Master Data: paginated —
     var tb=document.getElementById('emp-tbody');
     if(tb){
       var mlist=this._filteredMaster(), mt=mlist.length;
       var cnt=document.getElementById('emp-cnt'); if(cnt) cnt.textContent=mt+' of '+APP.master.length;
-      tb.innerHTML=mt?mlist.map(makeRow).join(''):empty;
+      var mp=this._masterPage, ps=this._pageSize;
+      mp=Math.min(mp, mt>0?Math.ceil(mt/ps)-1:0); this._masterPage=mp;
+      var mSlice=mlist.slice(mp*ps,(mp+1)*ps);
+      tb.innerHTML=mt?mSlice.map(function(r,i){ return makeRow(r,mp*ps+i); }).join(''):empty;
+      self._renderPagination(mt,mp,ps,'emp-pgn','master');
     }
 
-    // — Active Employees: filtered active, with pagination —
+    // — Active Employees: paginated —
     var tb2=document.getElementById('emp-tbody2');
     if(tb2){
       var alist=this._filteredActive(), at=alist.length;
-      if(reset) this._loaded=0;
-      var batch=Math.min(this._loaded+this._batch, at);
-      this._loaded=batch;
       var cnt2=document.getElementById('emp-cnt2'); if(cnt2) cnt2.textContent=at+' of '+active.length;
-      var rows=at?alist.slice(0,batch).map(makeRow).join(''):empty;
-      if(at&&batch<at) rows+='<tr class="load-more-row"><td colspan="6"><button class="btn btn-secondary" onclick="EmpAgent.loadMore()" style="width:100%">&#8595; Load more ('+at+' total, showing '+batch+')</button></td></tr>';
-      tb2.innerHTML=rows;
+      var ap=this._activePage, ps2=this._pageSize;
+      ap=Math.min(ap, at>0?Math.ceil(at/ps2)-1:0); this._activePage=ap;
+      var aSlice=alist.slice(ap*ps2,(ap+1)*ps2);
+      tb2.innerHTML=at?aSlice.map(function(r,i){ return makeRow(r,ap*ps2+i); }).join(''):empty;
+      self._renderPagination(at,ap,ps2,'emp-pgn2','active');
     }
   },
-  loadMore:function(){
-    var list=this._filteredActive(), t=list.length;
-    var newBatch=Math.min(this._loaded+this._batch,t);
-    this._loaded=newBatch;
-    var tb2=document.getElementById('emp-tbody2'); if(!tb2) return;
-    var last=tb2.querySelector('.load-more-row'); if(last) last.remove();
-    var licB=function(l){ var m={PSBD:'bp',SIRA:'bs',NIL:'bn',OTHER:'bo'}; return '<span class="badge '+(m[l]||'bn')+'">'+esc(l||'NIL')+'</span>'; };
-    var prev=this._loaded-this._batch;
-    var rows=list.slice(prev,newBatch).map(function(r,i){
-      var id=esc(r.ID||''), nm=esc(r.NAME||'—');
-      return '<tr>'+
-        '<td style="color:var(--muted2);font-size:10px">'+(prev+i+1)+'</td>'+
-        '<td><span class="pph" title="PP: '+esc(r['PASSPORT NO']||'N/A')+'">'+id+'</span></td>'+
-        '<td style="font-weight:600">'+nm.substring(0,26)+(nm.length>26?'&hellip;':'')+'</td>'+
-        '<td>'+licB(r['LIC AUTH']||'NIL')+'</td>'+
-        '<td class="eid-cell" id="eid-cell-'+id+'"><span id="eid-text-'+id+'" style="cursor:pointer" onclick="EmpAgent.editEID(\''+id+'\')">'+esc(r['EID NO']||'—')+'</span></td>'+
-        '<td><div class="act-btns">'+
-          '<button class="btn btn-secondary btn-icon btn-sm" data-action="view-emp" data-id="'+id+'" title="View Details">&#128100;</button>'+
-          '<button class="btn btn-secondary btn-icon btn-sm" data-action="edit-emp" data-id="'+id+'" title="Edit">&#9998;</button>'+
-          '<button class="btn btn-danger btn-icon btn-sm" data-action="del-emp" data-id="'+id+'" data-name="'+nm+'" title="Delete">&#128465;</button>'+
-        '</div></td></tr>';
-    }).join('');
-    if(newBatch<t) rows+='<tr class="load-more-row"><td colspan="6"><button class="btn btn-secondary" onclick="EmpAgent.loadMore()" style="width:100%">&#8595; Load more ('+t+' total, showing '+newBatch+')</button></td></tr>';
-    tb2.insertAdjacentHTML('beforeend',rows);
+  goPage:function(table,page){
+    if(table==='master') this._masterPage=page;
+    else this._activePage=page;
+    this.render(false);
+  },
+  _renderPagination:function(total,page,pageSize,pgnId,table){
+    var pgn=document.getElementById(pgnId); if(!pgn) return;
+    if(total<=pageSize){ pgn.innerHTML=''; return; }
+    var totalPages=Math.ceil(total/pageSize);
+    var from=page*pageSize+1, to=Math.min((page+1)*pageSize,total);
+    var btn=function(p,label,active,disabled){
+      return '<button class="pgbtn'+(active?' active':'')+(disabled?' disabled':'')+'" '+(disabled?'disabled':'')+' onclick="EmpAgent.goPage(\''+table+'\','+p+')">'+label+'</button>';
+    };
+    var html=btn(page-1,'&#8592;',false,page===0);
+    // build page list with ellipsis
+    var pages=[];
+    if(totalPages<=7){ for(var i=0;i<totalPages;i++) pages.push(i); }
+    else{
+      pages=[0];
+      if(page>3) pages.push(-1);
+      for(var i=Math.max(1,page-2);i<=Math.min(totalPages-2,page+2);i++) pages.push(i);
+      if(page<totalPages-4) pages.push(-1);
+      pages.push(totalPages-1);
+    }
+    pages.forEach(function(p){
+      html+= p===-1
+        ? '<span style="padding:0 3px;color:var(--muted2);line-height:28px">…</span>'
+        : btn(p,p+1,p===page,false);
+    });
+    html+='<span style="font-size:11px;color:var(--muted);padding:0 8px;white-space:nowrap">'+from+'–'+to+' / '+total+'</span>';
+    html+=btn(page+1,'&#8594;',false,page===totalPages-1);
+    pgn.innerHTML=html;
   },
   sortBy:function(col){
     if(this._sort.col===col) this._sort.dir=this._sort.dir==='asc'?'desc':'asc';
