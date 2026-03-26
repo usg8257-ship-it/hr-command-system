@@ -681,26 +681,11 @@ function generateExperienceLetterForEmp(empId) {
     }
     if (!emp) return {success:false, error:'Employee ' + empId + ' not found in Deletion_Log'};
 
-    // Duplicate check — skip if Experience Letter already logged for this EMP_ID
-    var docSh = SS.getSheetByName(TABS.HR_DOCS);
-    if (docSh) {
-      var docVals = docSh.getDataRange().getValues();
-      var dHdrs  = docVals[0].map(function(h){ return String(h).trim(); });
-      var eCol   = dHdrs.indexOf('EMP_ID'), tCol = dHdrs.indexOf('LETTER_TYPE');
-      for (var k = 1; k < docVals.length; k++) {
-        if (String(docVals[k][eCol]).trim() === String(empId).trim() &&
-            String(docVals[k][tCol]).trim() === 'Experience Letter') {
-          return {success:false, alreadyExists:true,
-                  error:'Experience Letter already issued for ' + empId};
-        }
-      }
-    }
-
     // Get template Drive ID from AppConfig
     var cfg = getConfig();
-    var templateId = String(cfg['LTEMPL_EXPERIENCE_LETTER_DRIVE'] || '').trim();
+    var templateId = String(cfg['EXP_LETTER_TEMPLATE_ID'] || '').trim();
     if (!templateId) return {success:false,
-      error:'Experience Letter template not configured. Go to Setup → HR Letter Templates → Experience Letter and enter the Google Doc File ID.'};
+      error:'Experience Letter template not configured. Go to Setup → Experience Letter Template ID and enter the Google Doc File ID.'};
 
     // Build letter data
     var cleanName = emp.FULL_NAME.trim().replace(/\s+/g,' ');

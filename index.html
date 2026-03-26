@@ -338,98 +338,17 @@
           <button class="btn btn-navy" style="margin-top:11px" onclick="CFG.save()">&#128190; Save Config</button>
         </div>
         <div class="setup-step" style="border-left:3px solid var(--teal)">
-          <div class="step-num" style="background:var(--teal)">2</div><h3>&#128221; HR Letter Templates</h3>
-          <p style="margin-bottom:10px">Configure a template per letter type. Use a Google Doc (Drive File ID) for formatted PDFs, or type the body directly. Placeholders auto-fill from employee records.</p>
-          <div style="background:rgba(0,201,184,.06);border:1px solid rgba(0,201,184,.2);border-radius:7px;padding:9px 13px;margin-bottom:11px;font-size:11px;color:var(--muted)">
-            <strong style="color:var(--navy)">Placeholders:</strong>
-            {NAME} {EMP_ID} {DESIGNATION} {PASSPORT_NO} {COMPANY} {ENTITY} {DATE_OF_JOIN} {SALARY} {DATE} {REF_NO} {ISSUED_BY} {HR_OFFICER} {HR_DESIGNATION}
-            &nbsp;&nbsp;<span style="color:var(--teal);font-weight:600">Experience Letter extras:</span> {{FIRSTNAME}} {{ID}} {{DOJ}} {{DOL}}
+          <div class="step-num" style="background:var(--teal)">2</div><h3>&#128196; Experience Letter Template</h3>
+          <p style="margin-bottom:10px">Paste the Google Doc File ID of your Experience Letter template. Placeholders will be replaced automatically when generating letters.</p>
+          <div style="background:rgba(0,201,184,.06);border:1px solid rgba(0,201,184,.2);border-radius:7px;padding:9px 13px;margin-bottom:13px;font-size:11px;color:var(--muted)">
+            <strong style="color:var(--navy)">Supported placeholders:</strong>
+            {{NAME}} {{FIRSTNAME}} {{EMP_ID}} {{ID}} {{DESIGNATION}} {{DOJ}} {{DOL}} {{DATE}} {{REF_NO}} {{HR_OFFICER}} {{HR_DESIGNATION}} {{COMPANY}}
           </div>
-          <div class="setup-ltpl-wrap">
-          <div class="setup-ltpl" id="ltpl-WARNING_LETTER">
-            <div class="setup-ltpl-hdr" onclick="this.parentElement.classList.toggle('open')">
-              <span>Warning Letter</span><span class="setup-ltpl-arrow">&#9660;</span>
+          <div class="fgrid">
+            <div class="fg full">
+              <label class="flabel">Experience Letter Template ID <span style="font-size:10px;font-weight:400;color:var(--muted)">(Google Doc File ID)</span></label>
+              <input class="fi" id="cfg-exp-tmpl" placeholder="e.g. 1txyu-E1QmjTFM1jNEPAeB599oLBdcjJ3tM0NPcL5eC0" style="font-family:monospace;font-size:12px"/>
             </div>
-            <div class="setup-ltpl-body">
-              <div class="fgrid" style="margin-top:9px">
-                <div class="fg full"><label class="flabel">Google Doc File ID <span style="font-size:10px;font-weight:400;color:var(--muted)">(optional)</span></label>
-                  <input class="fi" id="ltcfg-drive-WARNING_LETTER" placeholder="Google Doc File ID..." style="font-family:monospace;font-size:11px"/></div>
-                <div class="fg full"><label class="flabel">In-App Letter Body <span style="font-size:10px;font-weight:400;color:var(--muted)">(used if no Drive ID)</span></label>
-                  <textarea class="fta" id="ltcfg-body-WARNING_LETTER" placeholder="Use: {NAME} {EMP_ID} {DESIGNATION} {COMPANY} {ENTITY} {DATE_OF_JOIN} {PASSPORT_NO} {SALARY} {DATE} {REF_NO} {ISSUED_BY} {HR_OFFICER}" style="min-height:100px;font-family:monospace;font-size:11.5px"></textarea></div>
-              </div>
-              <button class="btn btn-navy btn-sm" style="margin-top:8px" onclick="CFG.saveLetterTemplate('Warning Letter')">&#128190; Save Warning Letter Template</button>
-            </div>
-          </div>
-          <div class="setup-ltpl" id="ltpl-EXPERIENCE_LETTER">
-            <div class="setup-ltpl-hdr" onclick="this.parentElement.classList.toggle('open')">
-              <span>Experience Letter</span><span class="setup-ltpl-arrow">&#9660;</span>
-            </div>
-            <div class="setup-ltpl-body">
-              <div class="fgrid" style="margin-top:9px">
-                <div class="fg full"><label class="flabel">Google Doc File ID <span style="font-size:10px;font-weight:400;color:var(--muted)">(optional)</span></label>
-                  <input class="fi" id="ltcfg-drive-EXPERIENCE_LETTER" placeholder="Google Doc File ID..." style="font-family:monospace;font-size:11px"/></div>
-                <div class="fg full"><label class="flabel">In-App Letter Body <span style="font-size:10px;font-weight:400;color:var(--muted)">(used if no Drive ID)</span></label>
-                  <textarea class="fta" id="ltcfg-body-EXPERIENCE_LETTER" placeholder="Use: {NAME} {EMP_ID} {DESIGNATION} {COMPANY} {ENTITY} {DATE_OF_JOIN} {PASSPORT_NO} {SALARY} {DATE} {REF_NO} {ISSUED_BY} {HR_OFFICER}" style="min-height:100px;font-family:monospace;font-size:11.5px"></textarea></div>
-              </div>
-              <button class="btn btn-navy btn-sm" style="margin-top:8px" onclick="CFG.saveLetterTemplate('Experience Letter')">&#128190; Save Experience Letter Template</button>
-            </div>
-          </div>
-          <div class="setup-ltpl" id="ltpl-SALARY_CERTIFICATE">
-            <div class="setup-ltpl-hdr" onclick="this.parentElement.classList.toggle('open')">
-              <span>Salary Certificate</span><span class="setup-ltpl-arrow">&#9660;</span>
-            </div>
-            <div class="setup-ltpl-body">
-              <div class="fgrid" style="margin-top:9px">
-                <div class="fg full"><label class="flabel">Google Doc File ID <span style="font-size:10px;font-weight:400;color:var(--muted)">(optional)</span></label>
-                  <input class="fi" id="ltcfg-drive-SALARY_CERTIFICATE" placeholder="Google Doc File ID..." style="font-family:monospace;font-size:11px"/></div>
-                <div class="fg full"><label class="flabel">In-App Letter Body <span style="font-size:10px;font-weight:400;color:var(--muted)">(used if no Drive ID)</span></label>
-                  <textarea class="fta" id="ltcfg-body-SALARY_CERTIFICATE" placeholder="Use: {NAME} {EMP_ID} {DESIGNATION} {COMPANY} {ENTITY} {DATE_OF_JOIN} {PASSPORT_NO} {SALARY} {DATE} {REF_NO} {ISSUED_BY} {HR_OFFICER}" style="min-height:100px;font-family:monospace;font-size:11.5px"></textarea></div>
-              </div>
-              <button class="btn btn-navy btn-sm" style="margin-top:8px" onclick="CFG.saveLetterTemplate('Salary Certificate')">&#128190; Save Salary Certificate Template</button>
-            </div>
-          </div>
-          <div class="setup-ltpl" id="ltpl-EMPLOYMENT_CERTIFICATE">
-            <div class="setup-ltpl-hdr" onclick="this.parentElement.classList.toggle('open')">
-              <span>Employment Certificate</span><span class="setup-ltpl-arrow">&#9660;</span>
-            </div>
-            <div class="setup-ltpl-body">
-              <div class="fgrid" style="margin-top:9px">
-                <div class="fg full"><label class="flabel">Google Doc File ID <span style="font-size:10px;font-weight:400;color:var(--muted)">(optional)</span></label>
-                  <input class="fi" id="ltcfg-drive-EMPLOYMENT_CERTIFICATE" placeholder="Google Doc File ID..." style="font-family:monospace;font-size:11px"/></div>
-                <div class="fg full"><label class="flabel">In-App Letter Body <span style="font-size:10px;font-weight:400;color:var(--muted)">(used if no Drive ID)</span></label>
-                  <textarea class="fta" id="ltcfg-body-EMPLOYMENT_CERTIFICATE" placeholder="Use: {NAME} {EMP_ID} {DESIGNATION} {COMPANY} {ENTITY} {DATE_OF_JOIN} {PASSPORT_NO} {SALARY} {DATE} {REF_NO} {ISSUED_BY} {HR_OFFICER}" style="min-height:100px;font-family:monospace;font-size:11.5px"></textarea></div>
-              </div>
-              <button class="btn btn-navy btn-sm" style="margin-top:8px" onclick="CFG.saveLetterTemplate('Employment Certificate')">&#128190; Save Employment Certificate Template</button>
-            </div>
-          </div>
-          <div class="setup-ltpl" id="ltpl-NOC_LETTER">
-            <div class="setup-ltpl-hdr" onclick="this.parentElement.classList.toggle('open')">
-              <span>NOC Letter</span><span class="setup-ltpl-arrow">&#9660;</span>
-            </div>
-            <div class="setup-ltpl-body">
-              <div class="fgrid" style="margin-top:9px">
-                <div class="fg full"><label class="flabel">Google Doc File ID <span style="font-size:10px;font-weight:400;color:var(--muted)">(optional)</span></label>
-                  <input class="fi" id="ltcfg-drive-NOC_LETTER" placeholder="Google Doc File ID..." style="font-family:monospace;font-size:11px"/></div>
-                <div class="fg full"><label class="flabel">In-App Letter Body <span style="font-size:10px;font-weight:400;color:var(--muted)">(used if no Drive ID)</span></label>
-                  <textarea class="fta" id="ltcfg-body-NOC_LETTER" placeholder="Use: {NAME} {EMP_ID} {DESIGNATION} {COMPANY} {ENTITY} {DATE_OF_JOIN} {PASSPORT_NO} {SALARY} {DATE} {REF_NO} {ISSUED_BY} {HR_OFFICER}" style="min-height:100px;font-family:monospace;font-size:11.5px"></textarea></div>
-              </div>
-              <button class="btn btn-navy btn-sm" style="margin-top:8px" onclick="CFG.saveLetterTemplate('NOC Letter')">&#128190; Save NOC Letter Template</button>
-            </div>
-          </div>
-          <div class="setup-ltpl" id="ltpl-OTHERS">
-            <div class="setup-ltpl-hdr" onclick="this.parentElement.classList.toggle('open')">
-              <span>Others</span><span class="setup-ltpl-arrow">&#9660;</span>
-            </div>
-            <div class="setup-ltpl-body">
-              <div class="fgrid" style="margin-top:9px">
-                <div class="fg full"><label class="flabel">Google Doc File ID <span style="font-size:10px;font-weight:400;color:var(--muted)">(optional)</span></label>
-                  <input class="fi" id="ltcfg-drive-OTHERS" placeholder="Google Doc File ID..." style="font-family:monospace;font-size:11px"/></div>
-                <div class="fg full"><label class="flabel">In-App Letter Body <span style="font-size:10px;font-weight:400;color:var(--muted)">(used if no Drive ID)</span></label>
-                  <textarea class="fta" id="ltcfg-body-OTHERS" placeholder="Use: {NAME} {EMP_ID} {DESIGNATION} {COMPANY} {ENTITY} {DATE_OF_JOIN} {PASSPORT_NO} {SALARY} {DATE} {REF_NO} {ISSUED_BY} {HR_OFFICER}" style="min-height:100px;font-family:monospace;font-size:11.5px"></textarea></div>
-              </div>
-              <button class="btn btn-navy btn-sm" style="margin-top:8px" onclick="CFG.saveLetterTemplate('Others')">&#128190; Save Others Template</button>
-            </div>
-          </div>
           </div>
         </div>
         <div class="setup-step" style="border-left:3px solid var(--gold)">

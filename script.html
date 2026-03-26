@@ -79,10 +79,6 @@ function genExpLetter(empId, name) {
   GAS.generateExperienceLetterForEmp(empId, function(r) {
     if(btn){ btn.disabled = false; btn.innerHTML = '&#128196; Exp Letter'; }
     if(!r) { toast('No response from server','error'); return; }
-    if(r.alreadyExists) {
-      toast('Already issued for '+esc(name||empId)+'. Check HR Letters.','info');
-      return;
-    }
     if(!r.success) { toast('Error: '+r.error,'error'); return; }
     if(r.pdf) _downloadPdf(r.pdf,
       'Experience_Letter_'+(name||empId).replace(/\s+/g,'_')+'.pdf');
@@ -345,7 +341,6 @@ var GAS={
   getActivityLog:        function(cb)    { GAS.call('getActivityLog',        [],cb); },
   getOfferLetterTemplate:function(type,cb){ GAS.call('getOfferLetterTemplate',[type],cb); },
   saveTemplateFileIds:   function(p,s,cb){ GAS.call('saveTemplateFileIds',  [p,s],cb); },
-  saveLetterTemplate:    function(t,d,b,cb){ GAS.call('saveLetterTemplate',   [t,d,b],cb); },
   generateAndIssueLetter:function(d,cb)    { GAS.call('generateAndIssueLetter',[d],   cb); },
   // User management
   getUsers:              function(cb)    { GAS.call('getUsers',              [],    cb); },
@@ -1048,15 +1043,16 @@ var CFG={
     s('cfg-co', APP.config.company_name);
     s('cfg-off',APP.config.hr_officer);
     s('cfg-des',APP.config.designation);
+    s('cfg-exp-tmpl', APP.config.EXP_LETTER_TEMPLATE_ID);
     s('cfg-psbd-id', APP.config.psbd_template_id);
     s('cfg-sira-id', APP.config.sira_template_id);
-    this.loadLetterTemplates();
   },
   save:function(){
     var cfg={
-      company_name: document.getElementById('cfg-co').value.trim()||'United Group Holding',
-      hr_officer:   document.getElementById('cfg-off').value.trim()||'HR Manager',
-      designation:  document.getElementById('cfg-des').value.trim()||'HR Manager'
+      company_name:          document.getElementById('cfg-co').value.trim()||'United Group Holding',
+      hr_officer:            document.getElementById('cfg-off').value.trim()||'HR Manager',
+      designation:           document.getElementById('cfg-des').value.trim()||'HR Manager',
+      EXP_LETTER_TEMPLATE_ID:(document.getElementById('cfg-exp-tmpl')||{}).value||''
     };
     GAS.saveConfig(cfg,function(result){ if(!result||!result.success){ toast('Error saving config','error'); return; } APP.config=Object.assign(APP.config,cfg); toast('Config saved','success'); });
   },
@@ -1070,27 +1066,6 @@ var CFG={
       APP.config.sira_template_id = siraId.trim();
       OL_CACHE = {}; // clear template cache so fresh fetch happens
       toast('Template IDs saved! Offer Letters are ready.','success');
-    });
-  },
-  loadLetterTemplates:function(){
-    var TYPES=['Warning Letter','Experience Letter','Salary Certificate','Employment Certificate','NOC Letter','Others'];
-    TYPES.forEach(function(type){
-      var key=type.toUpperCase().replace(/[^A-Z0-9]/g,'_');
-      var driveEl=document.getElementById('ltcfg-drive-'+key);
-      var bodyEl =document.getElementById('ltcfg-body-' +key);
-      if(driveEl) driveEl.value=APP.config['LTEMPL_'+key+'_DRIVE']||'';
-      if(bodyEl)  bodyEl.value =APP.config['LTEMPL_'+key+'_BODY'] ||'';
-    });
-  },
-  saveLetterTemplate:function(type){
-    var key=type.toUpperCase().replace(/[^A-Z0-9]/g,'_');
-    var driveId =(document.getElementById('ltcfg-drive-'+key)||{}).value||'';
-    var bodyText=(document.getElementById('ltcfg-body-' +key)||{}).value||'';
-    GAS.saveLetterTemplate(type,driveId.trim(),bodyText.trim(),function(result){
-      if(!result||!result.success){ toast('Error: '+(result?result.error:'Unknown'),'error'); return; }
-      var patch={}; patch['LTEMPL_'+key+'_DRIVE']=driveId.trim(); patch['LTEMPL_'+key+'_BODY']=bodyText.trim();
-      APP.config=Object.assign(APP.config,patch);
-      toast(type+' template saved','success');
     });
   }
 };
