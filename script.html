@@ -2006,7 +2006,7 @@ var ResignationAgent = {
     // Build set of EMP_IDs that already have an Experience Letter
     var issuedSet = {};
     APP.hrDocs.forEach(function(l){
-      if(l.LETTER_TYPE === 'Experience Letter') issuedSet[l.EMP_ID] = true;
+      if(l.LETTER_TYPE === 'Experience Letter') issuedSet[l.EMP_ID] = false;
     });
     var self = this;
     tb.innerHTML = data.map(function(r, idx) {
