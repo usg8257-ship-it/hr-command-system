@@ -7,20 +7,33 @@
 var SS = SpreadsheetApp.getActiveSpreadsheet();
 
 var TABS = {
-  MASTER:     'Master Data',
-  ONBOARDING: 'Onboarding',
-  HR_DOCS:    'HR Docs Tracker',
-  DEL_LOG:    'Deletion_Log',
-  ACTIVE_MP:  'Active_Manpower',
-  SUMMARY:    'Summary',
-  CONFIG:     'AppConfig',
-  ACTIVITY:   'ActivityLog'
+  MASTER:       'Master Data',
+  ONBOARDING:   'Onboarding',
+  HR_DOCS:      'HR Docs Tracker',
+  DEL_LOG:      'Deletion_Log',
+  ACTIVE_MP:    'Active_Manpower',
+  SUMMARY:      'Summary',
+  CONFIG:       'AppConfig',
+  ACTIVITY:     'ActivityLog',
+  USERS:        'Users',
+  LEAVE:        'Leave',
+  JOBS:         'Jobs',
+  APPLICATIONS: 'Applications'
 };
 
 // ============================================================
 // WEB APP ENTRY
 // ============================================================
 function doGet(e) {
+  var view = (e && e.parameter && e.parameter.view) || '';
+  if (view === 'jobs') {
+    return HtmlService
+      .createTemplateFromFile('jobs-portal')
+      .evaluate()
+      .setTitle('Careers — United Group Holding')
+      .addMetaTag('viewport','width=device-width, initial-scale=1.0')
+      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+  }
   return HtmlService
     .createTemplateFromFile('index')
     .evaluate()
@@ -33,14 +46,93 @@ function include(filename) {
 }
 
 // ============================================================
+// AUTH — PROFILE, ROLE GUARD, ENTITY FILTER
+// ============================================================
+function getMyProfile() {
+  var email = '';
+  try { email = Session.getActiveUser().getEmail().toLowerCase().trim(); } catch(e2) {}
+  if (!email) return {email:'',name:'',role:'NONE',entities:[],active:false};
+
+  // Cache per-email for 60 seconds to reduce sheet reads
+  var cache = CacheService.getScriptCache();
+  var cacheKey = 'profile_' + email;
+  var cached = cache.get(cacheKey);
+  if (cached) { try { return JSON.parse(cached); } catch(e2) {} }
+
+  // Ensure Users sheet exists
+  var sh = getOrCreate(TABS.USERS, ['EMAIL','DISPLAY_NAME','ROLE','ENTITIES','ACTIVE']);
+  var vals = sh.getDataRange().getValues();
+
+  // Bootstrap: if only the header row exists, make first user SUPER_ADMIN
+  if (vals.length === 1) {
+    var lock = LockService.getScriptLock();
+    lock.tryLock(3000);
+    try {
+      // Re-read inside lock to prevent race
+      var vals2 = sh.getDataRange().getValues();
+      if (vals2.length === 1) {
+        sh.appendRow([email, email.split('@')[0], 'SUPER_ADMIN', 'ALL', 'TRUE']);
+        vals = sh.getDataRange().getValues();
+      } else {
+        vals = vals2;
+      }
+    } finally { lock.releaseLock(); }
+  }
+
+  var hdrs = vals[0].map(function(h){ return String(h).trim(); });
+  var emailIdx = hdrs.indexOf('EMAIL');
+  for (var i = 1; i < vals.length; i++) {
+    var rowEmail = String(vals[i][emailIdx]||'').toLowerCase().trim();
+    if (rowEmail === email) {
+      var role     = String(vals[i][hdrs.indexOf('ROLE')]||'').trim();
+      var entRaw   = String(vals[i][hdrs.indexOf('ENTITIES')]||'').trim();
+      var active   = String(vals[i][hdrs.indexOf('ACTIVE')]||'').toUpperCase();
+      var name     = String(vals[i][hdrs.indexOf('DISPLAY_NAME')]||'').trim();
+      if (active === 'FALSE' || active === 'NO') {
+        return {email:email,name:name,role:'NONE',entities:[],active:false};
+      }
+      var entities = entRaw.toUpperCase() === 'ALL' ? 'ALL' : entRaw.split(',').map(function(e){ return e.trim(); }).filter(Boolean);
+      var profile = {email:email, name:name||email.split('@')[0], role:role, entities:entities, active:true};
+      cache.put(cacheKey, JSON.stringify(profile), 60);
+      return profile;
+    }
+  }
+  return {email:email,name:'',role:'NONE',entities:[],active:false};
+}
+
+function _requireRole(allowedRoles) {
+  var profile = getMyProfile();
+  if (!profile || allowedRoles.indexOf(profile.role) < 0) {
+    throw new Error('ACCESS_DENIED: Role ' + (profile ? profile.role : 'NONE') + ' not permitted');
+  }
+  return profile;
+}
+
+function _filterByEntity(rows, profile, entityField) {
+  var field = entityField || 'ENTITY';
+  if (!profile || profile.entities === 'ALL') return rows;
+  var allowed = profile.entities;
+  return rows.filter(function(r) {
+    return allowed.indexOf(normaliseEntity(r[field])) >= 0;
+  });
+}
+
+// Server-side ID generator (mirrors frontend genId)
+function genId_(prefix) {
+  return (prefix||'ID') + '-' + new Date().getTime().toString().slice(-8);
+}
+
+// ============================================================
 // LOAD ALL DATA
 // ============================================================
 function loadAllData() {
+  var profile = getMyProfile();
   return {
-    master:     getMasterData(),
+    user:       profile,
+    master:     getMasterData(profile),
     deletions:  getDeletionLog(),
-    onboarding: getOnboarding(),
-    hrDocs:     getHRDocs(),
+    onboarding: getOnboarding(profile),
+    hrDocs:     getHRDocs(profile),
     summary:    getSummary(),
     config:     getConfig()
   };
@@ -68,7 +160,7 @@ function saveConfig(cfg) {
 // ============================================================
 // MASTER DATA
 // ============================================================
-function getMasterData() {
+function getMasterData(profile) {
   try {
     var sh = SS.getSheetByName(TABS.MASTER);
     if (!sh) return {success:false, error:'Master Data sheet not found'};
@@ -80,6 +172,14 @@ function getMasterData() {
       var row = {};
       for (var j = 0; j < headers.length; j++) row[headers[j]] = vals[i][j] !== undefined ? String(vals[i][j]) : '';
       rows.push(cleanMasterRow(row));
+    }
+    var p = profile || getMyProfile();
+    // EMPLOYEE role: only return their own record
+    if (p.role === 'EMPLOYEE') {
+      var empEmail = p.email.toLowerCase();
+      rows = rows.filter(function(r){ return String(r.EMAIL||'').toLowerCase().trim() === empEmail; });
+    } else {
+      rows = _filterByEntity(rows, p);
     }
     return {success:true, data:rows};
   } catch(e) { return {success:false, error:e.message}; }
@@ -187,17 +287,27 @@ function updateEmployee(data) {
   } catch(e){ return {success:false,error:e.message}; }
 }
 
-function deleteEmployee(empId, reason, deletedBy) {
+function deleteEmployee(empId, reason) {
   try {
+    var profile = _requireRole(['SUPER_ADMIN','HR_OFFICER']);
+    var deletedBy = profile.email;
     var sh=SS.getSheetByName(TABS.MASTER); if(!sh) return {success:false,error:'Sheet not found'};
     var vals=sh.getDataRange().getValues();
     var hdrs=vals[0].map(function(h){ return String(h).trim(); });
     var idCol=hdrs.indexOf('ID'), stsCol=hdrs.indexOf('STATUS');
     var ppCol=hdrs.indexOf('PASSPORT NO'), nmCol=hdrs.indexOf('NAME');
+    var desigCol=hdrs.indexOf('DESIGNATION'), joinCol=hdrs.indexOf('DATE OF JOIN'), entCol=hdrs.indexOf('ENTITY');
     for(var i=1;i<vals.length;i++){
       if(String(vals[i][idCol]).trim()===String(empId).trim()){
-        var delSh=getOrCreate(TABS.DEL_LOG,['LOG_ID','EMP_ID','FULL_NAME','PASSPORT_NO','REASON','DELETED_DATE','DELETED_BY']);
-        delSh.appendRow(['DEL-'+new Date().getTime(),empId,vals[i][nmCol]||'',vals[i][ppCol]||'',reason,formatDate(new Date()),deletedBy||'HR']);
+        var delSh=getOrCreate(TABS.DEL_LOG,['LOG_ID','EMP_ID','FULL_NAME','PASSPORT_NO','REASON','DELETED_DATE','DELETED_BY','DESIGNATION','DATE_OF_JOIN','GROUP']);
+        delSh.appendRow([
+          'DEL-'+new Date().getTime(), empId,
+          vals[i][nmCol]||'', vals[i][ppCol]||'',
+          reason, formatDate(new Date()), deletedBy,
+          desigCol>=0 ? vals[i][desigCol]||'' : '',
+          joinCol>=0  ? vals[i][joinCol]||''  : '',
+          entCol>=0   ? normaliseEntity(vals[i][entCol]) : ''
+        ]);
         if(stsCol>=0) sh.getRange(i+1,stsCol+1).setValue('DELETED');
         logActivity('EmployeeAgent','DELETE',empId+'|'+reason,'SUCCESS');
         return {success:true};
@@ -229,12 +339,10 @@ function getDeletionLog() {
   } catch(e){ return {success:false,error:e.message}; }
 }
 
-// ============================================================
-// ONBOARDING
-// ============================================================
-function getOnboarding() {
+// Returns Deletion_Log sorted newest-first, enriched with extra fields
+function getResignations() {
   try {
-    var sh=getOrCreate(TABS.ONBOARDING,['OB_ID','FULL_NAME','PASSPORT_NO','POSITION_TYPE','MOBILE','VISA_STATUS','EXP_JOIN_DATE','DATE_ADDED','STATUS','NOTES']);
+    var sh=SS.getSheetByName(TABS.DEL_LOG); if(!sh) return {success:true,data:[]};
     var vals=sh.getDataRange().getValues();
     if(vals.length<2) return {success:true,data:[]};
     var hdrs=vals[0].map(function(h){ return String(h).trim(); });
@@ -243,6 +351,28 @@ function getOnboarding() {
       var row={}; for(var j=0;j<hdrs.length;j++) row[hdrs[j]]=String(vals[i][j]||'');
       rows.push(row);
     }
+    // Sort newest DELETED_DATE first (DD/MM/YYYY or any comparable string — use row index as fallback)
+    rows.reverse();
+    return {success:true,data:rows};
+  } catch(e){ return {success:false,error:e.message}; }
+}
+
+// ============================================================
+// ONBOARDING
+// ============================================================
+function getOnboarding(profile) {
+  try {
+    var sh=getOrCreate(TABS.ONBOARDING,['OB_ID','FULL_NAME','PASSPORT_NO','POSITION_TYPE','MOBILE','VISA_STATUS','EXP_JOIN_DATE','DATE_ADDED','STATUS','NOTES','ENTITY']);
+    var vals=sh.getDataRange().getValues();
+    if(vals.length<2) return {success:true,data:[]};
+    var hdrs=vals[0].map(function(h){ return String(h).trim(); });
+    var rows=[];
+    for(var i=1;i<vals.length;i++){
+      var row={}; for(var j=0;j<hdrs.length;j++) row[hdrs[j]]=String(vals[i][j]||'');
+      rows.push(row);
+    }
+    var p = profile || getMyProfile();
+    rows = _filterByEntity(rows, p);
     return {success:true,data:rows};
   } catch(e){ return {success:false,error:e.message}; }
 }
@@ -294,9 +424,9 @@ function transferToMaster(obId, empData) {
 // ============================================================
 // HR DOCS
 // ============================================================
-function getHRDocs() {
+function getHRDocs(profile) {
   try {
-    var sh=getOrCreate(TABS.HR_DOCS,['REF_NO','EMP_ID','EMP_NAME','LETTER_TYPE','ISSUE_DATE','ISSUED_BY','NOTES']);
+    var sh=getOrCreate(TABS.HR_DOCS,['REF_NO','EMP_ID','EMP_NAME','LETTER_TYPE','ISSUE_DATE','ISSUED_BY','NOTES','ENTITY']);
     var vals=sh.getDataRange().getValues();
     if(vals.length<2) return {success:true,data:[]};
     var hdrs=vals[0].map(function(h){ return String(h).trim(); });
@@ -305,6 +435,8 @@ function getHRDocs() {
       var row={}; for(var j=0;j<hdrs.length;j++) row[hdrs[j]]=String(vals[i][j]||'');
       rows.push(row);
     }
+    var p = profile || getMyProfile();
+    rows = _filterByEntity(rows, p);
     return {success:true,data:rows};
   } catch(e){ return {success:false,error:e.message}; }
 }
@@ -341,8 +473,10 @@ function getSummary() {
 // ============================================================
 function logActivity(agent,action,detail,status) {
   try {
-    var sh=getOrCreate(TABS.ACTIVITY,['TIMESTAMP','AGENT','ACTION','DETAIL','STATUS']);
-    sh.appendRow([new Date().toLocaleString(),agent,action,detail||'',status||'SUCCESS']);
+    var actorEmail = '';
+    try { actorEmail = Session.getActiveUser().getEmail(); } catch(e2) {}
+    var sh=getOrCreate(TABS.ACTIVITY,['TIMESTAMP','AGENT','ACTION','DETAIL','STATUS','EMAIL']);
+    sh.appendRow([new Date().toLocaleString(),agent,action,detail||'',status||'SUCCESS',actorEmail||agent]);
   } catch(e){}
 }
 
@@ -479,10 +613,476 @@ function generateAndIssueLetter(data) {
     var pdfBase64 = null;
     if (driveId)       pdfBase64 = _generateFromDriveTemplate(driveId, data, cfg);
     else if (bodyText) pdfBase64 = _generateFromTextTemplate(bodyText, data, cfg);
-    var sh = getOrCreate(TABS.HR_DOCS, ['REF_NO','EMP_ID','EMP_NAME','LETTER_TYPE','ISSUE_DATE','ISSUED_BY','NOTES']);
+    var sh = getOrCreate(TABS.HR_DOCS, ['REF_NO','EMP_ID','EMP_NAME','LETTER_TYPE','ISSUE_DATE','ISSUED_BY','NOTES','ENTITY']);
     sh.appendRow([data.REF_NO, data.EMP_ID, data.EMP_NAME, data.LETTER_TYPE,
-                  data.ISSUE_DATE, data.ISSUED_BY||'HR', data.NOTES||'']);
+                  data.ISSUE_DATE, data.ISSUED_BY||'HR', data.NOTES||'', data.ENTITY||'']);
     logActivity('LetterAgent', 'ISSUE', data.REF_NO + '--' + data.LETTER_TYPE, 'SUCCESS');
     return { success: true, pdf: pdfBase64 };
   } catch(e) { return { success: false, error: e.message }; }
+}
+
+// ============================================================
+// EXPERIENCE LETTER — for resigned / deleted employees
+// Template key reuses LTEMPL_EXPERIENCE_LETTER_DRIVE from Setup
+// Supports placeholders: {{DATE}} {{ID}} {{NAME}} {{FIRSTNAME}}
+//   {{DOJ}} {{DOL}} {{EMP_ID}} {{REF_NO}} {{DESIGNATION}}
+//   {{HR_OFFICER}} {{HR_DESIGNATION}} {{COMPANY}}
+// ============================================================
+function _generateExpLetter(templateId, data, cfg) {
+  var file = DriveApp.getFileById(templateId);
+  var copy = file.makeCopy('_EXP_TEMP_' + data.REF_NO);
+  try {
+    var doc  = DocumentApp.openById(copy.getId());
+    var body = doc.getBody();
+    body.setFontFamily('Tahoma');
+    body.setFontSize(12);
+    var map = {
+      '{{DATE}}': 'Date: ' +data.ISSUE_DATE  || formatDate(new Date()),
+      '{{ID}}':             data.EMP_ID      || '',
+      '{{NAME}}':           data.EMP_NAME    || '',
+      '{{FIRSTNAME}}':      data.FIRSTNAME   || '',
+      '{{DOJ}}':            data.DOJ         || '',
+      '{{DOL}}':            data.DOL         || '',
+      '{{EMP_ID}}':         data.EMP_ID      || '',
+      '{{REF_NO}}':         data.REF_NO      || '',
+      '{{DESIGNATION}}':    data.DESIGNATION || '',
+      '{{ISSUED_BY}}':      data.ISSUED_BY   || '',
+      '{{HR_OFFICER}}':     cfg.hr_officer   || 'HR Manager',
+      '{{HR_DESIGNATION}}': cfg.designation  || 'HR Manager',
+      '{{COMPANY}}':        cfg.company_name || 'United Group Holding'
+    };
+    Object.keys(map).forEach(function(k){ body.replaceText(k, map[k]); });
+    doc.saveAndClose();
+    var pdfBytes = DriveApp.getFileById(copy.getId()).getAs('application/pdf').getBytes();
+    return Utilities.base64Encode(pdfBytes);
+  } finally {
+    try { copy.setTrashed(true); } catch(e2) {}
+  }
+}
+
+function toProperCase(text) {
+  if (!text) return '';
+  return text.toLowerCase().replace(/\b\w/g, function(char) {
+    return char.toUpperCase();
+  });
+}
+
+function formatDate(date) {
+  // If date is provided and valid, use it; otherwise use current date
+  var d = date ? new Date(date) : new Date();
+  return Utilities.formatDate(d, Session.getScriptTimeZone(), "dd/MM/yyyy");
+}
+
+function generateExperienceLetterForEmp(empId) {
+  try {
+    _requireRole(['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER']);
+
+    // Read employee row from Deletion_Log
+    var sh = SS.getSheetByName(TABS.DEL_LOG);
+    if (!sh) return {success:false, error:'Deletion_Log sheet not found'};
+    var vals = sh.getDataRange().getValues();
+    if (vals.length < 2) return {success:false, error:'Deletion_Log is empty'};
+    var hdrs  = vals[0].map(function(h){ return String(h).trim(); });
+    var idCol = hdrs.indexOf('EMP_ID');
+    var emp   = null;
+    for (var i = 1; i < vals.length; i++) {
+      if (String(vals[i][idCol]).trim() === String(empId).trim()) {
+        emp = {};
+        for (var j = 0; j < hdrs.length; j++) emp[hdrs[j]] = String(vals[i][j]||'');
+        break;
+      }
+    }
+    if (!emp) return {success:false, error:'Employee ' + empId + ' not found in Deletion_Log'};
+
+    // Get template Drive ID from AppConfig
+    var cfg = getConfig();
+    var templateId = String(cfg['EXP_LETTER_TEMPLATE_ID'] || '').trim();
+    if (!templateId) return {success:false,
+      error:'Experience Letter template not configured. Go to Setup → Experience Letter Template ID and enter the Google Doc File ID.'};
+
+    // Build letter data
+    var cleanName = emp.FULL_NAME.trim().replace(/\s+/g,' ');
+    var firstName = toProperCase(cleanName.split(' ')[0]);
+    var refNo     = 'EXP-' + new Date().getTime().toString().slice(-8);
+    var letterData = {
+      REF_NO:      refNo,
+      EMP_ID:      empId,
+      EMP_NAME:    cleanName,
+      FIRSTNAME:   firstName,
+      DOJ:         emp.DATE_OF_JOIN || '',
+      DOL:         formatDate(emp.DELETED_DATE) || '',
+      DESIGNATION: emp.DESIGNATION  || '',
+      ISSUE_DATE:  formatDate(new Date()),
+      ISSUED_BY:   cfg.hr_officer   || 'HR'
+    };
+
+    var pdfBase64 = _generateExpLetter(templateId, letterData, cfg);
+
+    // Log to HR Docs Tracker
+    var hrSh = getOrCreate(TABS.HR_DOCS,
+      ['REF_NO','EMP_ID','EMP_NAME','LETTER_TYPE','ISSUE_DATE','ISSUED_BY','NOTES','ENTITY']);
+    hrSh.appendRow([
+      refNo, empId, cleanName, 'Experience Letter',
+      formatDate(new Date()), letterData.ISSUED_BY,
+      'DOJ: ' + letterData.DOJ + ' | LWD: ' + letterData.DOL,
+      emp.GROUP || emp.ENTITY || ''
+    ]);
+    logActivity('LetterAgent', 'EXP_LETTER', refNo + '--' + empId, 'SUCCESS');
+
+    return {success:true, pdf:pdfBase64, refNo:refNo, name:cleanName};
+  } catch(e) { return {success:false, error:e.message}; }
+}
+
+// ============================================================
+// USER MANAGEMENT (SUPER_ADMIN only)
+// ============================================================
+function getUsers() {
+  try {
+    _requireRole(['SUPER_ADMIN']);
+    var sh = getOrCreate(TABS.USERS, ['EMAIL','DISPLAY_NAME','ROLE','ENTITIES','ACTIVE']);
+    var vals = sh.getDataRange().getValues();
+    if (vals.length < 2) return {success:true, data:[]};
+    var hdrs = vals[0].map(function(h){ return String(h).trim(); });
+    var rows = [];
+    for (var i = 1; i < vals.length; i++) {
+      var row = {}; for (var j = 0; j < hdrs.length; j++) row[hdrs[j]] = String(vals[i][j]||'');
+      rows.push(row);
+    }
+    return {success:true, data:rows};
+  } catch(e) { return {success:false, error:e.message}; }
+}
+
+function saveUser(data) {
+  try {
+    _requireRole(['SUPER_ADMIN']);
+    if (!data.EMAIL) return {success:false, error:'Email required'};
+    var validRoles = ['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER','VIEWER','EMPLOYEE'];
+    if (validRoles.indexOf(data.ROLE) < 0) return {success:false, error:'Invalid role'};
+    var sh = getOrCreate(TABS.USERS, ['EMAIL','DISPLAY_NAME','ROLE','ENTITIES','ACTIVE']);
+    var vals = sh.getDataRange().getValues();
+    var hdrs = vals[0].map(function(h){ return String(h).trim(); });
+    var emailIdx = hdrs.indexOf('EMAIL');
+    var emailLower = String(data.EMAIL).toLowerCase().trim();
+    for (var i = 1; i < vals.length; i++) {
+      if (String(vals[i][emailIdx]||'').toLowerCase().trim() === emailLower) {
+        sh.getRange(i+1, 1, 1, hdrs.length).setValues([hdrs.map(function(h){ return data[h]!==undefined?data[h]:''; })]);
+        // Invalidate cache
+        try { CacheService.getScriptCache().remove('profile_' + emailLower); } catch(e2) {}
+        logActivity('UserMgmt','UPDATE', emailLower, 'SUCCESS');
+        return {success:true};
+      }
+    }
+    sh.appendRow([emailLower, data.DISPLAY_NAME||'', data.ROLE, data.ENTITIES||'ALL', data.ACTIVE||'TRUE']);
+    logActivity('UserMgmt','ADD', emailLower, 'SUCCESS');
+    return {success:true};
+  } catch(e) { return {success:false, error:e.message}; }
+}
+
+function deleteUser(email) {
+  try {
+    _requireRole(['SUPER_ADMIN']);
+    var sh = SS.getSheetByName(TABS.USERS); if (!sh) return {success:false, error:'Users sheet not found'};
+    var vals = sh.getDataRange().getValues();
+    var hdrs = vals[0].map(function(h){ return String(h).trim(); });
+    var emailIdx = hdrs.indexOf('EMAIL'), activeIdx = hdrs.indexOf('ACTIVE');
+    var emailLower = String(email).toLowerCase().trim();
+    for (var i = 1; i < vals.length; i++) {
+      if (String(vals[i][emailIdx]||'').toLowerCase().trim() === emailLower) {
+        if (activeIdx >= 0) sh.getRange(i+1, activeIdx+1).setValue('FALSE');
+        try { CacheService.getScriptCache().remove('profile_' + emailLower); } catch(e2) {}
+        logActivity('UserMgmt','DEACTIVATE', emailLower, 'SUCCESS');
+        return {success:true};
+      }
+    }
+    return {success:false, error:'User not found'};
+  } catch(e) { return {success:false, error:e.message}; }
+}
+
+// ============================================================
+// EMPLOYEE SELF-SERVICE
+// ============================================================
+function getMyEmployeeRecord() {
+  try {
+    var profile = _requireRole(['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER','VIEWER','EMPLOYEE']);
+    return getMasterData(profile);
+  } catch(e) { return {success:false, error:e.message}; }
+}
+
+function updateMyExpiryDates(data) {
+  try {
+    var profile = _requireRole(['EMPLOYEE']);
+    var ALLOWED = ['PASSPORT EXPIRY','EID EXPIRY','VISA EXPIRY','BIRTH DATE'];
+    var sh = SS.getSheetByName(TABS.MASTER); if (!sh) return {success:false, error:'Sheet not found'};
+    var vals = sh.getDataRange().getValues();
+    var hdrs = vals[0].map(function(h){ return String(h).trim(); });
+    var emailCol = hdrs.indexOf('EMAIL');
+    var email = profile.email.toLowerCase();
+    for (var i = 1; i < vals.length; i++) {
+      if (String(vals[i][emailCol]||'').toLowerCase().trim() === email) {
+        ALLOWED.forEach(function(field) {
+          var col = hdrs.indexOf(field);
+          if (col >= 0 && data[field] !== undefined && data[field] !== '') {
+            sh.getRange(i+1, col+1).setValue(data[field]);
+          }
+        });
+        logActivity('SelfService','UPDATE_EXPIRY', email, 'SUCCESS');
+        return {success:true};
+      }
+    }
+    return {success:false, error:'Your employee record was not found. Contact HR to link your email.'};
+  } catch(e) { return {success:false, error:e.message}; }
+}
+
+// Helper: find employee row by email
+function _getEmpByEmail(email) {
+  var sh = SS.getSheetByName(TABS.MASTER); if (!sh) return null;
+  var vals = sh.getDataRange().getValues();
+  var hdrs = vals[0].map(function(h){ return String(h).trim(); });
+  var emailCol = hdrs.indexOf('EMAIL');
+  if (emailCol < 0) return null;
+  var emailLower = String(email).toLowerCase().trim();
+  for (var i = 1; i < vals.length; i++) {
+    if (String(vals[i][emailCol]||'').toLowerCase().trim() === emailLower) {
+      var row = {}; for (var j = 0; j < hdrs.length; j++) row[hdrs[j]] = String(vals[i][j]||'');
+      return row;
+    }
+  }
+  return null;
+}
+
+// ============================================================
+// LEAVE MANAGEMENT
+// ============================================================
+function getLeave(empId) {
+  try {
+    var profile = _requireRole(['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER','VIEWER','EMPLOYEE']);
+    var sh = getOrCreate(TABS.LEAVE, ['LEAVE_ID','EMP_ID','EMP_NAME','LEAVE_TYPE','START_DATE','END_DATE','DAYS','STATUS','APPROVED_BY','NOTES','DATE_ADDED']);
+    var vals = sh.getDataRange().getValues();
+    if (vals.length < 2) return {success:true, data:[]};
+    var hdrs = vals[0].map(function(h){ return String(h).trim(); });
+    var rows = [];
+    for (var i = 1; i < vals.length; i++) {
+      var row = {}; for (var j = 0; j < hdrs.length; j++) row[hdrs[j]] = String(vals[i][j]||'');
+      rows.push(row);
+    }
+    if (profile.role === 'EMPLOYEE') {
+      var emp = _getEmpByEmail(profile.email);
+      if (!emp) return {success:true, data:[]};
+      rows = rows.filter(function(r){ return r.EMP_ID === emp.ID; });
+    } else if (empId) {
+      rows = rows.filter(function(r){ return r.EMP_ID === empId; });
+    } else if (profile.entities !== 'ALL') {
+      var masterRes = getMasterData(profile);
+      var allowedIds = {};
+      (masterRes.data||[]).forEach(function(e){ allowedIds[e.ID] = true; });
+      rows = rows.filter(function(r){ return allowedIds[r.EMP_ID]; });
+    }
+    return {success:true, data:rows};
+  } catch(e) { return {success:false, error:e.message}; }
+}
+
+function addLeave(data) {
+  try {
+    var profile = _requireRole(['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER','EMPLOYEE']);
+    if (profile.role === 'EMPLOYEE') {
+      var emp = _getEmpByEmail(profile.email);
+      if (!emp) return {success:false, error:'No linked employee record. Contact HR.'};
+      data.EMP_ID = emp.ID; data.EMP_NAME = emp.NAME;
+      data.STATUS = 'Pending';
+    }
+    data.LEAVE_ID = genId_('LV');
+    data.DATE_ADDED = formatDate(new Date());
+    if (!data.STATUS) data.STATUS = 'Pending';
+    var sh = getOrCreate(TABS.LEAVE, ['LEAVE_ID','EMP_ID','EMP_NAME','LEAVE_TYPE','START_DATE','END_DATE','DAYS','STATUS','APPROVED_BY','NOTES','DATE_ADDED']);
+    var hdrs = ['LEAVE_ID','EMP_ID','EMP_NAME','LEAVE_TYPE','START_DATE','END_DATE','DAYS','STATUS','APPROVED_BY','NOTES','DATE_ADDED'];
+    sh.appendRow(hdrs.map(function(h){ return data[h]||''; }));
+    logActivity('LeaveAgent','ADD', data.LEAVE_ID+'--'+data.EMP_ID, 'SUCCESS');
+    return {success:true, leaveId: data.LEAVE_ID};
+  } catch(e) { return {success:false, error:e.message}; }
+}
+
+function updateLeaveStatus(leaveId, status, notes) {
+  try {
+    var profile = _requireRole(['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER']);
+    var sh = SS.getSheetByName(TABS.LEAVE); if (!sh) return {success:false, error:'Leave sheet not found'};
+    var vals = sh.getDataRange().getValues();
+    var hdrs = vals[0].map(function(h){ return String(h).trim(); });
+    var idCol = hdrs.indexOf('LEAVE_ID'), stsCol = hdrs.indexOf('STATUS');
+    var apprCol = hdrs.indexOf('APPROVED_BY'), notesCol = hdrs.indexOf('NOTES');
+    for (var i = 1; i < vals.length; i++) {
+      if (String(vals[i][idCol]).trim() === String(leaveId).trim()) {
+        if (stsCol >= 0)  sh.getRange(i+1, stsCol+1).setValue(status);
+        if (apprCol >= 0) sh.getRange(i+1, apprCol+1).setValue(profile.email);
+        if (notesCol >= 0 && notes) sh.getRange(i+1, notesCol+1).setValue(notes);
+        logActivity('LeaveAgent','UPDATE_STATUS', leaveId+'->'+status, 'SUCCESS');
+        return {success:true};
+      }
+    }
+    return {success:false, error:'Leave record not found'};
+  } catch(e) { return {success:false, error:e.message}; }
+}
+
+// ============================================================
+// RECRUITMENT / JOB PORTAL & ATS
+// ============================================================
+
+// PUBLIC — no auth (intentional)
+function getPublicJobs() {
+  try {
+    var sh = SS.getSheetByName(TABS.JOBS); if (!sh) return {success:true, data:[]};
+    var vals = sh.getDataRange().getValues();
+    if (vals.length < 2) return {success:true, data:[]};
+    var hdrs = vals[0].map(function(h){ return String(h).trim(); });
+    var rows = [];
+    for (var i = 1; i < vals.length; i++) {
+      var row = {}; for (var j = 0; j < hdrs.length; j++) row[hdrs[j]] = String(vals[i][j]||'');
+      if (row.STATUS === 'Active') rows.push(row);
+    }
+    return {success:true, data:rows};
+  } catch(e) { return {success:false, error:e.message}; }
+}
+
+// PUBLIC — no auth (intentional)
+function submitApplication(data) {
+  try {
+    if (!data.FULL_NAME || !data.EMAIL || !data.JOB_ID) return {success:false, error:'Required fields missing'};
+    var emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRe.test(data.EMAIL)) return {success:false, error:'Invalid email address'};
+    data.APP_ID = genId_('APP');
+    data.APPLIED_DATE = formatDate(new Date());
+    data.STAGE = 'New';
+    var sh = getOrCreate(TABS.APPLICATIONS, ['APP_ID','JOB_ID','JOB_TITLE','FULL_NAME','EMAIL','PHONE','NATIONALITY','PASSPORT_NO','EXPERIENCE_YEARS','CURRENT_COMPANY','COVER_NOTE','CV_DRIVE_LINK','APPLIED_DATE','STAGE','NOTES','REVIEWED_BY']);
+    var hdrs = ['APP_ID','JOB_ID','JOB_TITLE','FULL_NAME','EMAIL','PHONE','NATIONALITY','PASSPORT_NO','EXPERIENCE_YEARS','CURRENT_COMPANY','COVER_NOTE','CV_DRIVE_LINK','APPLIED_DATE','STAGE','NOTES','REVIEWED_BY'];
+    sh.appendRow(hdrs.map(function(h){ return data[h]||''; }));
+    return {success:true, appId: data.APP_ID};
+  } catch(e) { return {success:false, error:e.message}; }
+}
+
+function getJobs() {
+  try {
+    _requireRole(['SUPER_ADMIN','HR_OFFICER']);
+    var sh = getOrCreate(TABS.JOBS, ['JOB_ID','TITLE','ENTITY','LOCATION','JOB_TYPE','DESCRIPTION','REQUIREMENTS','STATUS','POSTED_DATE','POSTED_BY']);
+    var vals = sh.getDataRange().getValues();
+    if (vals.length < 2) return {success:true, data:[]};
+    var hdrs = vals[0].map(function(h){ return String(h).trim(); });
+    var rows = [];
+    for (var i = 1; i < vals.length; i++) {
+      var row = {}; for (var j = 0; j < hdrs.length; j++) row[hdrs[j]] = String(vals[i][j]||'');
+      rows.push(row);
+    }
+    return {success:true, data:rows};
+  } catch(e) { return {success:false, error:e.message}; }
+}
+
+function saveJob(data) {
+  try {
+    var profile = _requireRole(['SUPER_ADMIN','HR_OFFICER']);
+    var sh = getOrCreate(TABS.JOBS, ['JOB_ID','TITLE','ENTITY','LOCATION','JOB_TYPE','DESCRIPTION','REQUIREMENTS','STATUS','POSTED_DATE','POSTED_BY']);
+    var hdrs = ['JOB_ID','TITLE','ENTITY','LOCATION','JOB_TYPE','DESCRIPTION','REQUIREMENTS','STATUS','POSTED_DATE','POSTED_BY'];
+    if (!data.JOB_ID) {
+      data.JOB_ID = genId_('JOB');
+      data.POSTED_DATE = formatDate(new Date());
+      data.POSTED_BY = profile.email;
+      if (!data.STATUS) data.STATUS = 'Active';
+      sh.appendRow(hdrs.map(function(h){ return data[h]||''; }));
+    } else {
+      var vals = sh.getDataRange().getValues();
+      var idCol = vals[0].map(function(h){ return String(h).trim(); }).indexOf('JOB_ID');
+      for (var i = 1; i < vals.length; i++) {
+        if (String(vals[i][idCol]).trim() === data.JOB_ID) {
+          sh.getRange(i+1, 1, 1, hdrs.length).setValues([hdrs.map(function(h){ return data[h]!==undefined?data[h]:String(vals[i][hdrs.indexOf(h)]||''); })]);
+          break;
+        }
+      }
+    }
+    logActivity('RecruitmentAgent','SAVE_JOB', data.JOB_ID+'--'+data.TITLE, 'SUCCESS');
+    return {success:true, jobId: data.JOB_ID};
+  } catch(e) { return {success:false, error:e.message}; }
+}
+
+function closeJob(jobId) {
+  try {
+    _requireRole(['SUPER_ADMIN','HR_OFFICER']);
+    var sh = SS.getSheetByName(TABS.JOBS); if (!sh) return {success:false, error:'Jobs sheet not found'};
+    var vals = sh.getDataRange().getValues();
+    var hdrs = vals[0].map(function(h){ return String(h).trim(); });
+    var idCol = hdrs.indexOf('JOB_ID'), stsCol = hdrs.indexOf('STATUS');
+    for (var i = 1; i < vals.length; i++) {
+      if (String(vals[i][idCol]).trim() === String(jobId).trim()) {
+        if (stsCol >= 0) sh.getRange(i+1, stsCol+1).setValue('Closed');
+        logActivity('RecruitmentAgent','CLOSE_JOB', jobId, 'SUCCESS');
+        return {success:true};
+      }
+    }
+    return {success:false, error:'Job not found'};
+  } catch(e) { return {success:false, error:e.message}; }
+}
+
+function getApplications(jobId) {
+  try {
+    _requireRole(['SUPER_ADMIN','HR_OFFICER']);
+    var sh = getOrCreate(TABS.APPLICATIONS, ['APP_ID','JOB_ID','JOB_TITLE','FULL_NAME','EMAIL','PHONE','NATIONALITY','PASSPORT_NO','EXPERIENCE_YEARS','CURRENT_COMPANY','COVER_NOTE','CV_DRIVE_LINK','APPLIED_DATE','STAGE','NOTES','REVIEWED_BY']);
+    var vals = sh.getDataRange().getValues();
+    if (vals.length < 2) return {success:true, data:[]};
+    var hdrs = vals[0].map(function(h){ return String(h).trim(); });
+    var rows = [];
+    for (var i = 1; i < vals.length; i++) {
+      var row = {}; for (var j = 0; j < hdrs.length; j++) row[hdrs[j]] = String(vals[i][j]||'');
+      if (!jobId || row.JOB_ID === jobId) rows.push(row);
+    }
+    return {success:true, data:rows};
+  } catch(e) { return {success:false, error:e.message}; }
+}
+
+function updateApplicationStage(appId, stage, notes) {
+  try {
+    var profile = _requireRole(['SUPER_ADMIN','HR_OFFICER']);
+    var sh = SS.getSheetByName(TABS.APPLICATIONS); if (!sh) return {success:false, error:'Applications sheet not found'};
+    var vals = sh.getDataRange().getValues();
+    var hdrs = vals[0].map(function(h){ return String(h).trim(); });
+    var idCol = hdrs.indexOf('APP_ID'), stageCol = hdrs.indexOf('STAGE');
+    var notesCol = hdrs.indexOf('NOTES'), reviewedCol = hdrs.indexOf('REVIEWED_BY');
+    for (var i = 1; i < vals.length; i++) {
+      if (String(vals[i][idCol]).trim() === String(appId).trim()) {
+        if (stageCol >= 0)   sh.getRange(i+1, stageCol+1).setValue(stage);
+        if (notesCol >= 0 && notes) sh.getRange(i+1, notesCol+1).setValue(notes);
+        if (reviewedCol >= 0) sh.getRange(i+1, reviewedCol+1).setValue(profile.email);
+        logActivity('RecruitmentAgent','STAGE_UPDATE', appId+'->'+stage, 'SUCCESS');
+        return {success:true};
+      }
+    }
+    return {success:false, error:'Application not found'};
+  } catch(e) { return {success:false, error:e.message}; }
+}
+
+function transferAppToOnboarding(appId) {
+  try {
+    _requireRole(['SUPER_ADMIN','HR_OFFICER']);
+    var sh = SS.getSheetByName(TABS.APPLICATIONS); if (!sh) return {success:false, error:'Applications sheet not found'};
+    var vals = sh.getDataRange().getValues();
+    var hdrs = vals[0].map(function(h){ return String(h).trim(); });
+    var idCol = hdrs.indexOf('APP_ID'), stageCol = hdrs.indexOf('STAGE');
+    for (var i = 1; i < vals.length; i++) {
+      if (String(vals[i][idCol]).trim() === String(appId).trim()) {
+        var row = {}; for (var j = 0; j < hdrs.length; j++) row[hdrs[j]] = String(vals[i][j]||'');
+        var obData = {
+          OB_ID:         genId_('OB'),
+          FULL_NAME:     row.FULL_NAME,
+          PASSPORT_NO:   row.PASSPORT_NO||'',
+          POSITION_TYPE: '',
+          MOBILE:        row.PHONE||'',
+          VISA_STATUS:   '',
+          EXP_JOIN_DATE: '',
+          NOTES:         'Transferred from ATS: '+row.JOB_TITLE+' ('+appId+')',
+          ENTITY:        ''
+        };
+        var obResult = addOnboarding(obData);
+        if (!obResult.success) return obResult;
+        if (stageCol >= 0) sh.getRange(i+1, stageCol+1).setValue('Transferred');
+        logActivity('RecruitmentAgent','TRANSFER_TO_OB', appId+'->'+obData.OB_ID, 'SUCCESS');
+        return {success:true, obId: obData.OB_ID};
+      }
+    }
+    return {success:false, error:'Application not found'};
+  } catch(e) { return {success:false, error:e.message}; }
 }

@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Careers — United Group Holding</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:Tahoma,Arial,sans-serif;background:#f0f2f5;color:#1a2540;min-height:100vh}
+  .header{background:linear-gradient(135deg,#1e4799,#0d2a5e);color:#fff;padding:28px 40px;display:flex;align-items:center;justify-content:space-between;box-shadow:0 2px 12px rgba(0,0,0,.25)}
+  .header-brand{display:flex;align-items:center;gap:14px}
+  .header-brand h1{font-size:20px;font-weight:700;letter-spacing:.03em}
+  .header-brand p{font-size:12px;opacity:.75;margin-top:2px}
+  .header-tag{background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.25);padding:5px 14px;border-radius:20px;font-size:11px;font-weight:600;letter-spacing:.04em}
+  .container{max-width:900px;margin:0 auto;padding:32px 20px}
+  .page-title{font-size:24px;font-weight:700;color:#1e4799;margin-bottom:4px}
+  .page-sub{color:#6b7a99;font-size:13px;margin-bottom:28px}
+  .job-grid{display:grid;gap:14px}
+  .job-card{background:#fff;border-radius:12px;border:1px solid #e2e8f0;padding:20px 24px;display:flex;align-items:center;justify-content:space-between;transition:box-shadow .15s,border-color .15s;cursor:pointer}
+  .job-card:hover{box-shadow:0 4px 18px rgba(30,71,153,.1);border-color:#1e4799}
+  .job-info h3{font-size:15px;font-weight:700;color:#1a2540;margin-bottom:5px}
+  .job-meta{display:flex;flex-wrap:wrap;gap:10px;margin-top:4px}
+  .job-tag{font-size:10.5px;background:#f0f4ff;color:#1e4799;border:1px solid #c7d6f5;padding:2px 9px;border-radius:10px;font-weight:600}
+  .job-tag.type{background:#fff8e6;color:#b87000;border-color:#f5d98a}
+  .job-tag.entity{background:#e8f8f2;color:#137843;border-color:#a8dfc4}
+  .apply-btn{background:linear-gradient(135deg,#b87000,#8a5200);color:#fff;border:none;padding:9px 20px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;transition:opacity .14s}
+  .apply-btn:hover{opacity:.88}
+  .empty{text-align:center;padding:60px 20px;color:#6b7a99}
+  .empty .icon{font-size:40px;margin-bottom:14px;opacity:.5}
+  .loader{text-align:center;padding:60px 20px;color:#1e4799;font-size:13px}
+  /* Application form overlay */
+  .overlay{position:fixed;inset:0;background:rgba(10,20,50,.55);display:none;align-items:center;justify-content:center;z-index:1000;padding:20px}
+  .overlay.show{display:flex}
+  .form-card{background:#fff;border-radius:14px;max-width:560px;width:100%;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+  .form-hdr{background:linear-gradient(135deg,#1e4799,#0d2a5e);color:#fff;padding:18px 24px;border-radius:14px 14px 0 0;display:flex;align-items:center;justify-content:space-between}
+  .form-hdr h2{font-size:15px;font-weight:700}
+  .form-hdr .job-ref{font-size:11px;opacity:.75;margin-top:3px}
+  .close-btn{background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.25);color:#fff;width:28px;height:28px;border-radius:50%;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;transition:background .14s}
+  .close-btn:hover{background:rgba(255,255,255,.25)}
+  .form-body{padding:20px 24px}
+  .frow{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:0}
+  .frow.full{grid-template-columns:1fr}
+  .fg{display:flex;flex-direction:column;gap:4px;margin-bottom:12px}
+  .fg label{font-size:11px;font-weight:700;color:#4a5568;text-transform:uppercase;letter-spacing:.04em}
+  .fg input,.fg textarea,.fg select{border:1.5px solid #e2e8f0;border-radius:7px;padding:8px 11px;font-size:12.5px;font-family:inherit;color:#1a2540;background:#fafbfc;outline:none;transition:border-color .14s}
+  .fg input:focus,.fg textarea:focus,.fg select:focus{border-color:#1e4799;background:#fff}
+  .fg textarea{resize:vertical;min-height:72px}
+  .req{color:#e53e3e;margin-left:2px}
+  .form-ftr{padding:14px 24px 20px;display:flex;gap:8px;justify-content:flex-end;border-top:1px solid #f0f2f5}
+  .btn-cancel{background:#f0f2f5;color:#4a5568;border:none;padding:9px 18px;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer}
+  .btn-submit{background:linear-gradient(135deg,#1e4799,#0d2a5e);color:#fff;border:none;padding:9px 22px;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;transition:opacity .14s}
+  .btn-submit:hover{opacity:.88}
+  .btn-submit:disabled{opacity:.55;cursor:not-allowed}
+  .success-wrap{text-align:center;padding:40px 20px}
+  .success-icon{font-size:48px;margin-bottom:16px}
+  .success-wrap h3{font-size:18px;font-weight:700;color:#137843;margin-bottom:8px}
+  .success-wrap p{font-size:13px;color:#6b7a99;line-height:1.6}
+  .err{color:#e53e3e;font-size:11px;margin-top:3px;display:none}
+  @media(max-width:600px){.job-card{flex-direction:column;align-items:flex-start;gap:12px}.frow{grid-template-columns:1fr}.header{padding:18px 20px}}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-brand">
+    <div>
+      <h1>United Group Holding</h1>
+      <p>Human Resources — Career Opportunities</p>
+    </div>
+  </div>
+  <div class="header-tag">We Are Hiring</div>
+</div>
+
+<div class="container">
+  <div class="page-title">Open Positions</div>
+  <div class="page-sub">Join our growing team. Explore current opportunities and apply directly below.</div>
+  <div class="job-grid" id="job-list">
+    <div class="loader">Loading available positions...</div>
+  </div>
+</div>
+
+<!-- Application Overlay -->
+<div class="overlay" id="apply-overlay">
+  <div class="form-card" id="apply-form-card">
+    <div class="form-hdr">
+      <div>
+        <h2>Apply for Position</h2>
+        <div class="job-ref" id="apply-job-ref"></div>
+      </div>
+      <button class="close-btn" onclick="closeApply()">&#10005;</button>
+    </div>
+    <div id="apply-form-content">
+      <div class="form-body">
+        <input type="hidden" id="af-jobid"/>
+        <div class="frow">
+          <div class="fg"><label>Full Name <span class="req">*</span></label><input type="text" id="af-name" placeholder="Your full legal name"/></div>
+          <div class="fg"><label>Email <span class="req">*</span></label><input type="email" id="af-email" placeholder="your@email.com"/></div>
+        </div>
+        <div class="frow">
+          <div class="fg"><label>Phone Number</label><input type="tel" id="af-phone" placeholder="+971 XX XXX XXXX"/></div>
+          <div class="fg"><label>Nationality</label><input type="text" id="af-nationality" placeholder="e.g. India"/></div>
+        </div>
+        <div class="frow">
+          <div class="fg"><label>Passport Number</label><input type="text" id="af-passport" placeholder="e.g. EA1234567"/></div>
+          <div class="fg"><label>Years of Experience</label><input type="number" id="af-exp" placeholder="0" min="0"/></div>
+        </div>
+        <div class="frow">
+          <div class="fg"><label>Current Company</label><input type="text" id="af-company" placeholder="Current employer (if any)"/></div>
+          <div class="fg"><label>CV / Resume (Google Drive Link)</label><input type="url" id="af-cv" placeholder="Paste public Drive link"/></div>
+        </div>
+        <div class="frow full">
+          <div class="fg"><label>Cover Note</label><textarea id="af-cover" placeholder="Brief introduction and why you're applying..."></textarea></div>
+        </div>
+        <div class="err" id="af-err"></div>
+      </div>
+      <div class="form-ftr">
+        <button class="btn-cancel" onclick="closeApply()">Cancel</button>
+        <button class="btn-submit" id="af-submit" onclick="submitApplication()">Submit Application</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+var jobs = [];
+
+function loadJobs() {
+  google.script.run
+    .withSuccessHandler(function(r) {
+      if (!r || !r.success || !r.data || !r.data.length) {
+        document.getElementById('job-list').innerHTML =
+          '<div class="empty"><div class="icon">&#128188;</div><p>No open positions at this time.<br>Check back soon!</p></div>';
+        return;
+      }
+      jobs = r.data;
+      renderJobs(r.data);
+    })
+    .withFailureHandler(function(e) {
+      document.getElementById('job-list').innerHTML =
+        '<div class="empty"><div class="icon">&#9888;</div><p>Unable to load jobs. Please try again later.</p></div>';
+    })
+    .getPublicJobs();
+}
+
+function renderJobs(data) {
+  if (!data.length) {
+    document.getElementById('job-list').innerHTML =
+      '<div class="empty"><div class="icon">&#128188;</div><p>No open positions at this time.</p></div>';
+    return;
+  }
+  document.getElementById('job-list').innerHTML = data.map(function(j) {
+    return '<div class="job-card">'+
+      '<div class="job-info">'+
+        '<h3>'+esc(j.TITLE)+'</h3>'+
+        '<div class="job-meta">'+
+          (j.ENTITY ? '<span class="job-tag entity">'+esc(j.ENTITY)+'</span>' : '')+
+          (j.LOCATION ? '<span class="job-tag">&#128205; '+esc(j.LOCATION)+'</span>' : '')+
+          (j.JOB_TYPE ? '<span class="job-tag type">'+esc(j.JOB_TYPE)+'</span>' : '')+
+        '</div>'+
+      '</div>'+
+      '<button class="apply-btn" onclick="openApply(\''+esc(j.JOB_ID)+'\',\''+esc(j.TITLE)+'\')">Apply Now</button>'+
+    '</div>';
+  }).join('');
+}
+
+function openApply(jobId, title) {
+  document.getElementById('af-jobid').value = jobId;
+  document.getElementById('apply-job-ref').textContent = title;
+  ['af-name','af-email','af-phone','af-nationality','af-passport','af-exp','af-company','af-cv','af-cover'].forEach(function(id) {
+    var el = document.getElementById(id); if (el) el.value = '';
+  });
+  var err = document.getElementById('af-err'); if (err) { err.style.display='none'; err.textContent=''; }
+  var btn = document.getElementById('af-submit'); if (btn) { btn.disabled = false; btn.textContent = 'Submit Application'; }
+  document.getElementById('apply-form-content').innerHTML = document.getElementById('apply-form-content').innerHTML; // reset
+  showFormContent();
+  document.getElementById('apply-overlay').classList.add('show');
+}
+
+function showFormContent() {
+  // Rebuild form content in case it was replaced by success message
+  var content = document.getElementById('apply-form-content');
+  if (!content.querySelector('#af-name')) {
+    content.innerHTML =
+      '<div class="form-body">'+
+        '<input type="hidden" id="af-jobid"/>'+
+        '<div class="frow"><div class="fg"><label>Full Name <span class="req">*</span></label><input type="text" id="af-name" placeholder="Your full legal name"/></div>'+
+        '<div class="fg"><label>Email <span class="req">*</span></label><input type="email" id="af-email" placeholder="your@email.com"/></div></div>'+
+        '<div class="frow"><div class="fg"><label>Phone Number</label><input type="tel" id="af-phone" placeholder="+971 XX XXX XXXX"/></div>'+
+        '<div class="fg"><label>Nationality</label><input type="text" id="af-nationality" placeholder="e.g. India"/></div></div>'+
+        '<div class="frow"><div class="fg"><label>Passport Number</label><input type="text" id="af-passport" placeholder="e.g. EA1234567"/></div>'+
+        '<div class="fg"><label>Years of Experience</label><input type="number" id="af-exp" placeholder="0" min="0"/></div></div>'+
+        '<div class="frow"><div class="fg"><label>Current Company</label><input type="text" id="af-company" placeholder="Current employer (if any)"/></div>'+
+        '<div class="fg"><label>CV / Resume (Google Drive Link)</label><input type="url" id="af-cv" placeholder="Paste public Drive link"/></div></div>'+
+        '<div class="frow full"><div class="fg"><label>Cover Note</label><textarea id="af-cover" placeholder="Brief introduction and why you are applying..."></textarea></div></div>'+
+        '<div class="err" id="af-err"></div>'+
+      '</div>'+
+      '<div class="form-ftr">'+
+        '<button class="btn-cancel" onclick="closeApply()">Cancel</button>'+
+        '<button class="btn-submit" id="af-submit" onclick="submitApplication()">Submit Application</button>'+
+      '</div>';
+  }
+}
+
+function closeApply() {
+  document.getElementById('apply-overlay').classList.remove('show');
+}
+
+function submitApplication() {
+  var jobId = (document.getElementById('af-jobid')||{}).value||'';
+  var name  = (document.getElementById('af-name')||{}).value||'';
+  var email = (document.getElementById('af-email')||{}).value||'';
+  var phone = (document.getElementById('af-phone')||{}).value||'';
+  var nat   = (document.getElementById('af-nationality')||{}).value||'';
+  var pp    = (document.getElementById('af-passport')||{}).value||'';
+  var exp   = (document.getElementById('af-exp')||{}).value||'';
+  var comp  = (document.getElementById('af-company')||{}).value||'';
+  var cv    = (document.getElementById('af-cv')||{}).value||'';
+  var cover = (document.getElementById('af-cover')||{}).value||'';
+  var errEl = document.getElementById('af-err');
+
+  if (!name || !email) {
+    if (errEl) { errEl.textContent='Full name and email are required.'; errEl.style.display='block'; }
+    return;
+  }
+  if (errEl) errEl.style.display = 'none';
+
+  // Find job title
+  var job = jobs.find(function(j){ return j.JOB_ID === jobId; });
+  var jobTitle = job ? job.TITLE : '';
+
+  var btn = document.getElementById('af-submit');
+  if (btn) { btn.disabled = true; btn.textContent = 'Submitting...'; }
+
+  google.script.run
+    .withSuccessHandler(function(r) {
+      if (!r || !r.success) {
+        if (errEl) { errEl.textContent = r ? r.error : 'Submission failed. Please try again.'; errEl.style.display='block'; }
+        if (btn) { btn.disabled = false; btn.textContent = 'Submit Application'; }
+        return;
+      }
+      // Show success
+      var content = document.getElementById('apply-form-content');
+      if (content) {
+        content.innerHTML =
+          '<div class="success-wrap">'+
+            '<div class="success-icon">&#10003;&#65039;</div>'+
+            '<h3>Application Submitted!</h3>'+
+            '<p>Thank you, <strong>'+esc(name)+'</strong>. Your application has been received.<br>Our HR team will review it and be in touch shortly.</p>'+
+            '<div style="margin-top:20px"><button class="btn-cancel" onclick="closeApply()" style="background:#1e4799;color:#fff">Close</button></div>'+
+          '</div>';
+      }
+    })
+    .withFailureHandler(function(e) {
+      if (errEl) { errEl.textContent = 'Server error: '+(e.message||e); errEl.style.display='block'; }
+      if (btn) { btn.disabled = false; btn.textContent = 'Submit Application'; }
+    })
+    .submitApplication({
+      JOB_ID:           jobId,
+      JOB_TITLE:        jobTitle,
+      FULL_NAME:        name,
+      EMAIL:            email,
+      PHONE:            phone,
+      NATIONALITY:      nat,
+      PASSPORT_NO:      pp,
+      EXPERIENCE_YEARS: exp,
+      CURRENT_COMPANY:  comp,
+      CV_DRIVE_LINK:    cv,
+      COVER_NOTE:       cover
+    });
+}
+
+function esc(v) {
+  return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// Close overlay on backdrop click
+document.getElementById('apply-overlay').addEventListener('click', function(e) {
+  if (e.target === this) closeApply();
+});
+
+window.addEventListener('DOMContentLoaded', loadJobs);
+</script>
+</body>
+</html>

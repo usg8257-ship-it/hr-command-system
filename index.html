@@ -20,13 +20,18 @@
   <div class="sb-item" data-view="masterdata" onclick="navigate('masterdata')"><span class="ic">&#128196;</span>MANPOWER MASTER DATA<span class="tcnt" id="emp-cnt">Loading...</span></div>
   <div class="sb-sec">HR Operations</div>
   <div class="sb-item" data-view="employees" onclick="navigate('employees')"><span class="ic">&#128196;</span>ACTIVE MANPOWER<span class="sb-badge gold" id="nb-emp">0</span></div>
+  <div class="sb-item" data-view="resignations" onclick="navigate('resignations')"><span class="ic">&#128683;</span>Recent Resignations</div>
   <div class="sb-item" data-view="onboarding" onclick="navigate('onboarding')"><span class="ic">&#128260;</span>Onboarding<span class="sb-badge" id="nb-ob">0</span></div>
   <div class="sb-item" data-view="letters" onclick="navigate('letters')"><span class="ic">&#128196;</span>HR Letters</div>
+  <div class="sb-item" data-view="leave" onclick="navigate('leave')"><span class="ic">&#128197;</span>Leave<span class="sb-badge" id="nb-leave">0</span></div>
+  <div class="sb-item" data-view="recruitment" onclick="navigate('recruitment')"><span class="ic">&#128188;</span>Recruitment</div>
   <div class="sb-sec">Intelligence</div>
   <div class="sb-item" data-view="reports" onclick="navigate('reports')"><span class="ic">&#128200;</span>Monthly Report</div>
   <div class="sb-item" data-view="logs" onclick="navigate('logs')"><span class="ic">&#128221;</span>Activity Logs</div>
   <div class="sb-sec">System</div>
+  <div class="sb-item" data-view="users" onclick="navigate('users')"><span class="ic">&#128101;</span>Users</div>
   <div class="sb-item" data-view="setup" onclick="navigate('setup')"><span class="ic">&#9881;</span>Setup</div>
+  <div class="sb-item" data-view="self-service" style="display:none" onclick="navigate('self-service')"><span class="ic">&#128100;</span>My Profile</div>
   <div class="sb-footer">
     <div class="agent-pill"><div class="dot"></div>Live System</div>
     <div class="dev-credit">Concept, Designed &amp; Developed by<br><strong style="color:#00c9b8">Mohammad Sanish</strong></div>
@@ -187,6 +192,46 @@
       </div>
     </div>
 
+    <!-- RECENT RESIGNATIONS -->
+    <div id="view-resignations" class="view">
+      <div class="sec-hdr">
+        <div class="sec-hdr-left"><h2>Recent Resignations</h2><p>Deleted / cancelled employees — sorted newest first</p></div>
+      </div>
+      <div class="controls">
+        <div class="sw"><span class="si">&#128269;</span><input type="text" id="res-q" placeholder="Search ID or name..." oninput="ResignationAgent.render()"/></div>
+        <div class="fgrp"><span class="flbl">Org</span>
+          <select class="fsel" id="res-org" onchange="ResignationAgent.render()">
+            <option value="">All</option><option>USG</option><option>UG</option><option>UST</option><option>USG-M</option>
+          </select>
+        </div>
+        <button class="reset-btn" onclick="ResignationAgent.resetF()" title="Reset" style="margin-left:auto">&#10005;</button>
+      </div>
+      <div class="tcard">
+        <div class="ttop"><h3>&#128683; Resignation Records</h3><span class="tcnt" id="res-cnt">0</span></div>
+        <div class="twrap lazy">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>ID</th>
+                <th>Name</th>
+                <th>Designation</th>
+                <th>Date of Joining</th>
+                <th>Last Working Date</th>
+                <th>Years of Service</th>
+                <th>Org</th>
+                <th>Reason</th>
+                <th>Exp Letter</th>
+              </tr>
+            </thead>
+            <tbody id="res-tbody">
+              <tr><td colspan="10" style="text-align:center;padding:32px;color:var(--muted)">Navigate here to load records.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
     <!-- ONBOARDING — 3 step workflow -->
     <div id="view-onboarding" class="view">
       <div class="sec-hdr">
@@ -215,7 +260,7 @@
     <!-- HR LETTERS — small popup (temporary) -->
     <div id="view-letters" class="view">
       <div class="sec-hdr">
-        <div class="sec-hdr-left"><h2>HR Letters</h2><p>Existing employees only. Feature will be enhanced in next version.</p></div>
+        <div class="sec-hdr-left"><h2>HR Letters</h2><p>Issue letters for active employees, or generate Experience Letters for resigned employees below.</p></div>
         <div class="sec-hdr-right"><button class="abtn gold" onclick="LtrAgent.openIssue()">&#128221; Issue Letter</button></div>
       </div>
       <div class="ls-grid">
@@ -234,6 +279,23 @@
         <div class="ttop"><h3>&#128196; Letters Log</h3><span class="tcnt" id="lt-cnt">0</span></div>
         <div class="twrap"><table><thead><tr><th>Ref No</th><th>Emp ID</th><th>Name</th><th>Letter Type</th><th>Issue Date</th><th>Issued By</th><th>Notes</th><th></th></tr></thead>
         <tbody id="lt-tbody"></tbody></table></div>
+      </div>
+
+      <!-- Experience Letters for resigned employees -->
+      <div class="tcard" style="margin-top:14px;border-left:3px solid var(--teal)">
+        <div class="ttop">
+          <h3>&#128196; Experience Letters &mdash; Resigned Employees</h3>
+          <span class="tcnt" id="exp-ltr-cnt">0 pending</span>
+        </div>
+        <p style="font-size:11.5px;color:var(--muted);padding:0 4px 12px">Generate and download experience letters for resigned/deleted employees. Requires the Experience Letter Google Doc template to be configured in <strong>Setup</strong>. Already-issued letters show a green tick.</p>
+        <div class="twrap lazy">
+          <table>
+            <thead><tr><th>Emp ID</th><th>Name</th><th>Designation</th><th>Last Working Date</th><th>Action</th></tr></thead>
+            <tbody id="exp-ltr-tbody">
+              <tr><td colspan="5" style="text-align:center;padding:24px;color:var(--muted)">Navigate to this section to load.</td></tr>
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
 
@@ -276,97 +338,17 @@
           <button class="btn btn-navy" style="margin-top:11px" onclick="CFG.save()">&#128190; Save Config</button>
         </div>
         <div class="setup-step" style="border-left:3px solid var(--teal)">
-          <div class="step-num" style="background:var(--teal)">2</div><h3>&#128221; HR Letter Templates</h3>
-          <p style="margin-bottom:10px">Configure a template per letter type. Use a Google Doc (Drive File ID) for formatted PDFs, or type the body directly. Placeholders auto-fill from employee records.</p>
-          <div style="background:rgba(0,201,184,.06);border:1px solid rgba(0,201,184,.2);border-radius:7px;padding:9px 13px;margin-bottom:11px;font-size:11px;color:var(--muted)">
-            <strong style="color:var(--navy)">Placeholders:</strong>
-            {NAME} {EMP_ID} {DESIGNATION} {PASSPORT_NO} {COMPANY} {ENTITY} {DATE_OF_JOIN} {SALARY} {DATE} {REF_NO} {ISSUED_BY} {HR_OFFICER} {HR_DESIGNATION}
+          <div class="step-num" style="background:var(--teal)">2</div><h3>&#128196; Experience Letter Template</h3>
+          <p style="margin-bottom:10px">Paste the Google Doc File ID of your Experience Letter template. Placeholders will be replaced automatically when generating letters.</p>
+          <div style="background:rgba(0,201,184,.06);border:1px solid rgba(0,201,184,.2);border-radius:7px;padding:9px 13px;margin-bottom:13px;font-size:11px;color:var(--muted)">
+            <strong style="color:var(--navy)">Supported placeholders:</strong>
+            {{NAME}} {{FIRSTNAME}} {{EMP_ID}} {{ID}} {{DESIGNATION}} {{DOJ}} {{DOL}} {{DATE}} {{REF_NO}} {{HR_OFFICER}} {{HR_DESIGNATION}} {{COMPANY}}
           </div>
-          <div class="setup-ltpl-wrap">
-          <div class="setup-ltpl" id="ltpl-WARNING_LETTER">
-            <div class="setup-ltpl-hdr" onclick="this.parentElement.classList.toggle('open')">
-              <span>Warning Letter</span><span class="setup-ltpl-arrow">&#9660;</span>
+          <div class="fgrid">
+            <div class="fg full">
+              <label class="flabel">Experience Letter Template ID <span style="font-size:10px;font-weight:400;color:var(--muted)">(Google Doc File ID)</span></label>
+              <input class="fi" id="cfg-exp-tmpl" placeholder="e.g. 1txyu-E1QmjTFM1jNEPAeB599oLBdcjJ3tM0NPcL5eC0" style="font-family:monospace;font-size:12px"/>
             </div>
-            <div class="setup-ltpl-body">
-              <div class="fgrid" style="margin-top:9px">
-                <div class="fg full"><label class="flabel">Google Doc File ID <span style="font-size:10px;font-weight:400;color:var(--muted)">(optional)</span></label>
-                  <input class="fi" id="ltcfg-drive-WARNING_LETTER" placeholder="Google Doc File ID..." style="font-family:monospace;font-size:11px"/></div>
-                <div class="fg full"><label class="flabel">In-App Letter Body <span style="font-size:10px;font-weight:400;color:var(--muted)">(used if no Drive ID)</span></label>
-                  <textarea class="fta" id="ltcfg-body-WARNING_LETTER" placeholder="Use: {NAME} {EMP_ID} {DESIGNATION} {COMPANY} {ENTITY} {DATE_OF_JOIN} {PASSPORT_NO} {SALARY} {DATE} {REF_NO} {ISSUED_BY} {HR_OFFICER}" style="min-height:100px;font-family:monospace;font-size:11.5px"></textarea></div>
-              </div>
-              <button class="btn btn-navy btn-sm" style="margin-top:8px" onclick="CFG.saveLetterTemplate('Warning Letter')">&#128190; Save Warning Letter Template</button>
-            </div>
-          </div>
-          <div class="setup-ltpl" id="ltpl-EXPERIENCE_LETTER">
-            <div class="setup-ltpl-hdr" onclick="this.parentElement.classList.toggle('open')">
-              <span>Experience Letter</span><span class="setup-ltpl-arrow">&#9660;</span>
-            </div>
-            <div class="setup-ltpl-body">
-              <div class="fgrid" style="margin-top:9px">
-                <div class="fg full"><label class="flabel">Google Doc File ID <span style="font-size:10px;font-weight:400;color:var(--muted)">(optional)</span></label>
-                  <input class="fi" id="ltcfg-drive-EXPERIENCE_LETTER" placeholder="Google Doc File ID..." style="font-family:monospace;font-size:11px"/></div>
-                <div class="fg full"><label class="flabel">In-App Letter Body <span style="font-size:10px;font-weight:400;color:var(--muted)">(used if no Drive ID)</span></label>
-                  <textarea class="fta" id="ltcfg-body-EXPERIENCE_LETTER" placeholder="Use: {NAME} {EMP_ID} {DESIGNATION} {COMPANY} {ENTITY} {DATE_OF_JOIN} {PASSPORT_NO} {SALARY} {DATE} {REF_NO} {ISSUED_BY} {HR_OFFICER}" style="min-height:100px;font-family:monospace;font-size:11.5px"></textarea></div>
-              </div>
-              <button class="btn btn-navy btn-sm" style="margin-top:8px" onclick="CFG.saveLetterTemplate('Experience Letter')">&#128190; Save Experience Letter Template</button>
-            </div>
-          </div>
-          <div class="setup-ltpl" id="ltpl-SALARY_CERTIFICATE">
-            <div class="setup-ltpl-hdr" onclick="this.parentElement.classList.toggle('open')">
-              <span>Salary Certificate</span><span class="setup-ltpl-arrow">&#9660;</span>
-            </div>
-            <div class="setup-ltpl-body">
-              <div class="fgrid" style="margin-top:9px">
-                <div class="fg full"><label class="flabel">Google Doc File ID <span style="font-size:10px;font-weight:400;color:var(--muted)">(optional)</span></label>
-                  <input class="fi" id="ltcfg-drive-SALARY_CERTIFICATE" placeholder="Google Doc File ID..." style="font-family:monospace;font-size:11px"/></div>
-                <div class="fg full"><label class="flabel">In-App Letter Body <span style="font-size:10px;font-weight:400;color:var(--muted)">(used if no Drive ID)</span></label>
-                  <textarea class="fta" id="ltcfg-body-SALARY_CERTIFICATE" placeholder="Use: {NAME} {EMP_ID} {DESIGNATION} {COMPANY} {ENTITY} {DATE_OF_JOIN} {PASSPORT_NO} {SALARY} {DATE} {REF_NO} {ISSUED_BY} {HR_OFFICER}" style="min-height:100px;font-family:monospace;font-size:11.5px"></textarea></div>
-              </div>
-              <button class="btn btn-navy btn-sm" style="margin-top:8px" onclick="CFG.saveLetterTemplate('Salary Certificate')">&#128190; Save Salary Certificate Template</button>
-            </div>
-          </div>
-          <div class="setup-ltpl" id="ltpl-EMPLOYMENT_CERTIFICATE">
-            <div class="setup-ltpl-hdr" onclick="this.parentElement.classList.toggle('open')">
-              <span>Employment Certificate</span><span class="setup-ltpl-arrow">&#9660;</span>
-            </div>
-            <div class="setup-ltpl-body">
-              <div class="fgrid" style="margin-top:9px">
-                <div class="fg full"><label class="flabel">Google Doc File ID <span style="font-size:10px;font-weight:400;color:var(--muted)">(optional)</span></label>
-                  <input class="fi" id="ltcfg-drive-EMPLOYMENT_CERTIFICATE" placeholder="Google Doc File ID..." style="font-family:monospace;font-size:11px"/></div>
-                <div class="fg full"><label class="flabel">In-App Letter Body <span style="font-size:10px;font-weight:400;color:var(--muted)">(used if no Drive ID)</span></label>
-                  <textarea class="fta" id="ltcfg-body-EMPLOYMENT_CERTIFICATE" placeholder="Use: {NAME} {EMP_ID} {DESIGNATION} {COMPANY} {ENTITY} {DATE_OF_JOIN} {PASSPORT_NO} {SALARY} {DATE} {REF_NO} {ISSUED_BY} {HR_OFFICER}" style="min-height:100px;font-family:monospace;font-size:11.5px"></textarea></div>
-              </div>
-              <button class="btn btn-navy btn-sm" style="margin-top:8px" onclick="CFG.saveLetterTemplate('Employment Certificate')">&#128190; Save Employment Certificate Template</button>
-            </div>
-          </div>
-          <div class="setup-ltpl" id="ltpl-NOC_LETTER">
-            <div class="setup-ltpl-hdr" onclick="this.parentElement.classList.toggle('open')">
-              <span>NOC Letter</span><span class="setup-ltpl-arrow">&#9660;</span>
-            </div>
-            <div class="setup-ltpl-body">
-              <div class="fgrid" style="margin-top:9px">
-                <div class="fg full"><label class="flabel">Google Doc File ID <span style="font-size:10px;font-weight:400;color:var(--muted)">(optional)</span></label>
-                  <input class="fi" id="ltcfg-drive-NOC_LETTER" placeholder="Google Doc File ID..." style="font-family:monospace;font-size:11px"/></div>
-                <div class="fg full"><label class="flabel">In-App Letter Body <span style="font-size:10px;font-weight:400;color:var(--muted)">(used if no Drive ID)</span></label>
-                  <textarea class="fta" id="ltcfg-body-NOC_LETTER" placeholder="Use: {NAME} {EMP_ID} {DESIGNATION} {COMPANY} {ENTITY} {DATE_OF_JOIN} {PASSPORT_NO} {SALARY} {DATE} {REF_NO} {ISSUED_BY} {HR_OFFICER}" style="min-height:100px;font-family:monospace;font-size:11.5px"></textarea></div>
-              </div>
-              <button class="btn btn-navy btn-sm" style="margin-top:8px" onclick="CFG.saveLetterTemplate('NOC Letter')">&#128190; Save NOC Letter Template</button>
-            </div>
-          </div>
-          <div class="setup-ltpl" id="ltpl-OTHERS">
-            <div class="setup-ltpl-hdr" onclick="this.parentElement.classList.toggle('open')">
-              <span>Others</span><span class="setup-ltpl-arrow">&#9660;</span>
-            </div>
-            <div class="setup-ltpl-body">
-              <div class="fgrid" style="margin-top:9px">
-                <div class="fg full"><label class="flabel">Google Doc File ID <span style="font-size:10px;font-weight:400;color:var(--muted)">(optional)</span></label>
-                  <input class="fi" id="ltcfg-drive-OTHERS" placeholder="Google Doc File ID..." style="font-family:monospace;font-size:11px"/></div>
-                <div class="fg full"><label class="flabel">In-App Letter Body <span style="font-size:10px;font-weight:400;color:var(--muted)">(used if no Drive ID)</span></label>
-                  <textarea class="fta" id="ltcfg-body-OTHERS" placeholder="Use: {NAME} {EMP_ID} {DESIGNATION} {COMPANY} {ENTITY} {DATE_OF_JOIN} {PASSPORT_NO} {SALARY} {DATE} {REF_NO} {ISSUED_BY} {HR_OFFICER}" style="min-height:100px;font-family:monospace;font-size:11.5px"></textarea></div>
-              </div>
-              <button class="btn btn-navy btn-sm" style="margin-top:8px" onclick="CFG.saveLetterTemplate('Others')">&#128190; Save Others Template</button>
-            </div>
-          </div>
           </div>
         </div>
         <div class="setup-step" style="border-left:3px solid var(--gold)">
@@ -418,6 +400,7 @@
         <div class="fg"><label class="flabel">Location / Visa</label>
           <select class="fsel2" id="ef-loc"><option value="ABU DHABI">ABU DHABI</option><option value="DUBAI">DUBAI</option><option value="AJMAN">AJMAN</option><option value="OTHER">OTHER</option></select></div>
         <div class="fg"><label class="flabel">Days of Service</label><input class="fi" type="number" id="ef-days" placeholder="0"/></div>
+        <div class="fg full"><label class="flabel">Google Account Email <span style="font-size:9px;color:var(--muted)">(for Employee self-service login)</span></label><input class="fi" type="email" id="ef-email" placeholder="employee@domain.com"/></div>
       </div>
     </div>
     <div class="modal-ftr">
@@ -558,6 +541,248 @@
     <div class="modal-ftr">
       <button class="btn btn-secondary" onclick="closeM('m-empdetail')">Close</button>
       <button class="btn btn-gold" id="empdetail-edit-btn">&#9998; Edit</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== ACCESS DENIED VIEW ===== -->
+<div id="view-access-denied" class="view">
+  <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;text-align:center;padding:40px">
+    <div style="font-size:56px;margin-bottom:24px;opacity:.7">&#128274;</div>
+    <h2 style="font-family:Tahoma,Arial,sans-serif;color:var(--navy);margin-bottom:8px;font-size:22px">Access Denied</h2>
+    <p style="color:var(--muted);font-size:13px;max-width:400px;margin:0 auto;line-height:1.6">Your account does not have permission to access this system. Contact your system administrator to be granted access.</p>
+    <p style="color:var(--muted2);font-size:11px;margin-top:16px" id="ad-email"></p>
+  </div>
+</div>
+
+<!-- ===== SELF-SERVICE VIEW ===== -->
+<div id="view-self-service" class="view">
+  <div class="sec-hdr">
+    <div class="sec-hdr-left"><h2>My Profile</h2><p id="ss-welcome">Welcome</p></div>
+  </div>
+  <div id="ss-profile-card" class="tcard" style="padding:20px 24px;margin-bottom:14px">
+    <div style="text-align:center;padding:24px;color:var(--muted)">Loading your profile...</div>
+  </div>
+  <div class="setup-step">
+    <div class="step-num">1</div>
+    <h3>Update Document Expiry Dates</h3>
+    <p style="color:var(--muted);font-size:12px;margin-bottom:12px">You may update the expiry dates of your documents below. Other fields are managed by HR.</p>
+    <div class="fgrid">
+      <div class="fg"><label class="flabel">Passport Expiry</label><input class="fi" type="text" id="ss-pp-exp" placeholder="DD/MM/YYYY"/></div>
+      <div class="fg"><label class="flabel">Emirates ID Expiry</label><input class="fi" type="text" id="ss-eid-exp" placeholder="DD/MM/YYYY"/></div>
+      <div class="fg"><label class="flabel">Visa Expiry</label><input class="fi" type="text" id="ss-visa-exp" placeholder="DD/MM/YYYY"/></div>
+    </div>
+    <div style="margin-top:12px;text-align:right"><button class="btn btn-gold" onclick="SelfServiceAgent.saveExpiry()">&#128190; Save Changes</button></div>
+  </div>
+  <div id="ss-leave-section"></div>
+</div>
+
+<!-- ===== USERS VIEW ===== -->
+<div id="view-users" class="view">
+  <div class="sec-hdr">
+    <div class="sec-hdr-left"><h2>User Management</h2><p>Manage system user accounts and roles</p></div>
+    <div class="sec-hdr-right"><button class="abtn" onclick="UserMgmtAgent.openAdd()">&#10133; Add User</button></div>
+  </div>
+  <div class="tcard">
+    <div class="ttop"><h3>&#128101; System Users</h3><span class="tcnt" id="users-cnt">0 users</span></div>
+    <div class="twrap lazy">
+      <table>
+        <thead><tr><th>Email</th><th>Display Name</th><th>Role</th><th>Entities</th><th>Active</th><th>Actions</th></tr></thead>
+        <tbody id="users-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ===== LEAVE VIEW ===== -->
+<div id="view-leave" class="view">
+  <div class="sec-hdr">
+    <div class="sec-hdr-left"><h2>Leave Management</h2><p>Track and manage employee leave requests</p></div>
+  </div>
+  <div class="controls">
+    <div class="sw"><span class="si">&#128269;</span><input type="text" id="lv-q" placeholder="Employee ID or name..." oninput="LeaveAgent.render()"/></div>
+    <div class="fgrp"><span class="flbl">Status</span>
+      <select class="fsel" id="lv-sts" onchange="LeaveAgent.render()">
+        <option value="">All</option><option>Pending</option><option>Approved</option><option>Rejected</option>
+      </select>
+    </div>
+    <div class="fgrp"><span class="flbl">Type</span>
+      <select class="fsel" id="lv-type" onchange="LeaveAgent.render()">
+        <option value="">All</option><option>Annual Leave</option><option>Sick Leave</option><option>Emergency</option><option>Unpaid Leave</option><option>Other</option>
+      </select>
+    </div>
+    <button class="reset-btn" onclick="LeaveAgent.resetF()" style="margin-left:auto">&#10005;</button>
+  </div>
+  <div class="tcard">
+    <div class="ttop"><h3>&#128197; Leave Records</h3><span class="tcnt" id="lv-cnt">0</span></div>
+    <div class="twrap lazy">
+      <table>
+        <thead><tr><th>Leave ID</th><th>Employee</th><th>Type</th><th>Start</th><th>End</th><th>Days</th><th>Status</th><th>Actions</th></tr></thead>
+        <tbody id="lv-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ===== RECRUITMENT VIEW ===== -->
+<div id="view-recruitment" class="view">
+  <div class="sec-hdr">
+    <div class="sec-hdr-left"><h2>Recruitment</h2><p>Post jobs and manage applicant pipeline</p></div>
+    <div class="sec-hdr-right">
+      <button class="btn btn-secondary btn-sm" onclick="RecruitmentAgent.showJobsPanel()" style="margin-right:6px">&#128188; Jobs</button>
+      <button class="btn btn-secondary btn-sm" onclick="RecruitmentAgent.showApps('')">&#128203; Applications</button>
+    </div>
+  </div>
+  <div id="rec-jobs-panel">
+    <div class="tcard">
+      <div class="ttop"><h3>&#128188; Job Listings</h3><span class="tcnt" id="jobs-cnt">0</span></div>
+      <div class="twrap lazy">
+        <table>
+          <thead><tr><th>Job ID</th><th>Title</th><th>Entity</th><th>Location</th><th>Type</th><th>Status</th><th>Posted</th><th>Actions</th></tr></thead>
+          <tbody id="jobs-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <div id="rec-apps-panel" style="display:none">
+    <div style="margin-bottom:10px">
+      <button class="btn btn-secondary btn-sm" onclick="RecruitmentAgent.showJobsPanel()">&#8592; Back to Jobs</button>
+      <strong style="margin-left:10px;font-size:13px;color:var(--navy)" id="apps-job-title"></strong>
+    </div>
+    <div class="tcard">
+      <div class="ttop"><h3>&#128203; Applications</h3><span class="tcnt" id="apps-cnt">0</span></div>
+      <div class="twrap lazy">
+        <table>
+          <thead><tr><th>Name</th><th>Email</th><th>Job Applied</th><th>Applied</th><th>Stage</th><th>Actions</th></tr></thead>
+          <tbody id="apps-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== USER MODAL ===== -->
+<div class="modal-overlay" id="m-user">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-hdr"><div class="modal-ttl" id="m-user-ttl">Add User</div><button class="modal-close" onclick="closeM('m-user')">&#10005;</button></div>
+    <div class="modal-body">
+      <input type="hidden" id="uf-edit-email"/>
+      <div class="fgrid">
+        <div class="fg full"><label class="flabel">Email <span class="req">*</span></label><input class="fi" type="email" id="uf-email" placeholder="user@domain.com"/></div>
+        <div class="fg full"><label class="flabel">Display Name</label><input class="fi" type="text" id="uf-name" placeholder="Full Name"/></div>
+        <div class="fg"><label class="flabel">Role <span class="req">*</span></label>
+          <select class="fsel2" id="uf-role">
+            <option value="">Select role...</option>
+            <option>SUPER_ADMIN</option><option>HR_OFFICER</option><option>ENTITY_MANAGER</option><option>VIEWER</option><option>EMPLOYEE</option>
+          </select>
+        </div>
+        <div class="fg"><label class="flabel">Entities <span style="font-size:9px;color:var(--muted)">(ALL or USG,UG)</span></label><input class="fi" type="text" id="uf-entities" placeholder="ALL"/></div>
+        <div class="fg"><label class="flabel">Active</label>
+          <select class="fsel2" id="uf-active"><option value="TRUE">Yes</option><option value="FALSE">No</option></select>
+        </div>
+      </div>
+    </div>
+    <div class="modal-ftr">
+      <button class="btn btn-secondary" onclick="closeM('m-user')">Cancel</button>
+      <button class="btn btn-gold" onclick="UserMgmtAgent.save()">Save User</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== LEAVE MODAL ===== -->
+<div class="modal-overlay" id="m-leave">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-hdr"><div class="modal-ttl">Apply for Leave</div><button class="modal-close" onclick="closeM('m-leave')">&#10005;</button></div>
+    <div class="modal-body">
+      <div class="fgrid">
+        <div class="fg"><label class="flabel">Employee ID</label><input class="fi" type="text" id="lvf-empid" placeholder="Employee ID"/></div>
+        <div class="fg"><label class="flabel">Employee Name</label><input class="fi" type="text" id="lvf-empname" placeholder="Full Name"/></div>
+        <div class="fg full"><label class="flabel">Leave Type <span class="req">*</span></label>
+          <select class="fsel2" id="lvf-type">
+            <option value="">Select type...</option>
+            <option>Annual Leave</option><option>Sick Leave</option><option>Emergency</option><option>Unpaid Leave</option><option>Other</option>
+          </select>
+        </div>
+        <div class="fg"><label class="flabel">Start Date <span class="req">*</span></label><input class="fi" type="date" id="lvf-start" onchange="LeaveAgent.calcDays()"/></div>
+        <div class="fg"><label class="flabel">End Date <span class="req">*</span></label><input class="fi" type="date" id="lvf-end" onchange="LeaveAgent.calcDays()"/></div>
+        <div class="fg"><label class="flabel">Days</label><input class="fi" type="number" id="lvf-days" placeholder="Auto-calculated" readonly/></div>
+        <div class="fg full"><label class="flabel">Notes</label><input class="fi" type="text" id="lvf-notes" placeholder="Reason or notes..."/></div>
+      </div>
+    </div>
+    <div class="modal-ftr">
+      <button class="btn btn-secondary" onclick="closeM('m-leave')">Cancel</button>
+      <button class="btn btn-gold" onclick="LeaveAgent.save()">Submit Leave</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== LEAVE STATUS MODAL ===== -->
+<div class="modal-overlay" id="m-leave-status">
+  <div class="modal" style="max-width:380px">
+    <div class="modal-hdr"><div class="modal-ttl">Update Leave Status</div><button class="modal-close" onclick="closeM('m-leave-status')">&#10005;</button></div>
+    <div class="modal-body">
+      <div class="fgrid">
+        <div class="fg full"><label class="flabel">Status <span class="req">*</span></label>
+          <select class="fsel2" id="lvs-status"><option value="Approved">Approved</option><option value="Rejected">Rejected</option></select>
+        </div>
+        <div class="fg full"><label class="flabel">Notes</label><textarea class="fi" id="lvs-notes" rows="2" placeholder="Optional notes..."></textarea></div>
+      </div>
+    </div>
+    <div class="modal-ftr">
+      <button class="btn btn-secondary" onclick="closeM('m-leave-status')">Cancel</button>
+      <button class="btn btn-gold" onclick="LeaveAgent.confirmStatus()">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== JOB MODAL ===== -->
+<div class="modal-overlay" id="m-job">
+  <div class="modal">
+    <div class="modal-hdr"><div class="modal-ttl" id="m-job-ttl">Post New Job</div><button class="modal-close" onclick="closeM('m-job')">&#10005;</button></div>
+    <div class="modal-body">
+      <input type="hidden" id="jf-jobid"/>
+      <div class="fgrid">
+        <div class="fg full"><label class="flabel">Job Title <span class="req">*</span></label><input class="fi" type="text" id="jf-title" placeholder="e.g. Security Guard"/></div>
+        <div class="fg"><label class="flabel">Entity</label>
+          <select class="fsel2" id="jf-entity"><option value="">All</option><option>USG</option><option>UG</option><option>UST</option><option>USG-M</option></select>
+        </div>
+        <div class="fg"><label class="flabel">Location</label><input class="fi" type="text" id="jf-location" placeholder="Abu Dhabi / Dubai"/></div>
+        <div class="fg"><label class="flabel">Job Type</label>
+          <select class="fsel2" id="jf-type"><option value="">Select...</option><option>Full-time</option><option>Part-time</option><option>Contract</option></select>
+        </div>
+        <div class="fg"><label class="flabel">Status</label>
+          <select class="fsel2" id="jf-status"><option value="Active">Active</option><option value="Draft">Draft</option><option value="Closed">Closed</option></select>
+        </div>
+        <div class="fg full"><label class="flabel">Description</label><textarea class="fi" id="jf-desc" rows="3" placeholder="Job description..."></textarea></div>
+        <div class="fg full"><label class="flabel">Requirements</label><textarea class="fi" id="jf-req" rows="2" placeholder="Requirements..."></textarea></div>
+      </div>
+    </div>
+    <div class="modal-ftr">
+      <button class="btn btn-secondary" onclick="closeM('m-job')">Cancel</button>
+      <button class="btn btn-gold" onclick="RecruitmentAgent.saveJob()">Save Job</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MOVE STAGE MODAL ===== -->
+<div class="modal-overlay" id="m-move-stage">
+  <div class="modal" style="max-width:380px">
+    <div class="modal-hdr"><div class="modal-ttl">Move Application Stage</div><button class="modal-close" onclick="closeM('m-move-stage')">&#10005;</button></div>
+    <div class="modal-body">
+      <p style="font-size:12px;color:var(--muted);margin-bottom:12px">Applicant: <strong id="ms-name" style="color:var(--navy)"></strong></p>
+      <div class="fgrid">
+        <div class="fg full"><label class="flabel">New Stage <span class="req">*</span></label>
+          <select class="fsel2" id="ms-stage">
+            <option value="">Select stage...</option>
+            <option>Screening</option><option>Interview</option><option>Offer</option><option>Hired</option><option>Rejected</option>
+          </select>
+        </div>
+        <div class="fg full"><label class="flabel">Notes</label><textarea class="fi" id="ms-notes" rows="2" placeholder="Optional notes..."></textarea></div>
+      </div>
+    </div>
+    <div class="modal-ftr">
+      <button class="btn btn-secondary" onclick="closeM('m-move-stage')">Cancel</button>
+      <button class="btn btn-gold" onclick="RecruitmentAgent.confirmMoveStage()">Update Stage</button>
     </div>
   </div>
 </div>

@@ -30,7 +30,7 @@ body{background:var(--bg);color:var(--text);font-family:Tahoma,'Segoe UI',Arial,
 /* SIDEBAR */
 .sidebar{width:215px;min-width:215px;background:var(--navy);display:flex;flex-direction:column;position:fixed;height:100vh;z-index:200;overflow-y:auto;box-shadow:3px 0 14px rgba(10,28,80,.22);}
 .sb-brand{padding:14px 12px;border-bottom:1px solid rgba(255,255,255,.1);display:flex;align-items:center;justify-content:center;min-height:78px;background:rgba(0,0,0,.22);}
-.sb-logo{max-width:100%;max-height:200%;}
+.sb-logo{max-width:66%;max-height:200%;}
 .sb-sec{font-size:9px;font-weight:700;color:rgba(255,255,255,.32);text-transform:uppercase;letter-spacing:.14em;padding:14px 15px 4px;}
 .sb-item{display:flex;align-items:center;gap:9px;padding:10px 15px;cursor:pointer;color:rgba(255,255,255,.6);font-size:12px;font-weight:400;border-left:3px solid transparent;transition:all .14s;user-select:none;}
 .sb-item:hover{color:#fff;background:rgba(255,255,255,.08);}
@@ -309,6 +309,27 @@ mark.hl{background:rgba(30,71,153,.13);color:var(--navy);border-radius:2px;font-
 
 /* modal md size */
 .modal.md{width:580px;}
+
+/* ROLE BADGES — extend existing badge colors */
+/* SUPER_ADMIN uses .bp, HR_OFFICER uses .bs, ENTITY_MANAGER uses .bo, VIEWER uses .bn, EMPLOYEE uses .bg2 */
+
+/* SELF-SERVICE PROFILE */
+.ss-field-label{font-size:9px;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:.06em;}
+.ss-field-value{font-size:13px;font-weight:600;color:var(--navy);}
+
+/* LEAVE STATUS BADGES */
+.lv-pending{background:rgba(184,112,0,.09);color:var(--gold);border:1px solid rgba(184,112,0,.22);}
+.lv-approved{background:var(--green-dim,rgba(19,110,66,.07));color:var(--green,#137843);border:1px solid rgba(19,110,66,.2);}
+.lv-rejected{background:rgba(200,48,48,.07);color:var(--red,#c83030);border:1px solid rgba(200,48,48,.18);}
+
+/* RECRUITMENT STAGE PILLS */
+.stage-new{background:rgba(82,98,120,.07);color:var(--muted);}
+.stage-screening{background:rgba(78,66,184,.08);color:#4e42b8;}
+.stage-interview{background:rgba(0,122,138,.09);color:var(--teal,#007a8a);}
+.stage-offer{background:rgba(184,112,0,.09);color:var(--gold);}
+.stage-hired{background:var(--green-dim,rgba(19,110,66,.07));color:var(--green,#137843);}
+.stage-rejected{background:rgba(200,48,48,.07);color:var(--red,#c83030);}
+.stage-transferred{background:var(--green-dim,rgba(19,110,66,.07));color:var(--green,#137843);}
 
 @media(max-width:800px){.kpi-grid{grid-template-columns:1fr 1fr;}.sidebar{width:52px;min-width:52px;}.sb-sec,.sb-badge,.sb-footer .dev-credit,.sb-item span:not(.ic){display:none;}.main{margin-left:52px;}}
 </style>
