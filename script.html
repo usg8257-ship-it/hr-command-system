@@ -58,6 +58,69 @@ function fmtD(s){
 }
 function genId(p){ return (p||'ID')+'-'+Date.now().toString().slice(-8); }
 
+// ============================================================
+// MULTI-SELECT CHECKBOX DROPDOWN
+// ============================================================
+var MultiSel={
+  // Toggle open/close a dropdown
+  toggle:function(id){
+    var wrap=document.getElementById(id); if(!wrap) return;
+    var drop=wrap.querySelector('.ms-drop');
+    var opening=!drop.classList.contains('open');
+    // close all others first
+    document.querySelectorAll('.ms-drop.open').forEach(function(d){ d.classList.remove('open'); });
+    document.querySelectorAll('.ms-wrap.ms-open').forEach(function(w){ w.classList.remove('ms-open'); });
+    if(opening){ drop.classList.add('open'); wrap.classList.add('ms-open'); }
+  },
+  // Get array of checked values for a ms-wrap
+  get:function(id){
+    var wrap=document.getElementById(id); if(!wrap) return [];
+    var vals=[];
+    wrap.querySelectorAll('input[type=checkbox]:checked').forEach(function(cb){ vals.push(cb.value); });
+    return vals;
+  },
+  // Reset all checkboxes in a ms-wrap to unchecked
+  reset:function(id){
+    var wrap=document.getElementById(id); if(!wrap) return;
+    wrap.querySelectorAll('input[type=checkbox]').forEach(function(cb){ cb.checked=false; });
+    MultiSel._sync(id);
+  },
+  // Update label and active class after checkbox change
+  _sync:function(id){
+    var wrap=document.getElementById(id); if(!wrap) return;
+    var vals=MultiSel.get(id);
+    var label=wrap.querySelector('.ms-label');
+    if(label){
+      if(!vals.length){
+        // Restore placeholder from first option's text or default
+        var placeholder=wrap.querySelector('.ms-btn').dataset.placeholder||'All';
+        label.innerHTML=esc(placeholder);
+      } else if(vals.length<=2){
+        label.innerHTML=vals.map(function(v){ return esc(v); }).join(', ');
+      } else {
+        label.innerHTML=vals[0]+' <span class="ms-sel-cnt">+'+( vals.length-1)+'</span>';
+      }
+    }
+    if(vals.length) wrap.classList.add('ms-active');
+    else wrap.classList.remove('ms-active');
+  },
+  // Build a dynamic dropdown (used for year / designation lists)
+  build:function(dropId,options,syncId){
+    var drop=document.getElementById(dropId); if(!drop) return;
+    drop.innerHTML=options.map(function(o){
+      return '<label class="ms-item"><input type="checkbox" value="'+esc(o.value)+'" onchange="MultiSel._sync(\''+syncId+'\')"> '+esc(o.label)+'</label>';
+    }).join('');
+    MultiSel.reset(syncId);
+  }
+};
+// Close any open multi-select when clicking outside
+document.addEventListener('click',function(e){
+  if(!e.target.closest('.ms-wrap')){
+    document.querySelectorAll('.ms-drop.open').forEach(function(d){ d.classList.remove('open'); });
+    document.querySelectorAll('.ms-wrap.ms-open').forEach(function(w){ w.classList.remove('ms-open'); });
+  }
+});
+
 function toast(msg,type){
   var box=document.getElementById('tbox');
   var el=document.createElement('div'); el.className='toast t-'+(type||'info'); el.textContent=msg;
@@ -478,14 +541,14 @@ var EmpAgent={
     return list;
   },
   _filteredActive:function(){
-    var q  =(document.getElementById('emp-q2')  ||{}).value||'';
-    var ent=(document.getElementById('emp-ent2')||{}).value||'';
-    var lic=(document.getElementById('emp-lic2')||{}).value||'';
+    var q  =(document.getElementById('emp-q2')||{}).value||'';
+    var ents=MultiSel.get('ms-emp-ent2');
+    var lics=MultiSel.get('ms-emp-lic2');
     q=q.toLowerCase();
     var list=getActiveEmployees().filter(function(r){
-      if(q  && ![(r.NAME||''),(r.ID||''),(r['PASSPORT NO']||'')].some(function(v){ return v.toLowerCase().indexOf(q)>=0; })) return false;
-      if(ent && normEnt(r.ENTITY)!==ent) return false;
-      if(lic && r['LIC AUTH']!==lic) return false;
+      if(q && ![(r.NAME||''),(r.ID||''),(r['PASSPORT NO']||'')].some(function(v){ return v.toLowerCase().indexOf(q)>=0; })) return false;
+      if(ents.length && ents.indexOf(normEnt(r.ENTITY))===-1) return false;
+      if(lics.length && lics.indexOf(r['LIC AUTH'])===-1) return false;
       return true;
     });
     var sc=this._sortActive.col, sd=this._sortActive.dir;
@@ -613,7 +676,8 @@ var EmpAgent={
   },
   resetF:function(){
     ['emp-q','emp-tq','emp-nat-f','emp-doj-f','emp-q2'].forEach(function(id){ var el=document.getElementById(id); if(el) el.value=''; });
-    ['emp-ent','emp-lic','emp-sts','emp-ent2','emp-lic2'].forEach(function(id){ var el=document.getElementById(id); if(el) el.value=''; });
+    ['emp-ent','emp-lic','emp-sts'].forEach(function(id){ var el=document.getElementById(id); if(el) el.value=''; });
+    MultiSel.reset('ms-emp-ent2'); MultiSel.reset('ms-emp-lic2');
     this._sort={col:'NAME',dir:'asc'};
     this.render(true);
   },
@@ -1089,32 +1153,21 @@ var ExcelAgent={
     var active=getActiveEmployees();
 
     // Joining years — extracted from DATE OF JOIN
-    var yrSel=document.getElementById('xls-join-year');
-    if(yrSel){
-      var years={};
-      active.forEach(function(r){
-        var m=String(r['DATE OF JOIN']||'').match(/(\d{4})/);
-        if(m) years[m[1]]=true;
-      });
-      yrSel.innerHTML='<option value="">All Years</option>';
-      Object.keys(years).sort().reverse().forEach(function(y){
-        yrSel.innerHTML+='<option value="'+y+'">'+y+'</option>';
-      });
-    }
+    // Joining years — build multi-select options
+    var years={};
+    active.forEach(function(r){
+      var m=String(r['DATE OF JOIN']||'').match(/(\d{4})/);
+      if(m) years[m[1]]=true;
+    });
+    MultiSel.build('ms-xls-year-drop', Object.keys(years).sort().reverse().map(function(y){ return {value:y,label:y}; }), 'ms-xls-year');
 
-    // Designations — unique sorted list from active employees
-    var desSel=document.getElementById('xls-desig');
-    if(desSel){
-      var desigs={};
-      active.forEach(function(r){
-        var d=String(r.DESIGNATION||'').trim();
-        if(d&&d!=='Unknown'&&d!=='nan') desigs[d]=true;
-      });
-      desSel.innerHTML='<option value="">All Designations</option>';
-      Object.keys(desigs).sort().forEach(function(d){
-        desSel.innerHTML+='<option value="'+esc(d)+'">'+esc(d)+'</option>';
-      });
-    }
+    // Designations — build multi-select options
+    var desigs={};
+    active.forEach(function(r){
+      var d=String(r.DESIGNATION||'').trim();
+      if(d&&d!=='Unknown'&&d!=='nan') desigs[d]=true;
+    });
+    MultiSel.build('ms-xls-desig-drop', Object.keys(desigs).sort().map(function(d){ return {value:d,label:d}; }), 'ms-xls-desig');
   },
 
   // Parse month number (1–12) from any date string
@@ -1134,22 +1187,19 @@ var ExcelAgent={
   export:function(){
     if(typeof XLSX==='undefined'){ toast('Excel library still loading — please retry in a moment.','error'); return; }
 
-    var bm  =(document.getElementById('xls-birth-month')||{}).value||'';
-    var jy  =(document.getElementById('xls-join-year')  ||{}).value||'';
-    var des =(document.getElementById('xls-desig')       ||{}).value||'';
-    var org =(document.getElementById('xls-org')         ||{}).value||'';
+    var bms =MultiSel.get('ms-xls-birth').map(function(v){ return parseInt(v,10); });
+    var jys =MultiSel.get('ms-xls-year');
+    var dess=MultiSel.get('ms-xls-desig');
+    var orgs=MultiSel.get('ms-xls-org');
 
-    // Begin with the same filtered list used by the active table (inherits search, company, license filters)
+    // Begin with the same filtered list used by the active table
     var list=EmpAgent._filteredActive();
 
-    // Apply export-specific filters
-    if(bm){
-      var bmN=parseInt(bm,10);
-      list=list.filter(function(r){ return ExcelAgent._month(r['BIRTH DATE']||'')===bmN; });
-    }
-    if(jy)  list=list.filter(function(r){ return ExcelAgent._year(r['DATE OF JOIN']||'')===jy; });
-    if(des) list=list.filter(function(r){ return String(r.DESIGNATION||'').trim()===des; });
-    if(org) list=list.filter(function(r){ return normEnt(r.ENTITY)===org; });
+    // Apply multi-select export filters — each filter: if any selected, record must match one of them
+    if(bms.length)  list=list.filter(function(r){ return bms.indexOf(ExcelAgent._month(r['BIRTH DATE']||''))!==-1; });
+    if(jys.length)  list=list.filter(function(r){ return jys.indexOf(ExcelAgent._year(r['DATE OF JOIN']||''))!==-1; });
+    if(dess.length) list=list.filter(function(r){ return dess.indexOf(String(r.DESIGNATION||'').trim())!==-1; });
+    if(orgs.length) list=list.filter(function(r){ return orgs.indexOf(normEnt(r.ENTITY))!==-1; });
 
     if(!list.length){ toast('No records match the selected filters.','error'); return; }
 
@@ -1184,29 +1234,23 @@ var ExcelAgent={
 
     var wb=XLSX.utils.book_new();
     var ws=XLSX.utils.aoa_to_sheet([headers].concat(rows));
-
-    // Column widths
     ws['!cols']=[
       {wch:10},{wch:28},{wch:24},{wch:14},{wch:14},
       {wch:6},{wch:14},{wch:10},{wch:12},{wch:14},
       {wch:14},{wch:20},{wch:28},{wch:8},{wch:14}
     ];
-
-    // Freeze header row
     ws['!freeze']={xSplit:0,ySplit:1,topLeftCell:'A2',activeCell:'A2',sqref:'A2'};
-
     XLSX.utils.book_append_sheet(wb,ws,'Active Manpower');
 
     // Build descriptive filename
     var parts=['Active_Manpower'];
-    if(org)  parts.push(org);
-    if(bm)   parts.push('Birth_'+ExcelAgent._MONTHS_SHORT[parseInt(bm,10)-1]);
-    if(jy)   parts.push('Join_'+jy);
-    if(des)  parts.push(des.replace(/[^a-zA-Z0-9]/g,'_').substring(0,18));
+    if(orgs.length)  parts.push(orgs.join('-'));
+    if(bms.length)   parts.push('Birth_'+bms.map(function(n){ return ExcelAgent._MONTHS_SHORT[n-1]; }).join('-'));
+    if(jys.length)   parts.push('Join_'+jys.join('-'));
+    if(dess.length===1) parts.push(dess[0].replace(/[^a-zA-Z0-9]/g,'_').substring(0,18));
     parts.push(new Date().toISOString().split('T')[0]);
     var filename=parts.join('_')+'.xlsx';
 
-    // Write and trigger download
     var out=XLSX.write(wb,{bookType:'xlsx',type:'array'});
     var blob=new Blob([out],{type:'application/octet-stream'});
     var url=URL.createObjectURL(blob);

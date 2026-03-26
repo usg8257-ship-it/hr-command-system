@@ -176,18 +176,32 @@
         <div class="sec-hdr-right"><button class="abtn gold" onclick="EmpAgent.openAdd()">&#10133; Add Employee</button></div>
       </div>
       <div class="controls">
-        <div class="sw"><span class="si">&#128269;</span><input type="text" id="emp-q2" placeholder="Search..." oninput="EmpAgent.render(true)"></div>
-        <div class="fgrp"><span class="flbl">Company</span>
-          <select class="fsel" id="emp-ent2" onchange="EmpAgent.render(true)">
-            <option value="">All</option><option>USG</option><option>UG</option><option>UST</option><option>USG-M</option>
-          </select>
+        <div class="sw"><span class="si">&#128269;</span><input type="text" id="emp-q2" placeholder="Search name, ID, passport..." oninput="EmpAgent.render(true)"></div>
+        <div class="fgrp">
+          <span class="flbl">Company</span>
+          <div class="ms-wrap" id="ms-emp-ent2">
+            <button class="ms-btn" type="button" onclick="MultiSel.toggle('ms-emp-ent2')"><span class="ms-label">All</span><span class="ms-arrow">&#9660;</span></button>
+            <div class="ms-drop">
+              <label class="ms-item"><input type="checkbox" value="USG"   onchange="MultiSel._sync('ms-emp-ent2');EmpAgent.render(true)"> USG</label>
+              <label class="ms-item"><input type="checkbox" value="UG"    onchange="MultiSel._sync('ms-emp-ent2');EmpAgent.render(true)"> UG</label>
+              <label class="ms-item"><input type="checkbox" value="UST"   onchange="MultiSel._sync('ms-emp-ent2');EmpAgent.render(true)"> UST</label>
+              <label class="ms-item"><input type="checkbox" value="USG-M" onchange="MultiSel._sync('ms-emp-ent2');EmpAgent.render(true)"> USG-M</label>
+            </div>
+          </div>
         </div>
-        <div class="fgrp"><span class="flbl">Lic</span>
-          <select class="fsel" id="emp-lic2" onchange="EmpAgent.render(true)">
-            <option value="">All</option><option>PSBD</option><option>SIRA</option><option>NIL</option>
-          </select>
+        <div class="fgrp">
+          <span class="flbl">License</span>
+          <div class="ms-wrap" id="ms-emp-lic2">
+            <button class="ms-btn" type="button" onclick="MultiSel.toggle('ms-emp-lic2')"><span class="ms-label">All</span><span class="ms-arrow">&#9660;</span></button>
+            <div class="ms-drop">
+              <label class="ms-item"><input type="checkbox" value="PSBD"  onchange="MultiSel._sync('ms-emp-lic2');EmpAgent.render(true)"> PSBD</label>
+              <label class="ms-item"><input type="checkbox" value="SIRA"  onchange="MultiSel._sync('ms-emp-lic2');EmpAgent.render(true)"> SIRA</label>
+              <label class="ms-item"><input type="checkbox" value="NIL"   onchange="MultiSel._sync('ms-emp-lic2');EmpAgent.render(true)"> NIL</label>
+              <label class="ms-item"><input type="checkbox" value="OTHER" onchange="MultiSel._sync('ms-emp-lic2');EmpAgent.render(true)"> OTHER</label>
+            </div>
+          </div>
         </div>
-        <button class="reset-btn" onclick="EmpAgent.resetF()" title="Reset" style="margin-left:auto">&#10005;</button>
+        <button class="reset-btn" onclick="EmpAgent.resetF()" title="Reset filters" style="margin-left:auto">&#10005;</button>
       </div>
       <!-- Excel Export Panel -->
       <div class="tcard" style="margin-bottom:12px;border-left:3px solid #136e42">
@@ -195,35 +209,55 @@
           <h3>&#128202; Export to Excel</h3>
           <span style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted)">Filter &amp; export master data as .xlsx <span class="xls-arrow">&#9650;</span></span>
         </div>
-        <div id="xls-panel" style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;padding:12px 16px 14px;border-top:1px solid var(--border)">
+        <div id="xls-panel" style="display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end;padding:12px 16px 14px;border-top:1px solid var(--border)">
           <div class="fgrp">
             <span class="flbl">Birth Month</span>
-            <select class="fsel" id="xls-birth-month">
-              <option value="">All Months</option>
-              <option value="1">January</option><option value="2">February</option><option value="3">March</option>
-              <option value="4">April</option><option value="5">May</option><option value="6">June</option>
-              <option value="7">July</option><option value="8">August</option><option value="9">September</option>
-              <option value="10">October</option><option value="11">November</option><option value="12">December</option>
-            </select>
+            <div class="ms-wrap" id="ms-xls-birth">
+              <button class="ms-btn" type="button" onclick="MultiSel.toggle('ms-xls-birth')" style="min-width:100px"><span class="ms-label">All Months</span><span class="ms-arrow">&#9660;</span></button>
+              <div class="ms-drop" style="min-width:130px">
+                <label class="ms-item"><input type="checkbox" value="1"  onchange="MultiSel._sync('ms-xls-birth')"> January</label>
+                <label class="ms-item"><input type="checkbox" value="2"  onchange="MultiSel._sync('ms-xls-birth')"> February</label>
+                <label class="ms-item"><input type="checkbox" value="3"  onchange="MultiSel._sync('ms-xls-birth')"> March</label>
+                <label class="ms-item"><input type="checkbox" value="4"  onchange="MultiSel._sync('ms-xls-birth')"> April</label>
+                <label class="ms-item"><input type="checkbox" value="5"  onchange="MultiSel._sync('ms-xls-birth')"> May</label>
+                <label class="ms-item"><input type="checkbox" value="6"  onchange="MultiSel._sync('ms-xls-birth')"> June</label>
+                <label class="ms-item"><input type="checkbox" value="7"  onchange="MultiSel._sync('ms-xls-birth')"> July</label>
+                <label class="ms-item"><input type="checkbox" value="8"  onchange="MultiSel._sync('ms-xls-birth')"> August</label>
+                <label class="ms-item"><input type="checkbox" value="9"  onchange="MultiSel._sync('ms-xls-birth')"> September</label>
+                <label class="ms-item"><input type="checkbox" value="10" onchange="MultiSel._sync('ms-xls-birth')"> October</label>
+                <label class="ms-item"><input type="checkbox" value="11" onchange="MultiSel._sync('ms-xls-birth')"> November</label>
+                <label class="ms-item"><input type="checkbox" value="12" onchange="MultiSel._sync('ms-xls-birth')"> December</label>
+              </div>
+            </div>
           </div>
           <div class="fgrp">
             <span class="flbl">Joining Year</span>
-            <select class="fsel" id="xls-join-year"><option value="">All Years</option></select>
+            <div class="ms-wrap" id="ms-xls-year">
+              <button class="ms-btn" type="button" onclick="MultiSel.toggle('ms-xls-year')" style="min-width:90px"><span class="ms-label">All Years</span><span class="ms-arrow">&#9660;</span></button>
+              <div class="ms-drop" id="ms-xls-year-drop" style="min-width:110px"><!-- populated by ExcelAgent.populateFilters() --></div>
+            </div>
           </div>
           <div class="fgrp">
             <span class="flbl">Designation</span>
-            <select class="fsel" id="xls-desig" style="max-width:180px"><option value="">All Designations</option></select>
+            <div class="ms-wrap" id="ms-xls-desig">
+              <button class="ms-btn" type="button" onclick="MultiSel.toggle('ms-xls-desig')" style="min-width:130px"><span class="ms-label">All Designations</span><span class="ms-arrow">&#9660;</span></button>
+              <div class="ms-drop" id="ms-xls-desig-drop" style="min-width:180px;max-height:200px"><!-- populated by ExcelAgent.populateFilters() --></div>
+            </div>
           </div>
           <div class="fgrp">
             <span class="flbl">Organization</span>
-            <select class="fsel" id="xls-org">
-              <option value="">All Companies</option>
-              <option value="USG">USG</option><option value="UG">UG</option>
-              <option value="UST">UST</option><option value="USG-M">USG-M</option>
-            </select>
+            <div class="ms-wrap" id="ms-xls-org">
+              <button class="ms-btn" type="button" onclick="MultiSel.toggle('ms-xls-org')" style="min-width:90px"><span class="ms-label">All</span><span class="ms-arrow">&#9660;</span></button>
+              <div class="ms-drop" style="min-width:110px">
+                <label class="ms-item"><input type="checkbox" value="USG"   onchange="MultiSel._sync('ms-xls-org')"> USG</label>
+                <label class="ms-item"><input type="checkbox" value="UG"    onchange="MultiSel._sync('ms-xls-org')"> UG</label>
+                <label class="ms-item"><input type="checkbox" value="UST"   onchange="MultiSel._sync('ms-xls-org')"> UST</label>
+                <label class="ms-item"><input type="checkbox" value="USG-M" onchange="MultiSel._sync('ms-xls-org')"> USG-M</label>
+              </div>
+            </div>
           </div>
           <button class="btn btn-gold" onclick="ExcelAgent.export()" style="height:30px;padding:0 18px;font-size:12px">&#128202; Export Excel</button>
-          <span style="font-size:10.5px;color:var(--muted2);align-self:center;line-height:1.5">All filters are optional &amp; combinable.<br>Exports full master data columns for matched records.</span>
+          <span style="font-size:10.5px;color:var(--muted2);align-self:center;line-height:1.5">All filters optional &amp; multi-select.<br>Exports full master sheet columns.</span>
         </div>
       </div>
 
