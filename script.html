@@ -932,35 +932,24 @@ var LtrAgent={
   renderExpPanel:function(){
     var tb  = document.getElementById('exp-ltr-tbody'); if(!tb) return;
     var cnt = document.getElementById('exp-ltr-cnt');
-    // Build issued set
-    var issuedSet = {};
-    APP.hrDocs.forEach(function(l){
-      if(l.LETTER_TYPE === 'Experience Letter') issuedSet[l.EMP_ID] = true;
-    });
     // Use APP.deletions as the source (already loaded)
     var rows = APP.deletions || [];
     if(!rows.length){
       tb.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--muted)">No resignation records found.</td></tr>';
-      if(cnt) cnt.textContent = '0 pending';
+      if(cnt) cnt.textContent = '0 records';
       return;
     }
-    var pending = rows.filter(function(r){ return !issuedSet[r.EMP_ID]; }).length;
-    if(cnt) cnt.textContent = pending + ' pending';
+    if(cnt) cnt.textContent = rows.length + ' records';
     // Reset select-all and bulk button
     var selAll = document.getElementById('exp-sel-all'); if(selAll) selAll.checked = false;
     var bulkBtn = document.getElementById('bulk-exp-btn'); if(bulkBtn) bulkBtn.style.display = 'none';
     var bulkCnt = document.getElementById('bulk-exp-count'); if(bulkCnt) bulkCnt.textContent = '0';
     tb.innerHTML = rows.map(function(r) {
-      var issued = issuedSet[r.EMP_ID];
-      var chkTd = issued
-        ? '<td></td>'
-        : '<td><input type="checkbox" class="exp-chk" data-empid="'+esc(r.EMP_ID||'')+'" data-name="'+esc((r.FULL_NAME||'').replace(/"/g,'&quot;'))+'" onchange="LtrAgent.updateBulkCount()"/></td>';
-      var actionHtml = issued
-        ? '<span class="badge bg2" style="font-size:9.5px;padding:3px 8px">&#10003; Issued</span>'
-        : '<button class="btn btn-gold btn-sm" style="font-size:10.5px;white-space:nowrap" '+
-            'data-exltr="'+esc(r.EMP_ID||'')+'" '+
-            'onclick="genExpLetter(\''+esc(r.EMP_ID||'')+'\',\''+esc((r.FULL_NAME||'').replace(/'/g,''))+'\')">'+
-            '&#128196; Generate</button>';
+      var chkTd = '<td><input type="checkbox" class="exp-chk" data-empid="'+esc(r.EMP_ID||'')+'" data-name="'+esc((r.FULL_NAME||'').replace(/"/g,'&quot;'))+'" onchange="LtrAgent.updateBulkCount()"/></td>';
+      var actionHtml = '<button class="btn btn-gold btn-sm" style="font-size:10.5px;white-space:nowrap" '+
+          'data-exltr="'+esc(r.EMP_ID||'')+'" '+
+          'onclick="genExpLetter(\''+esc(r.EMP_ID||'')+'\',\''+esc((r.FULL_NAME||'').replace(/'/g,''))+'\')">'+
+          '&#128196; Generate</button>';
       return '<tr>'+
         chkTd+
         '<td style="font-family:monospace;font-size:11px;font-weight:600;color:var(--navy)">'+esc(r.EMP_ID||'—')+'</td>'+
@@ -2065,11 +2054,6 @@ var ResignationAgent = {
       tb.innerHTML = '<tr><td colspan="11" style="text-align:center;padding:32px;color:var(--muted)">No resignation records found.</td></tr>';
       return;
     }
-    // Build set of EMP_IDs that already have an Experience Letter
-    var issuedSet = {};
-    APP.hrDocs.forEach(function(l){
-      if(l.LETTER_TYPE === 'Experience Letter') issuedSet[l.EMP_ID] = true;
-    });
     // Reset bulk controls
     var selAll = document.getElementById('res-sel-all'); if(selAll) selAll.checked = false;
     var bulkBtn = document.getElementById('res-bulk-btn'); if(bulkBtn) bulkBtn.style.display = 'none';
@@ -2081,16 +2065,11 @@ var ResignationAgent = {
       var joinFmt = self._fmt(r.DATE_OF_JOIN  || '');
       var exitFmt = self._fmt(r.DELETED_DATE  || '');
       var yos     = self._yos(r.DATE_OF_JOIN  || '', r.DELETED_DATE || '');
-      var issued  = issuedSet[r.EMP_ID];
-      var chkTd = issued
-        ? '<td></td>'
-        : '<td><input type="checkbox" class="res-chk" data-empid="'+esc(r.EMP_ID||'')+'" data-name="'+esc((r.FULL_NAME||'').replace(/"/g,'&quot;'))+'" onchange="ResignationAgent.updateBulkCount()"/></td>';
-      var btnHtml = issued
-        ? '<span class="badge bg2" style="font-size:9.5px;padding:3px 8px">&#10003; Issued</span>'
-        : '<button class="btn btn-secondary btn-sm" style="font-size:10.5px;white-space:nowrap" '+
-            'data-exltr="'+esc(r.EMP_ID||'')+'" '+
-            'onclick="genExpLetter(\''+esc(r.EMP_ID||'')+'\',\''+esc((r.FULL_NAME||'').replace(/'/g,''))+'\')">'+
-            '&#128196; Exp Letter</button>';
+      var chkTd = '<td><input type="checkbox" class="res-chk" data-empid="'+esc(r.EMP_ID||'')+'" data-name="'+esc((r.FULL_NAME||'').replace(/"/g,'&quot;'))+'" onchange="ResignationAgent.updateBulkCount()"/></td>';
+      var btnHtml = '<button class="btn btn-secondary btn-sm" style="font-size:10.5px;white-space:nowrap" '+
+          'data-exltr="'+esc(r.EMP_ID||'')+'" '+
+          'onclick="genExpLetter(\''+esc(r.EMP_ID||'')+'\',\''+esc((r.FULL_NAME||'').replace(/'/g,''))+'\')">'+
+          '&#128196; Exp Letter</button>';
       return '<tr>'+
         chkTd+
         '<td style="color:var(--muted2);font-size:11px;text-align:center">'+(idx+1)+'</td>'+
