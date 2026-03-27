@@ -688,7 +688,12 @@ function generateExperienceLetterForEmp(empId) {
     for (var i = 1; i < vals.length; i++) {
       if (String(vals[i][idCol]).trim() === String(empId).trim()) {
         emp = {};
-        for (var j = 0; j < hdrs.length; j++) emp[hdrs[j]] = String(vals[i][j]||'');
+        for (var j = 0; j < hdrs.length; j++) {
+          var _v = vals[i][j];
+          // Keep Date objects intact so formatDate() can use them directly.
+          // Converting a Date to String then back to new Date() loses the value in GAS.
+          emp[hdrs[j]] = (_v instanceof Date) ? _v : String(_v||'');
+        }
         break;
       }
     }
