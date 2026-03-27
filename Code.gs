@@ -983,6 +983,27 @@ function getPublicJobs() {
   } catch(e) { return {success:false, error:e.message}; }
 }
 
+// Helper: get or create the CV uploads folder in Google Drive
+function _getCVFolder() {
+  var name = 'UG_HR_CVs';
+  var folders = DriveApp.getFoldersByName(name);
+  return folders.hasNext() ? folders.next() : DriveApp.createFolder(name);
+}
+
+// PUBLIC — no auth (intentional) — upload PDF CV to Drive, return sharable URL
+function uploadCV(base64Data, fileName) {
+  try {
+    if (!base64Data) return {success:false, error:'No file data provided'};
+    var safeName = String(fileName||'cv.pdf').replace(/[^a-zA-Z0-9._\- ]/g,'_');
+    var bytes  = Utilities.base64Decode(base64Data);
+    var blob   = Utilities.newBlob(bytes, 'application/pdf', safeName);
+    var folder = _getCVFolder();
+    var file   = folder.createFile(blob);
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    return {success:true, url: file.getUrl()};
+  } catch(e) { return {success:false, error:e.message}; }
+}
+
 // PUBLIC — no auth (intentional)
 function submitApplication(data) {
   try {
@@ -1002,7 +1023,7 @@ function submitApplication(data) {
 function getJobs() {
   try {
     _requireRole(['SUPER_ADMIN','HR_OFFICER']);
-    var sh = getOrCreate(TABS.JOBS, ['JOB_ID','TITLE','ENTITY','LOCATION','JOB_TYPE','DESCRIPTION','REQUIREMENTS','STATUS','POSTED_DATE','POSTED_BY']);
+    var sh = getOrCreate(TABS.JOBS, ['JOB_ID','TITLE','ENTITY','LOCATION','JOB_TYPE','DESCRIPTION','REQUIREMENTS','STATUS','POSTED_DATE','POSTED_BY','SALARY_RANGE']);
     var vals = sh.getDataRange().getValues();
     if (vals.length < 2) return {success:true, data:[]};
     var hdrs = vals[0].map(function(h){ return String(h).trim(); });
@@ -1018,8 +1039,8 @@ function getJobs() {
 function saveJob(data) {
   try {
     var profile = _requireRole(['SUPER_ADMIN','HR_OFFICER']);
-    var sh = getOrCreate(TABS.JOBS, ['JOB_ID','TITLE','ENTITY','LOCATION','JOB_TYPE','DESCRIPTION','REQUIREMENTS','STATUS','POSTED_DATE','POSTED_BY']);
-    var hdrs = ['JOB_ID','TITLE','ENTITY','LOCATION','JOB_TYPE','DESCRIPTION','REQUIREMENTS','STATUS','POSTED_DATE','POSTED_BY'];
+    var sh = getOrCreate(TABS.JOBS, ['JOB_ID','TITLE','ENTITY','LOCATION','JOB_TYPE','DESCRIPTION','REQUIREMENTS','STATUS','POSTED_DATE','POSTED_BY','SALARY_RANGE']);
+    var hdrs = ['JOB_ID','TITLE','ENTITY','LOCATION','JOB_TYPE','DESCRIPTION','REQUIREMENTS','STATUS','POSTED_DATE','POSTED_BY','SALARY_RANGE'];
     if (!data.JOB_ID) {
       data.JOB_ID = genId_('JOB');
       data.POSTED_DATE = formatDate(new Date());

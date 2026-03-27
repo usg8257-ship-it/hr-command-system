@@ -2113,7 +2113,7 @@ var RecruitmentAgent = {
   renderJobs: function() {
     var tb = document.getElementById('jobs-tbody'); if(!tb) return;
     var cnt = document.getElementById('jobs-cnt'); if(cnt) cnt.textContent = this._jobs.length;
-    if(!this._jobs.length) { tb.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--muted)">No jobs posted yet.</td></tr>'; return; }
+    if(!this._jobs.length) { tb.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:24px;color:var(--muted)">No jobs posted yet.</td></tr>'; return; }
     var stsMap = {Active:'bg2', Closed:'bn', Draft:'bo'};
     tb.innerHTML = this._jobs.map(function(j) {
       return '<tr>'+
@@ -2122,6 +2122,7 @@ var RecruitmentAgent = {
         '<td>'+esc(j.ENTITY)+'</td>'+
         '<td>'+esc(j.LOCATION)+'</td>'+
         '<td>'+esc(j.JOB_TYPE)+'</td>'+
+        '<td style="font-size:11px;color:var(--teal)">'+esc(j.SALARY_RANGE||'—')+'</td>'+
         '<td><span class="badge '+(stsMap[j.STATUS]||'bn')+'">'+esc(j.STATUS)+'</span></td>'+
         '<td style="font-size:10.5px;color:var(--muted)">'+fmtD(j.POSTED_DATE)+'</td>'+
         '<td><div class="act-btns">'+
@@ -2140,7 +2141,7 @@ var RecruitmentAgent = {
       var job = this._jobs.find(function(j){ return j.JOB_ID === RecruitmentAgent._currentJobId; });
       if(jobTitle) jobTitle.textContent = job ? job.TITLE : this._currentJobId;
     }
-    if(!this._apps.length) { tb.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--muted)">No applications found.</td></tr>'; return; }
+    if(!this._apps.length) { tb.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--muted)">No applications found.</td></tr>'; return; }
     var stageMap = {New:'bn',Screening:'bo',Interview:'bs',Offer:'bp',Hired:'bg2',Rejected:'br',Transferred:'bg2'};
     tb.innerHTML = this._apps.map(function(a) {
       var stCls = stageMap[a.STAGE]||'bn';
@@ -2151,16 +2152,16 @@ var RecruitmentAgent = {
         '<td>'+esc(a.JOB_TITLE||'—')+'</td>'+
         '<td style="font-size:11px;color:var(--muted)">'+fmtD(a.APPLIED_DATE||'—')+'</td>'+
         '<td><span class="badge '+stCls+'">'+esc(a.STAGE||'—')+'</span></td>'+
+        '<td style="text-align:center">'+(a.CV_DRIVE_LINK?'<a class="btn btn-secondary btn-sm" href="'+esc(a.CV_DRIVE_LINK)+'" target="_blank" title="View uploaded CV/Resume" style="font-size:10px;gap:3px">&#128196; View CV</a>':'<span style="color:var(--muted);font-size:11px">—</span>')+'</td>'+
         '<td><div class="act-btns">'+
           '<button class="btn btn-secondary btn-sm" data-action="move-stage" data-appid="'+esc(a.APP_ID)+'" data-name="'+esc(a.FULL_NAME)+'" style="font-size:10px">Move Stage</button>'+
           (canTransfer?'<button class="btn btn-gold btn-sm" data-action="transfer-app" data-appid="'+esc(a.APP_ID)+'" style="font-size:10px" title="Transfer to Onboarding">→ Onboard</button>':'')+
-          (a.CV_DRIVE_LINK?'<a class="btn btn-secondary btn-sm" href="'+esc(a.CV_DRIVE_LINK)+'" target="_blank" style="font-size:10px">CV</a>':'')+
         '</div></td>'+
       '</tr>';
     }).join('');
   },
   openAddJob: function() {
-    ['jf-title','jf-entity','jf-location','jf-type','jf-desc','jf-req'].forEach(function(id){
+    ['jf-title','jf-entity','jf-location','jf-type','jf-salary','jf-desc','jf-req'].forEach(function(id){
       var el=document.getElementById(id); if(el) el.value='';
     });
     var sts = document.getElementById('jf-status'); if(sts) sts.value='Active';
@@ -2177,6 +2178,7 @@ var RecruitmentAgent = {
     document.getElementById('jf-location').value=j.LOCATION||'';
     document.getElementById('jf-type').value   = j.JOB_TYPE||'';
     document.getElementById('jf-status').value = j.STATUS||'Active';
+    document.getElementById('jf-salary').value = j.SALARY_RANGE||'';
     document.getElementById('jf-desc').value   = j.DESCRIPTION||'';
     document.getElementById('jf-req').value    = j.REQUIREMENTS||'';
     document.getElementById('m-job-ttl').textContent = 'Edit Job';
@@ -2192,6 +2194,7 @@ var RecruitmentAgent = {
       LOCATION:     (document.getElementById('jf-location')||{}).value||'',
       JOB_TYPE:     (document.getElementById('jf-type')||{}).value||'',
       STATUS:       (document.getElementById('jf-status')||{}).value||'Active',
+      SALARY_RANGE: (document.getElementById('jf-salary')||{}).value||'',
       DESCRIPTION:  (document.getElementById('jf-desc')||{}).value||'',
       REQUIREMENTS: (document.getElementById('jf-req')||{}).value||''
     };
