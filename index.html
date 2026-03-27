@@ -14,13 +14,43 @@
 
 <aside class="sidebar">
   <div class="sb-brand">
-    <svg class="sb-logo" viewBox="0 0 600 600" xmlns="http://www.w3.org/2000/svg" aria-label="United Group Holding">
-      <!-- Red left curved stroke -->
-      <path fill="#E63328" d="M80,68 L145,68 L145,395 C145,485 210,528 295,533 L265,545 C120,540 80,483 80,395 Z"/>
-      <!-- Navy outer U ring (transparent interior via evenodd) -->
-      <path fill="#1E3D7A" fill-rule="evenodd" d="M205,68 L510,68 L510,395 Q510,540 355,540 Q205,540 205,395 Z M268,68 L442,68 L442,395 Q442,478 355,478 Q268,478 268,395 Z"/>
-      <!-- Teal cap + inner U ring (solid cap y=68-122, ring below via evenodd) -->
-      <path fill="#3CC4B4" fill-rule="evenodd" d="M278,68 L432,68 L432,395 Q432,468 355,468 Q278,468 278,395 Z M298,122 L412,122 L412,395 Q412,448 355,448 Q298,448 298,395 Z"/>
+    <svg class="sb-logo" viewBox="0 0 220 240" xmlns="http://www.w3.org/2000/svg" aria-label="UG United Group Holding">
+      <!--
+        Icon reproduced from UG United Group Holding logo:
+        - Red  : thick C-stroke curving left side, bottom hooks inward
+        - Navy : bold outer U-ring (evenodd hollow)
+        - Teal : solid cap at top + inner U-ring below (evenodd)
+      -->
+
+      <!-- Red C-stroke (left element) -->
+      <path fill="#E8302B" d="
+        M 14,14  L 56,14  L 56,170
+        Q 56,215  92,220
+        L 74,230
+        Q 10,225  10,170  Z
+      "/>
+
+      <!-- Navy outer U — ring shape via evenodd -->
+      <path fill="#1A3A68" fill-rule="evenodd" d="
+        M 52,14  L 176,14  L 176,170
+        Q 176,225  114,225
+        Q 52,225   52,170  Z
+
+        M 84,14  L 144,14  L 144,170
+        Q 144,202  114,202
+        Q 84,202   84,170  Z
+      "/>
+
+      <!-- Teal: solid cap (y14→50) + ring below (evenodd) -->
+      <path fill="#2CB5A8" fill-rule="evenodd" d="
+        M 88,14  L 140,14  L 140,170
+        Q 140,198  114,198
+        Q 88,198   88,170  Z
+
+        M 100,50  L 128,50  L 128,170
+        Q 128,186  114,186
+        Q 100,186  100,170  Z
+      "/>
     </svg>
   </div>
   <div class="sb-sec">Overview</div>
