@@ -673,6 +673,42 @@ function formatDate(date) {
   return Utilities.formatDate(d, Session.getScriptTimeZone(), "dd/MM/yyyy");
 }
 
+// Robust date parser for sheet values — handles Date objects, DD/MM/YYYY strings,
+// ISO strings, and guards against epoch / 1899-1900 serial-zero errors.
+function _parseSheetDate(raw) {
+  if (raw === null || raw === undefined || raw === '') return '';
+
+  var d;
+
+  if (raw instanceof Date) {
+    d = raw;
+  } else {
+    var s = String(raw).trim();
+    if (!s) return '';
+
+    // Already DD/MM/YYYY — parse manually to avoid JS MM/DD/YYYY misinterpretation
+    var dm = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (dm) {
+      d = new Date(parseInt(dm[3], 10), parseInt(dm[2], 10) - 1, parseInt(dm[1], 10));
+    } else {
+      // ISO YYYY-MM-DD or YYYY/MM/DD
+      var im = s.match(/^(\d{4})[-\/](\d{2})[-\/](\d{2})/);
+      if (im) {
+        d = new Date(parseInt(im[1], 10), parseInt(im[2], 10) - 1, parseInt(im[3], 10));
+      } else {
+        d = new Date(s);
+      }
+    }
+  }
+
+  if (!d || isNaN(d.getTime())) return '';
+  var yr = d.getFullYear();
+  // Reject clearly wrong years (epoch=1970, Sheets serial-0=1899, future junk)
+  if (yr < 1950 || yr > 2100) return '';
+
+  return Utilities.formatDate(d, Session.getScriptTimeZone(), 'dd/MM/yyyy');
+}
+
 function generateExperienceLetterForEmp(empId) {
   try {
     _requireRole(['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER']);
@@ -714,8 +750,8 @@ function generateExperienceLetterForEmp(empId) {
       EMP_ID:      empId,
       EMP_NAME:    cleanName,
       FIRSTNAME:   firstName,
-      DOJ:         emp.DATE_OF_JOIN ? formatDate(emp.DATE_OF_JOIN) : '',
-      DOL:         formatDate(emp.DELETED_DATE) || '',
+      DOJ:         _parseSheetDate(emp.DATE_OF_JOIN),
+      DOL:         _parseSheetDate(emp.DELETED_DATE),
       DESIGNATION: emp.DESIGNATION  || '',
       ISSUE_DATE:  formatDate(new Date()),
       ISSUED_BY:   cfg.hr_officer   || 'HR'
