@@ -766,6 +766,30 @@ function generateExperienceLetterForEmp(empId) {
     }
     if (!emp) return {success:false, error:'Employee ' + empId + ' not found in Deletion_Log'};
 
+    // Look up DATE_OF_JOIN (and DESIGNATION as fallback) from Master using EMP_ID → ID
+    // Employees remain in Master with STATUS=DELETED, so this join is always possible.
+    var mSh = SS.getSheetByName(TABS.MASTER);
+    if (mSh) {
+      var mVals = mSh.getDataRange().getValues();
+      var mHdrs = mVals[0].map(function(h){ return String(h).trim(); });
+      var mIdIdx    = mHdrs.indexOf('ID');
+      var mJoinIdx  = mHdrs.indexOf('DATE OF JOIN');
+      var mDesigIdx = mHdrs.indexOf('DESIGNATION');
+      for (var k = 1; k < mVals.length; k++) {
+        if (String(mVals[k][mIdIdx]).trim() === String(empId).trim()) {
+          if (mJoinIdx >= 0) {
+            var rawJoin = mVals[k][mJoinIdx];
+            // Keep Date objects intact; otherwise stringify
+            emp.DATE_OF_JOIN = (rawJoin instanceof Date) ? rawJoin : String(rawJoin||'');
+          }
+          if (mDesigIdx >= 0 && !emp.DESIGNATION) {
+            emp.DESIGNATION = String(mVals[k][mDesigIdx]||'');
+          }
+          break;
+        }
+      }
+    }
+
     // Get template Drive ID from AppConfig
     var cfg = getConfig();
     var templateId = String(cfg['EXP_LETTER_TEMPLATE_ID'] || '').trim();
