@@ -339,7 +339,7 @@ function getDeletionLog() {
   } catch(e){ return {success:false,error:e.message}; }
 }
 
-// Returns Deletion_Log sorted newest-first, enriched with extra fields
+// Returns Deletion_Log sorted newest-first, enriched with DESIGNATION & DATE_OF_JOIN from Master
 function getResignations() {
   try {
     var sh=SS.getSheetByName(TABS.DEL_LOG); if(!sh) return {success:true,data:[]};
@@ -351,7 +351,38 @@ function getResignations() {
       var row={}; for(var j=0;j<hdrs.length;j++) row[hdrs[j]]=String(vals[i][j]||'');
       rows.push(row);
     }
-    // Sort newest DELETED_DATE first (DD/MM/YYYY or any comparable string — use row index as fallback)
+
+    // Build Master lookup: ID → { DESIGNATION, DATE_OF_JOIN }
+    // Employees keep their row in Master (STATUS=DELETED), so we can join on ID = EMP_ID
+    var masterMap = {};
+    var mSh = SS.getSheetByName(TABS.MASTER);
+    if (mSh) {
+      var mVals = mSh.getDataRange().getValues();
+      if (mVals.length > 1) {
+        var mHdrs    = mVals[0].map(function(h){ return String(h).trim(); });
+        var idIdx    = mHdrs.indexOf('ID');
+        var desigIdx = mHdrs.indexOf('DESIGNATION');
+        var joinIdx  = mHdrs.indexOf('DATE OF JOIN');
+        for (var mi = 1; mi < mVals.length; mi++) {
+          var eid = String(mVals[mi][idIdx]||'').trim();
+          if (!eid) continue;
+          masterMap[eid] = {
+            DESIGNATION:  desigIdx >= 0 ? String(mVals[mi][desigIdx]||'') : '',
+            DATE_OF_JOIN: joinIdx  >= 0 ? String(mVals[mi][joinIdx] ||'') : ''
+          };
+        }
+      }
+    }
+
+    // Enrich each row: Master values take priority; fall back to Deletion_Log values
+    rows.forEach(function(row) {
+      var m = masterMap[String(row.EMP_ID||'').trim()];
+      if (m) {
+        if (m.DESIGNATION)  row.DESIGNATION  = m.DESIGNATION;
+        if (m.DATE_OF_JOIN) row.DATE_OF_JOIN = m.DATE_OF_JOIN;
+      }
+    });
+
     rows.reverse();
     return {success:true,data:rows};
   } catch(e){ return {success:false,error:e.message}; }
