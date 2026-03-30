@@ -734,7 +734,7 @@ function _salaryInWords_(salary) {
 }
 
 function _fillPlaceholders(text, data, cfg) {
-  var firstName = String(data.EMP_NAME||'').trim().split(' ')[0];
+  var firstName = toProperCase(String(data.EMP_NAME||'').trim().split(' ')[0]);
   var map = {
     '{{NAME}}':           data.EMP_NAME    || '',
     '{{FIRSTNAME}}':      firstName,
@@ -767,7 +767,7 @@ function _generateFromDriveTemplate(driveId, data, cfg) {
   try {
     var doc = DocumentApp.openById(copy.getId());
     var body = doc.getBody();
-    var firstName = String(data.EMP_NAME||'').trim().split(' ')[0];
+    var firstName = toProperCase(String(data.EMP_NAME||'').trim().split(' ')[0]);
     var placeholders = {
       '{{NAME}}':           data.EMP_NAME    || '',
       '{{FIRSTNAME}}':      firstName,
