@@ -709,6 +709,30 @@ function saveLetterTemplate(type, driveId, bodyText) {
   } catch(e) { return { success: false, error: e.message }; }
 }
 
+function _numToWords_(n) {
+  var ones=['','One','Two','Three','Four','Five','Six','Seven','Eight','Nine',
+            'Ten','Eleven','Twelve','Thirteen','Fourteen','Fifteen','Sixteen',
+            'Seventeen','Eighteen','Nineteen'];
+  var tens=['','','Twenty','Thirty','Forty','Fifty','Sixty','Seventy','Eighty','Ninety'];
+  if(n===0) return 'Zero';
+  if(n<0) return 'Minus '+_numToWords_(-n);
+  var w='';
+  if(n>=1000){ w+=_numToWords_(Math.floor(n/1000))+' Thousand '; n=n%1000; }
+  if(n>=100) { w+=ones[Math.floor(n/100)]+' Hundred '; n=n%100; }
+  if(n>=20)  { w+=tens[Math.floor(n/10)]+' '; n=n%10; }
+  if(n>0)    { w+=ones[n]+' '; }
+  return w.trim();
+}
+function _salaryInWords_(salary) {
+  var num = parseFloat(String(salary).replace(/,/g,''));
+  if(isNaN(num)||num<0) return '';
+  var whole = Math.floor(num);
+  var fils  = Math.round((num-whole)*100);
+  var result = _numToWords_(whole)+' Dirhams';
+  if(fils>0) result += ' and '+_numToWords_(fils)+' Fils';
+  return result+' Only';
+}
+
 function _fillPlaceholders(text, data, cfg) {
   var firstName = String(data.EMP_NAME||'').trim().split(' ')[0];
   var map = {
@@ -723,6 +747,7 @@ function _fillPlaceholders(text, data, cfg) {
     '{{DOJ}}':            data.DATE_OF_JOIN|| '',
     '{{DATE_OF_JOIN}}':   data.DATE_OF_JOIN|| '',
     '{{SALARY}}':         data.SALARY      || '',
+    '{{SALARY_WORDS}}':   _salaryInWords_(data.SALARY||''),
     '{{BANK_NAME}}':      data.BANK_NAME   || '',
     '{{ADDRESS}}':        data.ADDRESS     || '',
     '{{DATE}}':           data.ISSUE_DATE  || '',
@@ -755,6 +780,7 @@ function _generateFromDriveTemplate(driveId, data, cfg) {
       '{{DOJ}}':            data.DATE_OF_JOIN|| '',
       '{{DATE_OF_JOIN}}':   data.DATE_OF_JOIN|| '',
       '{{SALARY}}':         data.SALARY      || '',
+      '{{SALARY_WORDS}}':   _salaryInWords_(data.SALARY||''),
       '{{BANK_NAME}}':      data.BANK_NAME   || '',
       '{{ADDRESS}}':        data.ADDRESS     || '',
       '{{DATE}}':           data.ISSUE_DATE  || '',
