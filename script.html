@@ -21,7 +21,7 @@ function normEnt(raw){
 // ============================================================
 // APP STATE
 // ============================================================
-var APP={config:{},master:[],deletions:[],onboarding:[],hrDocs:[],summary:[],loaded:false,user:{email:'',name:'',role:'',entities:[],active:true}};
+var APP={config:{},master:[],deletions:[],onboarding:[],hrDocs:[],summary:[],loaded:false,user:{email:'',name:'',role:'',entities:[],active:true},token:''};
 // Track if any modal is open (to block auto-refresh during editing)
 var EDITING=false;
 
@@ -431,29 +431,53 @@ document.addEventListener('keydown', function(e){
 // ============================================================
 // GAS BRIDGE
 // ============================================================
+// Functions that don't require an auth token
+var _PUBLIC_FNS = ['loginUser','validateSession','logoutUser','loadAllData',
+                   'getPublicJobs','submitApplication','uploadCV'];
+
 var GAS={
   call:function(fn,args,ok,err){
-    google.script.run
-      .withSuccessHandler(function(r){ if(ok) ok(r); })
-      .withFailureHandler(function(e){
-        var msg = e.message || String(e);
-        if(msg.indexOf('ACCESS_DENIED') === 0) toast('Access denied: insufficient permissions','error');
-        else toast('Server error: '+msg,'error');
-        if(err) err(e);
-      })
-      [fn].apply(google.script.run,args||[]);
+    function _onErr(e){
+      var msg = e.message || String(e);
+      if(msg === 'SESSION_EXPIRED' || msg.indexOf('Session expired') === 0){
+        showLoginScreen('Your session has expired. Please log in again.');
+        return;
+      }
+      if(msg.indexOf('ACCESS_DENIED') === 0) toast('Access denied: insufficient permissions','error');
+      else toast('Server error: '+msg,'error');
+      if(err) err(e);
+    }
+    if(_PUBLIC_FNS.indexOf(fn) >= 0){
+      // Public functions called directly
+      google.script.run
+        .withSuccessHandler(function(r){ if(ok) ok(r); })
+        .withFailureHandler(_onErr)
+        [fn].apply(google.script.run, args||[]);
+    } else {
+      // All protected calls routed through runProtected with session token
+      google.script.run
+        .withSuccessHandler(function(r){
+          if(r && r.error === 'SESSION_EXPIRED'){ showLoginScreen('Session expired. Please log in again.'); return; }
+          if(ok) ok(r);
+        })
+        .withFailureHandler(_onErr)
+        .runProtected(APP.token, fn, args||[]);
+    }
   },
   loadAll:function(cb){
-    GAS.call('loadAllData',[],function(r){
-      if(r.user)          APP.user       =r.user;
-      if(r.master     &&r.master.success)     APP.master     =r.master.data     ||[];
-      if(r.deletions  &&r.deletions.success)  APP.deletions  =r.deletions.data  ||[];
-      if(r.onboarding &&r.onboarding.success) APP.onboarding =r.onboarding.data ||[];
-      if(r.hrDocs     &&r.hrDocs.success)     APP.hrDocs     =r.hrDocs.data     ||[];
-      if(r.summary    &&r.summary.success)    APP.summary    =r.summary.data    ||[];
-      APP.config=r.config||{}; APP.loaded=true;
-      if(cb) cb();
-    });
+    google.script.run
+      .withSuccessHandler(function(r){
+        if(r.user)          APP.user       =r.user;
+        if(r.master     &&r.master.success)     APP.master     =r.master.data     ||[];
+        if(r.deletions  &&r.deletions.success)  APP.deletions  =r.deletions.data  ||[];
+        if(r.onboarding &&r.onboarding.success) APP.onboarding =r.onboarding.data ||[];
+        if(r.hrDocs     &&r.hrDocs.success)     APP.hrDocs     =r.hrDocs.data     ||[];
+        if(r.summary    &&r.summary.success)    APP.summary    =r.summary.data    ||[];
+        APP.config=r.config||{}; APP.loaded=true;
+        if(cb) cb();
+      })
+      .withFailureHandler(function(e){ toast('Load error: '+(e.message||e),'error'); })
+      .loadAllData(APP.token);
   },
   addEmployee:      function(d,cb){ GAS.call('addEmployee',     [d],cb); },
   updateEmployee:   function(d,cb){ GAS.call('updateEmployee',  [d],cb); },
@@ -1796,7 +1820,86 @@ document.addEventListener('click',function(e){
   else if(act==='transfer-app')  RecruitmentAgent.transferToOnboarding(t.dataset.appid);
 });
 
-window.addEventListener('DOMContentLoaded',function(){ AgentManager.init(); });
+// ============================================================
+// SESSION BOOTSTRAP
+// ============================================================
+function showLoginScreen(msg) {
+  var overlay = document.getElementById('login-overlay');
+  if (!overlay) return;
+  overlay.style.display = 'flex';
+  document.getElementById('main-wrapper') && (document.getElementById('main-wrapper').style.display = 'none');
+  document.getElementById('sidebar')      && (document.getElementById('sidebar').style.display      = 'none');
+  var errEl = document.getElementById('login-err');
+  if (errEl) { errEl.textContent = msg||''; errEl.style.display = msg ? 'block' : 'none'; }
+  var inp = document.getElementById('login-password'); if(inp) { inp.value=''; inp.focus(); }
+}
+
+function hideLoginScreen() {
+  var overlay = document.getElementById('login-overlay');
+  if (overlay) overlay.style.display = 'none';
+  document.getElementById('main-wrapper') && (document.getElementById('main-wrapper').style.display = '');
+  document.getElementById('sidebar')      && (document.getElementById('sidebar').style.display      = '');
+}
+
+function doLogin() {
+  var email = (document.getElementById('login-email')||{}).value||'';
+  var pass  = (document.getElementById('login-password')||{}).value||'';
+  var errEl = document.getElementById('login-err');
+  var btn   = document.getElementById('login-btn');
+  if (!email || !pass) {
+    if(errEl){ errEl.textContent='Email and password are required.'; errEl.style.display='block'; } return;
+  }
+  if(errEl) errEl.style.display='none';
+  if(btn){ btn.disabled=true; btn.textContent='Signing in…'; }
+  google.script.run
+    .withSuccessHandler(function(r){
+      if(btn){ btn.disabled=false; btn.textContent='Sign In'; }
+      if(!r || !r.success){
+        if(errEl){ errEl.textContent=r?r.error:'Login failed.'; errEl.style.display='block'; } return;
+      }
+      APP.token = r.token;
+      APP.user  = r.profile;
+      sessionStorage.setItem('ughr_token', r.token);
+      hideLoginScreen();
+      AgentManager.init();
+    })
+    .withFailureHandler(function(e){
+      if(btn){ btn.disabled=false; btn.textContent='Sign In'; }
+      if(errEl){ errEl.textContent='Error: '+(e.message||e); errEl.style.display='block'; }
+    })
+    .loginUser(email, pass);
+}
+
+function doLogout() {
+  var token = APP.token || sessionStorage.getItem('ughr_token');
+  sessionStorage.removeItem('ughr_token');
+  APP.token = '';
+  google.script.run.logoutUser(token);
+  showLoginScreen('You have been signed out.');
+}
+
+window.addEventListener('DOMContentLoaded', function() {
+  var token = sessionStorage.getItem('ughr_token');
+  if (token) {
+    APP.token = token;
+    google.script.run
+      .withSuccessHandler(function(r) {
+        if (r && r.success) {
+          APP.user = r.profile;
+          hideLoginScreen();
+          AgentManager.init();
+        } else {
+          sessionStorage.removeItem('ughr_token');
+          APP.token = '';
+          showLoginScreen(r && r.error === 'SESSION_EXPIRED' ? 'Session expired. Please log in again.' : '');
+        }
+      })
+      .withFailureHandler(function() { showLoginScreen(); })
+      .validateSession(token);
+  } else {
+    showLoginScreen();
+  }
+});
 
 // ============================================================
 // USER MANAGEMENT AGENT

@@ -48,9 +48,24 @@ function include(filename) {
 // ============================================================
 // AUTH — PROFILE, ROLE GUARD, ENTITY FILTER
 // ============================================================
+
+// Per-request session email (set by _setSessionFromToken at start of each call)
+var _SESSION_EMAIL = '';
+
+function _setSessionFromToken(token) {
+  if (!token) return '';
+  var email = CacheService.getScriptCache().get('ughr_sess_' + token);
+  if (email) _SESSION_EMAIL = String(email).toLowerCase().trim();
+  return _SESSION_EMAIL;
+}
+
 function getMyProfile() {
-  var email = '';
-  try { email = Session.getActiveUser().getEmail().toLowerCase().trim(); } catch(e2) {}
+  // Token-based auth takes priority (set by _setSessionFromToken)
+  var email = _SESSION_EMAIL;
+  // Fall back to Google session auth
+  if (!email) {
+    try { email = Session.getActiveUser().getEmail().toLowerCase().trim(); } catch(e2) {}
+  }
   if (!email) return {email:'',name:'',role:'NONE',entities:[],active:false};
 
   // Cache per-email for 60 seconds to reduce sheet reads
@@ -59,8 +74,8 @@ function getMyProfile() {
   var cached = cache.get(cacheKey);
   if (cached) { try { return JSON.parse(cached); } catch(e2) {} }
 
-  // Ensure Users sheet exists
-  var sh = getOrCreate(TABS.USERS, ['EMAIL','DISPLAY_NAME','ROLE','ENTITIES','ACTIVE']);
+  // Ensure Users sheet exists (with PASSWORD column)
+  var sh = getOrCreate(TABS.USERS, ['EMAIL','DISPLAY_NAME','ROLE','ENTITIES','ACTIVE','PASSWORD']);
   var vals = sh.getDataRange().getValues();
 
   // Bootstrap: if only the header row exists, make first user SUPER_ADMIN
@@ -68,10 +83,9 @@ function getMyProfile() {
     var lock = LockService.getScriptLock();
     lock.tryLock(3000);
     try {
-      // Re-read inside lock to prevent race
       var vals2 = sh.getDataRange().getValues();
       if (vals2.length === 1) {
-        sh.appendRow([email, email.split('@')[0], 'SUPER_ADMIN', 'ALL', 'TRUE']);
+        sh.appendRow([email, email.split('@')[0], 'SUPER_ADMIN', 'ALL', 'TRUE', '']);
         vals = sh.getDataRange().getValues();
       } else {
         vals = vals2;
@@ -100,6 +114,132 @@ function getMyProfile() {
   return {email:email,name:'',role:'NONE',entities:[],active:false};
 }
 
+// ── Public login functions ──────────────────────────────────
+
+// PUBLIC — validates email+password against Users sheet, returns session token
+function loginUser(email, password) {
+  try {
+    if (!email || !password) return {success:false, error:'Email and password are required'};
+    var normEmail = String(email).toLowerCase().trim();
+    var sh = getOrCreate(TABS.USERS, ['EMAIL','DISPLAY_NAME','ROLE','ENTITIES','ACTIVE','PASSWORD']);
+    var vals = sh.getDataRange().getValues();
+    if (vals.length < 2) return {success:false, error:'No users configured. Contact administrator.'};
+    var hdrs  = vals[0].map(function(h){ return String(h).trim(); });
+    var eIdx  = hdrs.indexOf('EMAIL');
+    var pIdx  = hdrs.indexOf('PASSWORD');
+    var nIdx  = hdrs.indexOf('DISPLAY_NAME');
+    var rIdx  = hdrs.indexOf('ROLE');
+    var entIdx= hdrs.indexOf('ENTITIES');
+    var aIdx  = hdrs.indexOf('ACTIVE');
+    for (var i = 1; i < vals.length; i++) {
+      if (String(vals[i][eIdx]||'').toLowerCase().trim() !== normEmail) continue;
+      var active = String(vals[i][aIdx]||'').toUpperCase();
+      if (active !== 'TRUE' && active !== 'YES') {
+        return {success:false, error:'Account is disabled. Contact administrator.'};
+      }
+      var stored = String(vals[i][pIdx]||'');
+      if (!stored) return {success:false, error:'Password not set for this account. Contact administrator.'};
+      if (stored !== String(password)) return {success:false, error:'Invalid email or password'};
+      // Issue 8-hour session token
+      var token = Utilities.getUuid();
+      CacheService.getScriptCache().put('ughr_sess_' + token, normEmail, 28800);
+      var entRaw   = String(vals[i][entIdx]||'ALL').trim();
+      var entities = entRaw.toUpperCase() === 'ALL' ? 'ALL' : entRaw.split(',').map(function(e){ return e.trim(); }).filter(Boolean);
+      var profile  = {
+        email:    normEmail,
+        name:     String(vals[i][nIdx]||'').trim() || normEmail.split('@')[0],
+        role:     String(vals[i][rIdx]||'VIEWER').trim(),
+        entities: entities,
+        active:   true
+      };
+      logActivity('AuthAgent', 'LOGIN', normEmail, 'SUCCESS');
+      return {success:true, token:token, profile:profile};
+    }
+    return {success:false, error:'Invalid email or password'};
+  } catch(e) { return {success:false, error:e.message}; }
+}
+
+// PUBLIC — validates an existing session token and refreshes its TTL
+function validateSession(token) {
+  try {
+    if (!token) return {success:false};
+    var email = CacheService.getScriptCache().get('ughr_sess_' + token);
+    if (!email) return {success:false, error:'SESSION_EXPIRED'};
+    _SESSION_EMAIL = String(email).toLowerCase().trim();
+    var profile = getMyProfile();
+    if (!profile || profile.role === 'NONE') {
+      CacheService.getScriptCache().remove('ughr_sess_' + token);
+      return {success:false, error:'Account access revoked'};
+    }
+    // Refresh TTL
+    CacheService.getScriptCache().put('ughr_sess_' + token, email, 28800);
+    return {success:true, profile:profile};
+  } catch(e) { return {success:false, error:e.message}; }
+}
+
+// PUBLIC — invalidates a session token
+function logoutUser(token) {
+  try {
+    if (token) {
+      CacheService.getScriptCache().remove('ughr_sess_' + token);
+      logActivity('AuthAgent', 'LOGOUT', String(token).slice(0,8)+'…', 'SUCCESS');
+    }
+    return {success:true};
+  } catch(e) { return {success:true}; }
+}
+
+// Protected dispatcher — all non-public GAS calls route here with the session token
+function runProtected(token, funcName, args) {
+  try {
+    if (!token) return {success:false, error:'SESSION_EXPIRED'};
+    var email = _setSessionFromToken(token);
+    if (!email) return {success:false, error:'SESSION_EXPIRED'};
+    var a = args || [];
+    var fns = {
+      // Employee
+      addEmployee:                    function(){ return addEmployee(a[0]); },
+      updateEmployee:                 function(){ return updateEmployee(a[0]); },
+      deleteEmployee:                 function(){ return deleteEmployee(a[0], a[1]); },
+      // Onboarding
+      addOnboarding:                  function(){ return addOnboarding(a[0]); },
+      updateOnboarding:               function(){ return updateOnboarding(a[0]); },
+      deleteOnboarding:               function(){ return deleteOnboarding(a[0]); },
+      transferToMaster:               function(){ return transferToMaster(a[0], a[1]); },
+      // HR Docs / Letters
+      issueHRDoc:                     function(){ return issueHRDoc(a[0]); },
+      generateAndIssueLetter:         function(){ return generateAndIssueLetter(a[0]); },
+      generateExperienceLetterForEmp: function(){ return generateExperienceLetterForEmp(a[0]); },
+      getOfferLetterTemplate:         function(){ return getOfferLetterTemplate(a[0]); },
+      saveTemplateFileIds:            function(){ return saveTemplateFileIds(a[0], a[1]); },
+      // Config
+      saveConfig:                     function(){ return saveConfig(a[0]); },
+      getActivityLog:                 function(){ return getActivityLog(); },
+      // Users
+      getUsers:                       function(){ return getUsers(); },
+      saveUser:                       function(){ return saveUser(a[0]); },
+      deleteUser:                     function(){ return deleteUser(a[0]); },
+      // Self-service
+      getMyEmployeeRecord:            function(){ return getMyEmployeeRecord(); },
+      updateMyExpiryDates:            function(){ return updateMyExpiryDates(a[0]); },
+      // Leave
+      getLeave:                       function(){ return getLeave(a[0]); },
+      addLeave:                       function(){ return addLeave(a[0]); },
+      updateLeaveStatus:              function(){ return updateLeaveStatus(a[0], a[1], a[2]); },
+      // Recruitment
+      getJobs:                        function(){ return getJobs(); },
+      saveJob:                        function(){ return saveJob(a[0]); },
+      closeJob:                       function(){ return closeJob(a[0]); },
+      getApplications:                function(){ return getApplications(a[0]); },
+      updateApplicationStage:         function(){ return updateApplicationStage(a[0], a[1], a[2]); },
+      transferAppToOnboarding:        function(){ return transferAppToOnboarding(a[0]); },
+      // Resignations
+      getResignations:                function(){ return getResignations(); },
+    };
+    if (!fns[funcName]) return {success:false, error:'Unknown function: ' + funcName};
+    return fns[funcName]();
+  } catch(e) { return {success:false, error:e.message}; }
+}
+
 function _requireRole(allowedRoles) {
   var profile = getMyProfile();
   if (!profile || allowedRoles.indexOf(profile.role) < 0) {
@@ -125,7 +265,8 @@ function genId_(prefix) {
 // ============================================================
 // LOAD ALL DATA
 // ============================================================
-function loadAllData() {
+function loadAllData(token) {
+  if (token) _setSessionFromToken(token);
   var profile = getMyProfile();
   return {
     user:       profile,
