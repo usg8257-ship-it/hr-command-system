@@ -1112,7 +1112,10 @@ var LtrAgent={
       closeM('m-ltr'); LtrAgent.render();
       if(result.pdf){
         var fname = type.replace(/\s+/g,'-')+'_'+empId+'_'+ref+'.pdf';
-        _openExpPdfResult(result.pdf, fname);
+        try {
+          var bytes = new Uint8Array(atob(result.pdf).split('').map(function(c){ return c.charCodeAt(0); }));
+          _openPdfResult(URL.createObjectURL(new Blob([bytes],{type:'application/pdf'})), fname);
+        } catch(e) { toast('PDF ready but preview failed — check console','error'); }
       }
     });
   },
