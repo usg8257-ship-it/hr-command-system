@@ -332,6 +332,14 @@ var GlobalSearch = {
     var licCls  = {PSBD:'bp',SIRA:'bs',NIL:'bn',OTHER:'bo'}[r['LIC AUTH']||'NIL']||'bn';
     var locColor = r.STATUS==='ABU DHABI'?'#1e4799':r.STATUS==='DUBAI'?'#007a8a':'var(--muted)';
     var initials = (r.NAME||'?').substring(0,2).toUpperCase();
+    // Calculate days of service from Date of Join to today
+    var _calcDays = function(doj){
+      if(!doj||doj==='—') return '—';
+      var d = doj instanceof Date ? doj : new Date(String(doj).split('/').length===3 ? String(doj).split('/').reverse().join('-') : doj);
+      if(isNaN(d.getTime())) return '—';
+      var diff = Math.floor((new Date() - d)/(1000*60*60*24));
+      return diff >= 0 ? diff+' days' : '—';
+    };
 
     var body = document.getElementById('empdetail-body');
     body.innerHTML =
@@ -357,7 +365,7 @@ var GlobalSearch = {
         '<div class="empdetail-row"><div class="empdetail-label">Date of Birth</div><div class="empdetail-val">'+fmtD(r['BIRTH DATE']||'—')+'</div></div>'+
         '<div class="empdetail-row"><div class="empdetail-label">Age</div><div class="empdetail-val">'+esc(r.AGE||'—')+'</div></div>'+
         '<div class="empdetail-row"><div class="empdetail-label">Location / Visa</div><div class="empdetail-val">'+esc(r.STATUS||'—')+'</div></div>'+
-        '<div class="empdetail-row"><div class="empdetail-label">Days of Service</div><div class="empdetail-val">'+esc(r.Days||'—')+'</div></div>'+
+        '<div class="empdetail-row"><div class="empdetail-label">Days of Service</div><div class="empdetail-val">'+_calcDays(r['DATE OF JOIN'])+'</div></div>'+
       '</div>';
 
     // Wire edit button
