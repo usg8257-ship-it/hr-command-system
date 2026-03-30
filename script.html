@@ -1108,18 +1108,12 @@ var LtrAgent={
       if(btn){ btn.disabled=false; btn.textContent=hasTemplate?'Generate & Issue':'Issue Letter'; }
       if(!result||!result.success){ toast('Error: '+(result?result.error:'Unknown'),'error'); return; }
       APP.hrDocs.unshift({REF_NO:ref,EMP_ID:empId,EMP_NAME:data.EMP_NAME,LETTER_TYPE:type,ISSUE_DATE:data.ISSUE_DATE,ISSUED_BY:data.ISSUED_BY,NOTES:data.NOTES});
-      if(result.pdf){
-        try{
-          var bytes=Uint8Array.from(atob(result.pdf),function(c){ return c.charCodeAt(0); });
-          var blob=new Blob([bytes],{type:'application/pdf'});
-          var a=document.createElement('a'); a.href=URL.createObjectURL(blob);
-          a.download=type.replace(/\s+/g,'-')+'_'+empId+'_'+ref+'.pdf';
-          document.body.appendChild(a); a.click();
-          setTimeout(function(){ document.body.removeChild(a); URL.revokeObjectURL(a.href); },1000);
-        }catch(e2){}
-      }
-      toast(type+' issued ('+ref+')'+(result.pdf?' — PDF downloaded':''),'success');
+      toast(type+' issued ('+ref+')', 'success');
       closeM('m-ltr'); LtrAgent.render();
+      if(result.pdf){
+        var fname = type.replace(/\s+/g,'-')+'_'+empId+'_'+ref+'.pdf';
+        _openExpPdfResult(result.pdf, fname);
+      }
     });
   },
   delEntry:function(ref){ APP.hrDocs=APP.hrDocs.filter(function(l){ return l.REF_NO!==ref; }); toast('Removed locally','warning'); this.render(); },
