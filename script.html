@@ -931,7 +931,11 @@ var OBAgent={
   openTransfer:function(obId,name){
     document.getElementById('trf-obid').value=obId;
     document.getElementById('tr-name').textContent=name;
-    document.getElementById('trf-id').value   ='';
+    // Auto-generate next sequential Employee ID
+    var nums=(APP.master||[]).map(function(r){ return parseInt(r.ID,10); }).filter(function(n){ return !isNaN(n); });
+    var nextId=nums.length?(Math.max.apply(null,nums)+1):1001;
+    var idEl=document.getElementById('trf-id');
+    idEl.value=String(nextId);
     document.getElementById('trf-ent').value  ='USG';
     document.getElementById('trf-join').value =today();
     document.getElementById('trf-desig').value='Security Guard';
