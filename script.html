@@ -836,7 +836,7 @@ var OBAgent={
     var kb=document.getElementById('kOB');   if(kb) kb.textContent=p;
     var list=this._filtered();
     var cnt=document.getElementById('ob-cnt'); if(cnt) cnt.textContent=list.length+' candidates';
-    if(!list.length){ tb.innerHTML='<tr><td colspan="10" style="text-align:center;padding:32px;color:var(--muted)">No onboarding records. Add a candidate to begin.</td></tr>'; return; }
+    if(!list.length){ tb.innerHTML='<tr><td colspan="11" style="text-align:center;padding:32px;color:var(--muted)">No onboarding records. Add a candidate to begin.</td></tr>'; return; }
     var sB=function(s){ var m={Pending:'badge bo',Transferred:'badge bg2',Cancelled:'badge bn'}; return '<span class="'+(m[s]||'badge bn')+'">'+esc(s||'—')+'</span>'; };
     var tB=function(t){ return t==='PSBD'?'<span class="badge bp">PSBD</span>':'<span class="badge bs">SIRA</span>'; };
     tb.innerHTML=list.map(function(r){
@@ -844,7 +844,8 @@ var OBAgent={
       var canAct=r.STATUS==='Pending';
       var trBtn=canAct?'<button class="btn btn-primary btn-sm" data-action="transfer" data-obid="'+obid+'" data-name="'+nm+'" title="Transfer to Master">&rarr;</button>':'';
       var olBtn=canAct?'<button class="btn btn-gold btn-sm" data-action="gen-ol" data-obid="'+obid+'" data-name="'+nm+'" data-type="'+esc(r.POSITION_TYPE||'PSBD')+'" data-pp="'+esc(r.PASSPORT_NO||'')+'" title="Generate Offer Letter">&#128196;</button>':'';
-      return '<tr><td style="font-family:monospace;font-size:10px;color:var(--gold)">'+esc(r.OB_ID||'—')+'</td><td style="font-weight:600">'+nm+'</td><td style="font-family:monospace;font-size:10.5px">'+esc(r.PASSPORT_NO||'—')+'</td><td>'+tB(r.POSITION_TYPE)+'</td><td style="font-size:11px">'+esc(r.MOBILE||'—')+'</td><td style="font-size:11px">'+esc(r.VISA_STATUS||'—')+'</td><td style="font-size:11px">'+fmtD(r.EXP_JOIN_DATE||'—')+'</td><td style="font-size:10px;color:var(--muted)">'+fmtD(r.DATE_ADDED||'—')+'</td><td>'+sB(r.STATUS)+'</td><td><div class="act-btns">'+trBtn+olBtn+'<button class="btn btn-secondary btn-icon btn-sm" data-action="edit-ob" data-obid="'+obid+'" title="Edit">&#9998;</button><button class="btn btn-danger btn-icon btn-sm" data-action="cancel-ob" data-obid="'+obid+'" title="Cancel">&#10005;</button></div></td></tr>';
+      var assignedTo=esc(r.ASSIGNED_TO||'—');
+      return '<tr><td style="font-family:monospace;font-size:10px;color:var(--gold)">'+esc(r.OB_ID||'—')+'</td><td style="font-weight:600">'+nm+'</td><td style="font-family:monospace;font-size:10.5px">'+esc(r.PASSPORT_NO||'—')+'</td><td>'+tB(r.POSITION_TYPE)+'</td><td style="font-size:11px">'+esc(r.MOBILE||'—')+'</td><td style="font-size:11px">'+esc(r.VISA_STATUS||'—')+'</td><td style="font-size:11px">'+fmtD(r.EXP_JOIN_DATE||'—')+'</td><td style="font-size:10px;color:var(--muted)">'+fmtD(r.DATE_ADDED||'—')+'</td><td>'+sB(r.STATUS)+'</td><td style="font-size:11px;color:var(--muted)">'+assignedTo+'</td><td><div class="act-btns">'+trBtn+olBtn+'<button class="btn btn-secondary btn-icon btn-sm" data-action="edit-ob" data-obid="'+obid+'" title="Edit">&#9998;</button><button class="btn btn-danger btn-icon btn-sm" data-action="cancel-ob" data-obid="'+obid+'" title="Cancel">&#10005;</button></div></td></tr>';
     }).join('');
   },
   resetF:function(){
@@ -901,7 +902,7 @@ var OBAgent={
       });
     } else {
       var obId=genId('OB');
-      var newRec={OB_ID:obId,FULL_NAME:name.toUpperCase(),PASSPORT_NO:pp.toUpperCase(),POSITION_TYPE:type,MOBILE:mob,VISA_STATUS:visa,EXP_JOIN_DATE:join,DATE_ADDED:today(),STATUS:'Pending',NOTES:notes};
+      var newRec={OB_ID:obId,FULL_NAME:name.toUpperCase(),PASSPORT_NO:pp.toUpperCase(),POSITION_TYPE:type,MOBILE:mob,VISA_STATUS:visa,EXP_JOIN_DATE:join,DATE_ADDED:today(),STATUS:'Pending',NOTES:notes,ASSIGNED_TO:(APP.user&&APP.user.name)||''};
       GAS.addOnboarding(newRec,function(result){
         if(!result||!result.success){ toast('Error: '+(result?result.error:'Unknown'),'error'); return; }
         APP.onboarding.push(newRec); // real-time bind

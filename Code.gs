@@ -534,7 +534,7 @@ function getResignations() {
 // ============================================================
 function getOnboarding(profile) {
   try {
-    var sh=getOrCreate(TABS.ONBOARDING,['OB_ID','FULL_NAME','PASSPORT_NO','POSITION_TYPE','MOBILE','VISA_STATUS','EXP_JOIN_DATE','DATE_ADDED','STATUS','NOTES','ENTITY']);
+    var sh=getOrCreate(TABS.ONBOARDING,['OB_ID','FULL_NAME','PASSPORT_NO','POSITION_TYPE','MOBILE','VISA_STATUS','EXP_JOIN_DATE','DATE_ADDED','STATUS','NOTES','ENTITY','ASSIGNED_TO']);
     var vals=sh.getDataRange().getValues();
     if(vals.length<2) return {success:true,data:[]};
     var hdrs=vals[0].map(function(h){ return String(h).trim(); });
@@ -551,8 +551,8 @@ function getOnboarding(profile) {
 
 function addOnboarding(data) {
   try {
-    var sh=getOrCreate(TABS.ONBOARDING,['OB_ID','FULL_NAME','PASSPORT_NO','POSITION_TYPE','MOBILE','VISA_STATUS','EXP_JOIN_DATE','DATE_ADDED','STATUS','NOTES']);
-    sh.appendRow([data.OB_ID,data.FULL_NAME,data.PASSPORT_NO,data.POSITION_TYPE,data.MOBILE||'',data.VISA_STATUS||'',data.EXP_JOIN_DATE||'',formatDate(new Date()),'Pending',data.NOTES||'']);
+    var sh=getOrCreate(TABS.ONBOARDING,['OB_ID','FULL_NAME','PASSPORT_NO','POSITION_TYPE','MOBILE','VISA_STATUS','EXP_JOIN_DATE','DATE_ADDED','STATUS','NOTES','ENTITY','ASSIGNED_TO']);
+    sh.appendRow([data.OB_ID,data.FULL_NAME,data.PASSPORT_NO,data.POSITION_TYPE,data.MOBILE||'',data.VISA_STATUS||'',data.EXP_JOIN_DATE||'',formatDate(new Date()),'Pending',data.NOTES||'',data.ENTITY||'',data.ASSIGNED_TO||'']);
     logActivity('OnboardingAgent','ADD',data.OB_ID+'--'+data.FULL_NAME,'SUCCESS');
     return {success:true};
   } catch(e){ return {success:false,error:e.message}; }
