@@ -127,6 +127,17 @@ function toast(msg,type){
   box.appendChild(el);
   setTimeout(function(){ el.style.opacity='0'; el.style.transform='translateX(110%)'; el.style.transition='.3s'; setTimeout(function(){ el.remove(); },300); },3500);
 }
+function toastAction(msg,btnLabel,onYes){
+  var box=document.getElementById('tbox');
+  var el=document.createElement('div'); el.className='toast t-success'; el.style.cssText='display:flex;align-items:center;gap:10px;padding:12px 14px;';
+  el.innerHTML='<span style="flex:1">'+msg+'</span>'+
+    '<button style="background:var(--navy);color:#fff;border:none;border-radius:5px;padding:4px 10px;font-size:11.5px;cursor:pointer;white-space:nowrap">'+btnLabel+'</button>'+
+    '<button style="background:transparent;color:rgba(255,255,255,0.7);border:none;font-size:14px;cursor:pointer;padding:0 2px" title="Dismiss">&times;</button>';
+  var timer=setTimeout(function(){ el.remove(); },8000);
+  el.querySelectorAll('button')[0].onclick=function(){ clearTimeout(timer); el.remove(); onYes(); };
+  el.querySelectorAll('button')[1].onclick=function(){ clearTimeout(timer); el.remove(); };
+  box.appendChild(el);
+}
 function openM(id){ EDITING=true; document.getElementById(id).classList.add('show'); }
 function closeM(id){ document.getElementById(id).classList.remove('show'); EDITING=false; }
 document.addEventListener('click',function(e){ if(e.target.classList.contains('modal-overlay')){ e.target.classList.remove('show'); EDITING=false; } });
@@ -906,12 +917,10 @@ var OBAgent={
       GAS.addOnboarding(newRec,function(result){
         if(!result||!result.success){ toast('Error: '+(result?result.error:'Unknown'),'error'); return; }
         APP.onboarding.push(newRec); // real-time bind
-        toast('Candidate saved. You can now issue Offer Letter.','success');
         closeM('m-ob'); OBAgent.render();
-        // STEP 3: Prompt to issue offer letter
         setTimeout(function(){
-          if(confirm('Candidate added. Generate Offer Letter now?')){ OBAgent._openOLForCandidate(newRec); }
-        },400);
+          toastAction('Candidate added. Generate Offer Letter now?','Generate',function(){ OBAgent._openOLForCandidate(newRec); });
+        },300);
       });
     }
   },
