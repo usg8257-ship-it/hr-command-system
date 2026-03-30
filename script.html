@@ -1035,8 +1035,9 @@ var LtrAgent={
     document.getElementById('ltf-empid').disabled=true;
     document.getElementById('ltf-empid').placeholder='Select letter type first';
     ['ltf-sal-row','ltf-bank-row','ltf-addr-row'].forEach(function(id){ var el=document.getElementById(id); if(el) el.style.display='none'; });
-    var hint=document.getElementById('ltf-pdf-hint'); if(hint) hint.style.display='none';
-    var btn=document.querySelector('#m-ltr .btn-gold'); if(btn){ btn.disabled=false; btn.textContent='Issue Letter'; }
+    var warn=document.getElementById('ltf-no-tmpl-warn'); if(warn) warn.style.display='none';
+    var ok=document.getElementById('ltf-tmpl-ok'); if(ok) ok.style.display='none';
+    var btn=document.getElementById('ltf-gen-btn'); if(btn){ btn.disabled=false; btn.textContent='Generate Letter'; }
     openM('m-ltr');
   },
   onTypeChange:function(){
@@ -1053,9 +1054,10 @@ var LtrAgent={
     var addrRow=document.getElementById('ltf-addr-row'); if(addrRow) addrRow.style.display=isSalCert?'':'none';
     var key=type?type.toUpperCase().replace(/[^A-Z0-9]/g,'_'):'';
     var hasTemplate=!!(key&&(APP.config['LTEMPL_'+key+'_DRIVE']||APP.config['LTEMPL_'+key+'_BODY']));
-    var hint=document.getElementById('ltf-pdf-hint'); if(hint) hint.style.display=(type&&hasTemplate)?'':'none';
-    var btn=document.querySelector('#m-ltr .btn-gold');
-    if(btn) btn.textContent=hasTemplate?'Generate & Issue':'Issue Letter';
+    var warn=document.getElementById('ltf-no-tmpl-warn'); if(warn) warn.style.display=(type&&!hasTemplate)?'':'none';
+    var ok=document.getElementById('ltf-tmpl-ok'); if(ok) ok.style.display=(type&&hasTemplate)?'':'none';
+    var btn=document.getElementById('ltf-gen-btn');
+    if(btn) btn.textContent=hasTemplate?'Generate Letter':'Issue (No PDF)';
   },
   autofill:function(){
     var id=document.getElementById('ltf-empid').value.trim();
@@ -1102,20 +1104,21 @@ var LtrAgent={
     };
     var key=type.toUpperCase().replace(/[^A-Z0-9]/g,'_');
     var hasTemplate=!!(APP.config['LTEMPL_'+key+'_DRIVE']||APP.config['LTEMPL_'+key+'_BODY']);
-    var btn=document.querySelector('#m-ltr .btn-gold');
-    if(btn){ btn.disabled=true; btn.textContent='Processing...'; }
+    var btn=document.getElementById('ltf-gen-btn');
+    if(btn){ btn.disabled=true; btn.textContent='Generating…'; }
     GAS.generateAndIssueLetter(data,function(result){
-      if(btn){ btn.disabled=false; btn.textContent=hasTemplate?'Generate & Issue':'Issue Letter'; }
+      if(btn){ btn.disabled=false; btn.textContent=hasTemplate?'Generate Letter':'Issue (No PDF)'; }
       if(!result||!result.success){ toast('Error: '+(result?result.error:'Unknown'),'error'); return; }
       APP.hrDocs.unshift({REF_NO:ref,EMP_ID:empId,EMP_NAME:data.EMP_NAME,LETTER_TYPE:type,ISSUE_DATE:data.ISSUE_DATE,ISSUED_BY:data.ISSUED_BY,NOTES:data.NOTES});
-      toast(type+' issued ('+ref+')', 'success');
       closeM('m-ltr'); LtrAgent.render();
       if(result.pdf){
         var fname = type.replace(/\s+/g,'-')+'_'+empId+'_'+ref+'.pdf';
         try {
           var bytes = new Uint8Array(atob(result.pdf).split('').map(function(c){ return c.charCodeAt(0); }));
           _openPdfResult(URL.createObjectURL(new Blob([bytes],{type:'application/pdf'})), fname);
-        } catch(e) { toast('PDF ready but preview failed — check console','error'); }
+        } catch(e) { toast('Error opening PDF: '+e.message,'error'); }
+      } else {
+        toast(type+' issued ('+ref+') — no PDF template configured','info');
       }
     });
   },
