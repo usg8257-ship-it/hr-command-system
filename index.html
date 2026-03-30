@@ -522,8 +522,23 @@
             </div>
           </div>
         </div>
+        <div class="setup-step" style="border-left:3px solid var(--navy)">
+          <div class="step-num" style="background:var(--navy)">3</div><h3>&#128196; Salary Certificate Template (PSBD Guards)</h3>
+          <p style="margin-bottom:10px">Paste the Google Doc File ID of your Salary Certificate template for PSBD Guards. Placeholders are replaced automatically.</p>
+          <div style="background:rgba(30,71,153,.06);border:1px solid rgba(30,71,153,.2);border-radius:7px;padding:9px 13px;margin-bottom:13px;font-size:11px;color:var(--muted)">
+            <strong style="color:var(--navy)">Supported placeholders:</strong>
+            {{NAME}} {{FIRSTNAME}} {{ID}} {{EMP_ID}} {{DESIGNATION}} {{DOJ}} {{DATE}} {{REF_NO}} {{SALARY}} {{BANK_NAME}} {{ADDRESS}} {{HR_OFFICER}} {{HR_DESIGNATION}} {{COMPANY}}
+          </div>
+          <div class="fgrid">
+            <div class="fg full">
+              <label class="flabel">Salary Certificate Template ID <span style="font-size:10px;font-weight:400;color:var(--muted)">(Google Doc File ID)</span></label>
+              <input class="fi" id="cfg-salcert-tmpl" placeholder="e.g. 1txyu-E1QmjTFM1jNEPAeB599oLBdcjJ3tM0NPcL5eC0" style="font-family:monospace;font-size:12px"/>
+            </div>
+          </div>
+          <button class="btn btn-navy" style="margin-top:11px" onclick="CFG.saveSalCertTemplate()">&#128190; Save Template</button>
+        </div>
         <div class="setup-step" style="border-left:3px solid var(--gold)">
-          <div class="step-num" style="background:var(--gold)">3</div><h3>&#128196; Offer Letter Templates (Required)</h3>
+          <div class="step-num" style="background:var(--gold)">4</div><h3>&#128196; Offer Letter Templates (Required)</h3>
           <p style="margin-bottom:12px">Upload PSBD and SIRA PDF templates to Google Drive and paste their File IDs below.</p>
           <div class="fgrid">
             <div class="fg"><label class="flabel">PSBD Template File ID <span class="req">*</span></label><input class="fi" id="cfg-psbd-id" placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs..." style="font-family:monospace;font-size:11px"/></div>
@@ -534,7 +549,7 @@
           </div>
         </div>
         <div class="setup-step">
-          <div class="step-num">4</div><h3>Required Sheet Tabs</h3>
+          <div class="step-num">5</div><h3>Required Sheet Tabs</h3>
           <ul style="color:var(--muted);font-size:12px;line-height:2.2;padding-left:15px;margin-top:7px">
             <li><strong style="color:var(--navy)">Master Data</strong> — ID, NAME, VISA, STATUS, ENTITY, LIC AUTH, DESIGNATION, DATE OF JOIN, NATIONALITY, BIRTH DATE, PASSPORT NO, EID NO, AGE, Days</li>
             <li><strong style="color:var(--navy)">Deletion_Log</strong> — LOG_ID, EMP_ID, FULL_NAME, PASSPORT_NO, REASON, DELETED_DATE, DELETED_BY</li>
@@ -662,6 +677,8 @@
         <div class="fg"><label class="flabel">Entity</label><input class="fi" id="ltf-entity" placeholder="Auto-filled" readonly/></div>
         <div class="fg"><label class="flabel">Date of Join</label><input class="fi" id="ltf-doj" placeholder="Auto-filled" readonly/></div>
         <div class="fg" id="ltf-sal-row" style="display:none"><label class="flabel">Monthly Salary (AED) <span class="req">*</span></label><input class="fi" id="ltf-sal" placeholder="e.g. 2500"/></div>
+        <div class="fg" id="ltf-bank-row" style="display:none"><label class="flabel">Bank Name <span class="req">*</span></label><input class="fi" id="ltf-bank" placeholder="e.g. Emirates NBD"/></div>
+        <div class="fg full" id="ltf-addr-row" style="display:none"><label class="flabel">Address <span class="req">*</span></label><input class="fi" id="ltf-addr" placeholder="e.g. P.O. Box 1234, Abu Dhabi, UAE"/></div>
         <div class="fg"><label class="flabel">Issue Date</label><input class="fi" type="date" id="ltf-date"/></div>
         <div class="fg"><label class="flabel">Issued By</label><input class="fi" id="ltf-by" placeholder="HR Officer"/></div>
         <div class="fg full"><label class="flabel">Notes / Purpose</label><textarea class="fta" id="ltf-notes" placeholder="e.g. Required for bank account opening..." style="min-height:46px"></textarea></div>

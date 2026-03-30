@@ -1028,13 +1028,13 @@ var LtrAgent={
   },
   resetF:function(){ var q=document.getElementById('lt-q'); if(q) q.value=''; var t=document.getElementById('lt-type'); if(t) t.value=''; this.render(); },
   openIssue:function(){
-    ['ltf-empid','ltf-name','ltf-des','ltf-pp','ltf-entity','ltf-doj','ltf-sal','ltf-notes'].forEach(function(id){ var el=document.getElementById(id); if(el) el.value=''; });
+    ['ltf-empid','ltf-name','ltf-des','ltf-pp','ltf-entity','ltf-doj','ltf-sal','ltf-bank','ltf-addr','ltf-notes'].forEach(function(id){ var el=document.getElementById(id); if(el) el.value=''; });
     document.getElementById('ltf-type').value='';
     document.getElementById('ltf-date').value=today();
     document.getElementById('ltf-by').value=APP.config.hr_officer||'HR Manager';
     document.getElementById('ltf-empid').disabled=true;
     document.getElementById('ltf-empid').placeholder='Select letter type first';
-    var salRow=document.getElementById('ltf-sal-row'); if(salRow) salRow.style.display='none';
+    ['ltf-sal-row','ltf-bank-row','ltf-addr-row'].forEach(function(id){ var el=document.getElementById(id); if(el) el.style.display='none'; });
     var hint=document.getElementById('ltf-pdf-hint'); if(hint) hint.style.display='none';
     var btn=document.querySelector('#m-ltr .btn-gold'); if(btn){ btn.disabled=false; btn.textContent='Issue Letter'; }
     openM('m-ltr');
@@ -1047,8 +1047,10 @@ var LtrAgent={
       ef.value='';
       ['ltf-name','ltf-des','ltf-pp','ltf-entity','ltf-doj'].forEach(function(id){ var el=document.getElementById(id); if(el) el.value=''; });
     }
-    var salRow=document.getElementById('ltf-sal-row');
-    if(salRow) salRow.style.display=(type==='Salary Certificate')?'':'none';
+    var isSalCert=(type==='Salary Certificate');
+    var salRow=document.getElementById('ltf-sal-row'); if(salRow) salRow.style.display=isSalCert?'':'none';
+    var bankRow=document.getElementById('ltf-bank-row'); if(bankRow) bankRow.style.display=isSalCert?'':'none';
+    var addrRow=document.getElementById('ltf-addr-row'); if(addrRow) addrRow.style.display=isSalCert?'':'none';
     var key=type?type.toUpperCase().replace(/[^A-Z0-9]/g,'_'):'';
     var hasTemplate=!!(key&&(APP.config['LTEMPL_'+key+'_DRIVE']||APP.config['LTEMPL_'+key+'_BODY']));
     var hint=document.getElementById('ltf-pdf-hint'); if(hint) hint.style.display=(type&&hasTemplate)?'':'none';
@@ -1075,6 +1077,11 @@ var LtrAgent={
     var empId=document.getElementById('ltf-empid').value.trim();
     if(!type)  { toast('Select letter type first','error'); return; }
     if(!empId) { toast('Employee ID required','error'); return; }
+    if(type==='Salary Certificate'){
+      if(!document.getElementById('ltf-sal').value.trim()){ toast('Monthly Salary required','error'); return; }
+      if(!document.getElementById('ltf-bank').value.trim()){ toast('Bank Name required','error'); return; }
+      if(!document.getElementById('ltf-addr').value.trim()){ toast('Address required','error'); return; }
+    }
     var get=function(id){ var el=document.getElementById(id); return el?el.value.trim():''; };
     var ref='HR-'+Date.now().toString().slice(-8);
     var data={
@@ -1086,6 +1093,8 @@ var LtrAgent={
       ISSUED_BY:   get('ltf-by'),
       NOTES:       get('ltf-notes'),
       SALARY:      get('ltf-sal'),
+      BANK_NAME:   get('ltf-bank'),
+      ADDRESS:     get('ltf-addr'),
       DESIGNATION: get('ltf-des'),
       PASSPORT_NO: get('ltf-pp'),
       ENTITY:      get('ltf-entity'),
@@ -1440,6 +1449,7 @@ var CFG={
     s('cfg-off',APP.config.hr_officer);
     s('cfg-des',APP.config.designation);
     s('cfg-exp-tmpl', APP.config.EXP_LETTER_TEMPLATE_ID);
+    s('cfg-salcert-tmpl', APP.config['LTEMPL_SALARY_CERTIFICATE_DRIVE']);
     s('cfg-psbd-id', APP.config.psbd_template_id);
     s('cfg-sira-id', APP.config.sira_template_id);
   },
@@ -1451,6 +1461,17 @@ var CFG={
       EXP_LETTER_TEMPLATE_ID:(document.getElementById('cfg-exp-tmpl')||{}).value||''
     };
     GAS.saveConfig(cfg,function(result){ if(!result||!result.success){ toast('Error saving config','error'); return; } APP.config=Object.assign(APP.config,cfg); toast('Config saved','success'); });
+  },
+  saveSalCertTemplate:function(){
+    var id=(document.getElementById('cfg-salcert-tmpl')||{}).value.trim();
+    if(!id){ toast('Paste the Google Doc File ID first','error'); return; }
+    var cfg=Object.assign({},APP.config);
+    cfg['LTEMPL_SALARY_CERTIFICATE_DRIVE']=id;
+    GAS.saveConfig(cfg,function(result){
+      if(!result||!result.success){ toast('Error saving template','error'); return; }
+      APP.config['LTEMPL_SALARY_CERTIFICATE_DRIVE']=id;
+      toast('Salary Certificate template saved','success');
+    });
   },
   saveTemplates:function(){
     var psbdId = (document.getElementById('cfg-psbd-id')||{}).value||'';

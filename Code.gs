@@ -710,15 +710,21 @@ function saveLetterTemplate(type, driveId, bodyText) {
 }
 
 function _fillPlaceholders(text, data, cfg) {
+  var firstName = String(data.EMP_NAME||'').trim().split(' ')[0];
   var map = {
     '{{NAME}}':           data.EMP_NAME    || '',
+    '{{FIRSTNAME}}':      firstName,
+    '{{ID}}':             data.EMP_ID      || '',
     '{{EMP_ID}}':         data.EMP_ID      || '',
     '{{PASSPORT_NO}}':    data.PASSPORT_NO || '',
     '{{DESIGNATION}}':    data.DESIGNATION || '',
     '{{COMPANY}}':        cfg.company_name || 'United Group Holding',
     '{{ENTITY}}':         data.ENTITY      || '',
+    '{{DOJ}}':            data.DATE_OF_JOIN|| '',
     '{{DATE_OF_JOIN}}':   data.DATE_OF_JOIN|| '',
     '{{SALARY}}':         data.SALARY      || '',
+    '{{BANK_NAME}}':      data.BANK_NAME   || '',
+    '{{ADDRESS}}':        data.ADDRESS     || '',
     '{{DATE}}':           data.ISSUE_DATE  || '',
     '{{REF_NO}}':         data.REF_NO      || '',
     '{{ISSUED_BY}}':      data.ISSUED_BY   || '',
@@ -736,15 +742,21 @@ function _generateFromDriveTemplate(driveId, data, cfg) {
   try {
     var doc = DocumentApp.openById(copy.getId());
     var body = doc.getBody();
+    var firstName = String(data.EMP_NAME||'').trim().split(' ')[0];
     var placeholders = {
       '{{NAME}}':           data.EMP_NAME    || '',
+      '{{FIRSTNAME}}':      firstName,
+      '{{ID}}':             data.EMP_ID      || '',
       '{{EMP_ID}}':         data.EMP_ID      || '',
       '{{PASSPORT_NO}}':    data.PASSPORT_NO || '',
       '{{DESIGNATION}}':    data.DESIGNATION || '',
       '{{COMPANY}}':        cfg.company_name || 'United Group Holding',
       '{{ENTITY}}':         data.ENTITY      || '',
+      '{{DOJ}}':            data.DATE_OF_JOIN|| '',
       '{{DATE_OF_JOIN}}':   data.DATE_OF_JOIN|| '',
       '{{SALARY}}':         data.SALARY      || '',
+      '{{BANK_NAME}}':      data.BANK_NAME   || '',
+      '{{ADDRESS}}':        data.ADDRESS     || '',
       '{{DATE}}':           data.ISSUE_DATE  || '',
       '{{REF_NO}}':         data.REF_NO      || '',
       '{{ISSUED_BY}}':      data.ISSUED_BY   || '',
