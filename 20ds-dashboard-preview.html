@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>20DS Dashboard — Preview</title>
 <style>
+  @page { size: A3 landscape; margin: 0; }
+  @media print { body { zoom: 0.82; } }
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   :root {
     --bg:      #F0F4FF;
@@ -28,7 +30,7 @@
   /* LAYOUT */
   .shell { display: flex; min-height: 100vh; }
   .sidebar {
-    width: 220px; min-height: 100vh; background: var(--navy);
+    width: 190px; min-height: 100vh; background: var(--navy);
     display: flex; flex-direction: column; padding: 0; flex-shrink: 0;
     position: fixed; top: 0; left: 0; bottom: 0; z-index: 10;
   }
