@@ -1724,6 +1724,7 @@ var AgentManager={
       self._lastSync=Date.now();
       var role = APP.user ? APP.user.role : 'NONE';
       if(role !== 'NONE' && role !== 'EMPLOYEE') {
+        renderNav();
         EmpAgent.render(true); OBAgent.render(); LtrAgent.render(); DashAgent.refresh();
         DSAgent.renderBadge();
       }
