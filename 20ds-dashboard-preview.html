@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>20DS Dashboard — Preview</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg:      #F0F4FF;
+    --surface: #FFFFFF;
+    --navy:    #1E3A5F;
+    --blue:    #2563EB;
+    --teal:    #0891B2;
+    --gold:    #D97706;
+    --green:   #059669;
+    --red:     #DC2626;
+    --orange:  #EA580C;
+    --purple:  #7C3AED;
+    --muted:   #64748B;
+    --muted2:  #94A3B8;
+    --border:  #E2E8F0;
+    --shadow:  0 1px 3px rgba(0,0,0,.06), 0 4px 16px rgba(30,58,95,.06);
+    --shadow-lg: 0 4px 24px rgba(30,58,95,.12);
+  }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--navy); min-height: 100vh; }
+
+  /* LAYOUT */
+  .shell { display: flex; min-height: 100vh; }
+  .sidebar {
+    width: 220px; min-height: 100vh; background: var(--navy);
+    display: flex; flex-direction: column; padding: 0; flex-shrink: 0;
+    position: fixed; top: 0; left: 0; bottom: 0; z-index: 10;
+  }
+  .sb-brand { padding: 22px 20px 18px; border-bottom: 1px solid rgba(255,255,255,.08); }
+  .sb-brand-title { font-size: 13px; font-weight: 700; color: #fff; letter-spacing: .5px; }
+  .sb-brand-sub { font-size: 10px; color: rgba(255,255,255,.4); margin-top: 2px; }
+  .sb-nav { flex: 1; padding: 12px 0; }
+  .nav-item {
+    display: flex; align-items: center; gap: 10px; padding: 9px 20px;
+    font-size: 12.5px; color: rgba(255,255,255,.55); cursor: pointer;
+    border-left: 3px solid transparent; transition: all .15s;
+  }
+  .nav-item:hover { color: #fff; background: rgba(255,255,255,.06); }
+  .nav-item.active { color: #fff; background: rgba(37,99,235,.25); border-left-color: var(--blue); font-weight: 600; }
+  .nav-icon { font-size: 15px; width: 18px; text-align: center; }
+  .nav-badge { margin-left: auto; background: var(--blue); color: #fff; border-radius: 10px; padding: 1px 7px; font-size: 10px; font-weight: 700; }
+  .nav-section { padding: 16px 20px 6px; font-size: 9.5px; font-weight: 700; color: rgba(255,255,255,.25); letter-spacing: 1px; text-transform: uppercase; }
+  .sb-user { padding: 14px 20px; border-top: 1px solid rgba(255,255,255,.08); }
+  .sb-user-name { font-size: 11.5px; font-weight: 600; color: #fff; }
+  .sb-user-role { font-size: 10px; color: rgba(255,255,255,.4); }
+
+  .main { margin-left: 220px; flex: 1; }
+  .topbar {
+    position: sticky; top: 0; z-index: 9; background: rgba(240,244,255,.9);
+    backdrop-filter: blur(12px); border-bottom: 1px solid var(--border);
+    padding: 12px 28px; display: flex; align-items: center; gap: 16px;
+  }
+  .topbar-title { font-size: 17px; font-weight: 700; color: var(--navy); }
+  .topbar-sub { font-size: 11.5px; color: var(--muted); margin-left: 6px; }
+  .topbar-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+  .search-wrap { position: relative; }
+  .search-wrap input {
+    padding: 7px 14px 7px 34px; border: 1px solid var(--border); border-radius: 20px;
+    background: var(--surface); font-size: 12px; width: 220px; outline: none; color: var(--navy);
+  }
+  .search-wrap::before { content: '🔍'; position: absolute; left: 11px; top: 7px; font-size: 12px; }
+  .btn { padding: 7px 16px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; border: none; }
+  .btn-blue { background: var(--blue); color: #fff; }
+  .btn-outline { background: transparent; border: 1.5px solid var(--border); color: var(--navy); }
+  .btn-sm { padding: 5px 12px; font-size: 11px; }
+
+  .content { padding: 24px 28px 40px; }
+
+  /* STAT CARDS */
+  .stat-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 14px; margin-bottom: 22px; }
+  .stat-card {
+    background: var(--surface); border-radius: 14px; padding: 18px 16px;
+    box-shadow: var(--shadow); border: 1px solid var(--border);
+    position: relative; overflow: hidden;
+  }
+  .stat-card::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+    border-radius: 14px 14px 0 0;
+  }
+  .stat-card.blue::before { background: var(--blue); }
+  .stat-card.teal::before { background: var(--teal); }
+  .stat-card.green::before { background: var(--green); }
+  .stat-card.gold::before { background: var(--gold); }
+  .stat-card.red::before { background: var(--red); }
+  .stat-card.purple::before { background: var(--purple); }
+  .stat-label { font-size: 10px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 8px; }
+  .stat-val { font-size: 28px; font-weight: 800; color: var(--navy); line-height: 1; }
+  .stat-val.blue { color: var(--blue); }
+  .stat-val.teal { color: var(--teal); }
+  .stat-val.green { color: var(--green); }
+  .stat-val.gold { color: var(--gold); }
+  .stat-val.red { color: var(--red); }
+  .stat-val.purple { color: var(--purple); }
+  .stat-sub { font-size: 10.5px; color: var(--muted); margin-top: 5px; }
+  .stat-trend { display: inline-flex; align-items: center; gap: 3px; font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 10px; margin-top: 6px; }
+  .stat-trend.up { background: rgba(5,150,105,.1); color: var(--green); }
+  .stat-trend.warn { background: rgba(220,38,38,.1); color: var(--red); }
+
+  /* BENTO GRID */
+  .bento { display: grid; grid-template-columns: 1fr 1fr 1fr; grid-template-rows: auto auto; gap: 16px; margin-bottom: 22px; }
+  .card {
+    background: var(--surface); border-radius: 16px; padding: 20px;
+    box-shadow: var(--shadow); border: 1px solid var(--border);
+  }
+  .card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+  .card-title { font-size: 13px; font-weight: 700; color: var(--navy); }
+  .card-badge { font-size: 10px; font-weight: 600; padding: 3px 9px; border-radius: 10px; }
+  .badge-blue { background: rgba(37,99,235,.1); color: var(--blue); }
+  .badge-gold { background: rgba(215,119,6,.1); color: var(--gold); }
+  .badge-green { background: rgba(5,150,105,.1); color: var(--green); }
+  .badge-red { background: rgba(220,38,38,.1); color: var(--red); }
+  .badge-teal { background: rgba(8,145,178,.1); color: var(--teal); }
+
+  /* STEP AVG BARS */
+  .step-list { display: flex; flex-direction: column; gap: 10px; }
+  .step-row { display: flex; align-items: center; gap: 10px; }
+  .step-name { font-size: 11px; color: var(--muted); width: 160px; flex-shrink: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .step-bar-wrap { flex: 1; height: 7px; background: var(--bg); border-radius: 10px; overflow: hidden; }
+  .step-bar { height: 100%; border-radius: 10px; }
+  .step-days { font-size: 11px; font-weight: 700; color: var(--navy); width: 38px; text-align: right; }
+
+  /* USER ANALYSIS */
+  .user-rows { display: flex; flex-direction: column; gap: 8px; }
+  .user-row { display: flex; align-items: center; gap: 12px; padding: 9px 12px; background: var(--bg); border-radius: 10px; }
+  .avatar { width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: font-size; font-size: 11px; font-weight: 700; color: #fff; flex-shrink: 0; justify-content: center; }
+  .user-name { font-size: 12px; font-weight: 600; color: var(--navy); flex: 1; }
+  .user-meta { font-size: 10.5px; color: var(--muted); }
+  .user-steps { font-size: 11px; font-weight: 700; color: var(--blue); }
+  .user-ring-wrap { display: flex; gap: 6px; }
+  .user-pill { font-size: 10px; padding: 2px 8px; border-radius: 8px; font-weight: 600; }
+
+  /* NSI TABLE */
+  .nsi-wrap { grid-column: 1 / -1; }
+  .nsi-search { padding: 8px 14px; border: 1.5px solid var(--border); border-radius: 10px; font-size: 12px; width: 240px; outline: none; }
+  .tbl { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .tbl thead th { padding: 10px 14px; text-align: left; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); border-bottom: 1.5px solid var(--border); white-space: nowrap; }
+  .tbl tbody tr { border-bottom: 1px solid var(--border); transition: background .1s; }
+  .tbl tbody tr:hover { background: rgba(37,99,235,.03); }
+  .tbl tbody td { padding: 11px 14px; vertical-align: middle; }
+  .emp-name { font-weight: 600; color: var(--navy); font-size: 12.5px; }
+  .emp-id { font-family: monospace; font-size: 11px; color: var(--blue); font-weight: 700; }
+  .emp-meta { font-size: 10.5px; color: var(--muted); margin-top: 1px; }
+
+  /* STEP PROGRESS */
+  .step-dots { display: flex; gap: 4px; flex-wrap: nowrap; }
+  .dot { width: 18px; height: 18px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 8px; font-weight: 800; color: #fff; flex-shrink: 0; }
+  .dot-done { background: var(--green); }
+  .dot-active { background: var(--blue); animation: pulse 1.5s infinite; }
+  .dot-risk { background: var(--orange); }
+  .dot-late { background: var(--red); }
+  .dot-empty { background: var(--border); }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.55} }
+
+  .progress-pill { display: flex; align-items: center; gap: 6px; }
+  .progress-ring { width: 36px; height: 36px; }
+  .progress-pct { font-size: 13px; font-weight: 800; color: var(--navy); }
+  .progress-sub { font-size: 10px; color: var(--muted); }
+
+  /* SLA BADGE */
+  .sla { font-size: 10px; font-weight: 700; padding: 3px 9px; border-radius: 8px; white-space: nowrap; }
+  .sla-ok { background: rgba(5,150,105,.1); color: var(--green); }
+  .sla-risk { background: rgba(234,88,12,.1); color: var(--orange); }
+  .sla-late { background: rgba(220,38,38,.1); color: var(--red); }
+  .sla-pending { background: rgba(124,58,237,.1); color: var(--purple); }
+
+  .day-count { font-size: 12px; font-weight: 700; }
+  .day-count.ok { color: var(--green); }
+  .day-count.risk { color: var(--orange); }
+  .day-count.late { color: var(--red); }
+
+  /* CHART PLACEHOLDER */
+  .chart-placeholder { height: 160px; background: linear-gradient(135deg, var(--bg) 0%, rgba(37,99,235,.05) 100%); border-radius: 10px; display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 12px; position: relative; overflow: hidden; }
+  .chart-bars { display: flex; align-items: flex-end; gap: 6px; padding: 0 8px; width: 100%; height: 100%; position: absolute; bottom: 12px; }
+  .cbar { flex: 1; border-radius: 4px 4px 0 0; min-width: 12px; }
+
+  /* NOTIFICATION DOT */
+  .notif { position: relative; }
+  .notif::after { content: ''; width: 7px; height: 7px; background: var(--red); border-radius: 50%; position: absolute; top: -2px; right: -2px; border: 1.5px solid white; }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="sb-brand">
+      <div class="sb-brand-title">&#9632; United Group Holding</div>
+      <div class="sb-brand-sub">HR Command System v2</div>
+    </div>
+    <nav class="sb-nav">
+      <div class="nav-section">Overview</div>
+      <div class="nav-item"><span class="nav-icon">⊞</span> Dashboard</div>
+      <div class="nav-item active"><span class="nav-icon">◎</span> 20DS Tracker <span class="nav-badge">7</span></div>
+      <div class="nav-section">HR Modules</div>
+      <div class="nav-item"><span class="nav-icon">👤</span> Employees</div>
+      <div class="nav-item"><span class="nav-icon">🔄</span> Pipeline</div>
+      <div class="nav-item"><span class="nav-icon">📄</span> HR Letters</div>
+      <div class="nav-item"><span class="nav-icon">📋</span> Recruitment</div>
+      <div class="nav-item"><span class="nav-icon">📅</span> Leave</div>
+      <div class="nav-section">Admin</div>
+      <div class="nav-item"><span class="nav-icon">⚙</span> Settings</div>
+      <div class="nav-item notif"><span class="nav-icon">🔔</span> Notifications</div>
+    </nav>
+    <div class="sb-user">
+      <div class="sb-user-name">Mohammad Sanish</div>
+      <div class="sb-user-role">SUPER_ADMIN</div>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <div class="main">
+    <!-- TOPBAR -->
+    <div class="topbar">
+      <div>
+        <span class="topbar-title">20DS Strategy Tracker</span>
+        <span class="topbar-sub">20-Day Onboarding Dashboard</span>
+      </div>
+      <div class="topbar-right">
+        <div class="search-wrap"><input placeholder="Search employee, ID..."/></div>
+        <button class="btn btn-outline btn-sm">↻ Sync</button>
+        <button class="btn btn-blue btn-sm">+ New Record</button>
+      </div>
+    </div>
+
+    <div class="content">
+
+      <!-- STAT CARDS ROW -->
+      <div class="stat-grid">
+        <div class="stat-card blue">
+          <div class="stat-label">Total Processes</div>
+          <div class="stat-val blue">284</div>
+          <div class="stat-sub">All-time initiated</div>
+          <div class="stat-trend up">↑ 12 this month</div>
+        </div>
+        <div class="stat-card green">
+          <div class="stat-label">Completed This Month</div>
+          <div class="stat-val green">18</div>
+          <div class="stat-sub">June 2026</div>
+          <div class="stat-trend up">↑ 3 vs last month</div>
+        </div>
+        <div class="stat-card teal">
+          <div class="stat-label">Last 20 Days</div>
+          <div class="stat-val teal">11</div>
+          <div class="stat-sub">Completed</div>
+          <div class="stat-trend up">↑ on target</div>
+        </div>
+        <div class="stat-card gold">
+          <div class="stat-label">In Progress (NSI)</div>
+          <div class="stat-val gold">7</div>
+          <div class="stat-sub">Active trackers</div>
+          <div class="stat-trend warn">⚠ 2 at risk</div>
+        </div>
+        <div class="stat-card red">
+          <div class="stat-label">Pending Approval</div>
+          <div class="stat-val red">3</div>
+          <div class="stat-sub">Awaiting HR sign-off</div>
+          <div class="stat-trend warn">Action required</div>
+        </div>
+        <div class="stat-card purple">
+          <div class="stat-label">Avg. Completion Days</div>
+          <div class="stat-val purple">16.4</div>
+          <div class="stat-sub">Target: 20 days</div>
+          <div class="stat-trend up">↑ 1.2d faster</div>
+        </div>
+      </div>
+
+      <!-- BENTO GRID -->
+      <div class="bento">
+
+        <!-- STEP AVERAGE CHART -->
+        <div class="card" style="grid-column: span 2">
+          <div class="card-header">
+            <div class="card-title">⏱ Average Days per Step</div>
+            <span class="card-badge badge-blue">Last 50 completed</span>
+          </div>
+          <div class="step-list">
+            <div class="step-row">
+              <div class="step-name">1. Employee ID & Master</div>
+              <div class="step-bar-wrap"><div class="step-bar" style="width:18%;background:var(--green)"></div></div>
+              <div class="step-days">0.4d</div>
+            </div>
+            <div class="step-row">
+              <div class="step-name">2. Documents Collected</div>
+              <div class="step-bar-wrap"><div class="step-bar" style="width:35%;background:var(--teal)"></div></div>
+              <div class="step-days">0.8d</div>
+            </div>
+            <div class="step-row">
+              <div class="step-name">3. Visa Application</div>
+              <div class="step-bar-wrap"><div class="step-bar" style="width:100%;background:var(--red)"></div></div>
+              <div class="step-days">5.2d</div>
+            </div>
+            <div class="step-row">
+              <div class="step-name">4. Emirates ID Applied</div>
+              <div class="step-bar-wrap"><div class="step-bar" style="width:88%;background:var(--orange)"></div></div>
+              <div class="step-days">4.6d</div>
+            </div>
+            <div class="step-row">
+              <div class="step-name">5. SIRA/PSBD License</div>
+              <div class="step-bar-wrap"><div class="step-bar" style="width:78%;background:var(--orange)"></div></div>
+              <div class="step-days">4.1d</div>
+            </div>
+            <div class="step-row">
+              <div class="step-name">6. Medical Fitness</div>
+              <div class="step-bar-wrap"><div class="step-bar" style="width:44%;background:var(--teal)"></div></div>
+              <div class="step-days">1.1d</div>
+            </div>
+            <div class="step-row">
+              <div class="step-name">7. Uniform Issued</div>
+              <div class="step-bar-wrap"><div class="step-bar" style="width:20%;background:var(--green)"></div></div>
+              <div class="step-days">0.5d</div>
+            </div>
+            <div class="step-row">
+              <div class="step-name">8. Bank Account</div>
+              <div class="step-bar-wrap"><div class="step-bar" style="width:60%;background:var(--gold)"></div></div>
+              <div class="step-days">3.2d</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- HR USER ANALYSIS -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">👥 HR User Performance</div>
+            <span class="card-badge badge-teal">This month</span>
+          </div>
+          <div class="user-rows">
+            <div class="user-row">
+              <div class="avatar" style="background:#2563EB">MS</div>
+              <div style="flex:1">
+                <div class="user-name">Mohammad Sanish</div>
+                <div class="user-meta">Avg 1.8d/step · 3 active</div>
+              </div>
+              <div>
+                <div class="user-steps">42 steps</div>
+                <div style="font-size:10px;color:var(--green);text-align:right">Top performer</div>
+              </div>
+            </div>
+            <div class="user-row">
+              <div class="avatar" style="background:#0891B2">AK</div>
+              <div style="flex:1">
+                <div class="user-name">Ahmed Al Kaabi</div>
+                <div class="user-meta">Avg 2.3d/step · 2 active</div>
+              </div>
+              <div>
+                <div class="user-steps">31 steps</div>
+              </div>
+            </div>
+            <div class="user-row">
+              <div class="avatar" style="background:#7C3AED">FR</div>
+              <div style="flex:1">
+                <div class="user-name">Fatima Rasheed</div>
+                <div class="user-meta">Avg 2.1d/step · 2 active</div>
+              </div>
+              <div>
+                <div class="user-steps">28 steps</div>
+              </div>
+            </div>
+            <div class="user-row">
+              <div class="avatar" style="background:#059669">NJ</div>
+              <div style="flex:1">
+                <div class="user-name">Nabil Jassim</div>
+                <div class="user-meta">Avg 3.1d/step · 0 active</div>
+              </div>
+              <div>
+                <div class="user-steps">19 steps</div>
+                <div style="font-size:10px;color:var(--orange);text-align:right">Slow avg</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- NSI ACTIVE LIST — Full Width -->
+        <div class="card nsi-wrap">
+          <div class="card-header">
+            <div class="card-title">🔴 Active NSI — In-Progress Employees (7)</div>
+            <div style="display:flex;gap:8px;align-items:center">
+              <input class="nsi-search" placeholder="Search name or ID..."/>
+              <span class="card-badge badge-red">2 Overdue</span>
+              <span class="card-badge badge-gold">2 At Risk</span>
+              <span class="card-badge badge-green">3 On Track</span>
+            </div>
+          </div>
+          <table class="tbl">
+            <thead>
+              <tr>
+                <th>Employee</th>
+                <th>Entity</th>
+                <th>Steps (1–12)</th>
+                <th>Progress</th>
+                <th>Current Step</th>
+                <th>Days Elapsed</th>
+                <th>SLA Status</th>
+                <th>Assigned To</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <!-- ROW 1 — On Track -->
+              <tr>
+                <td>
+                  <div class="emp-name">RASHID AL MANSOORI</div>
+                  <div class="emp-id">USG-10421</div>
+                  <div class="emp-meta">Security Guard · Joined 12 Jun</div>
+                </td>
+                <td><span class="card-badge badge-blue">USG</span></td>
+                <td>
+                  <div class="step-dots">
+                    <div class="dot dot-done" title="Done">✓</div>
+                    <div class="dot dot-done" title="Done">✓</div>
+                    <div class="dot dot-done" title="Done">✓</div>
+                    <div class="dot dot-done" title="Done">✓</div>
+                    <div class="dot dot-active" title="In progress">5</div>
+                    <div class="dot dot-empty"></div>
+                    <div class="dot dot-empty"></div>
+                    <div class="dot dot-empty"></div>
+                    <div class="dot dot-empty"></div>
+                    <div class="dot dot-empty"></div>
+                    <div class="dot dot-empty"></div>
+                    <div class="dot dot-empty"></div>
+                  </div>
+                </td>
+                <td>
+                  <div class="progress-pill">
+                    <svg class="progress-ring" viewBox="0 0 36 36">
+                      <circle cx="18" cy="18" r="14" fill="none" stroke="#E2E8F0" stroke-width="3"/>
+                      <circle cx="18" cy="18" r="14" fill="none" stroke="#059669" stroke-width="3"
+                        stroke-dasharray="36.7 51.8" stroke-linecap="round" transform="rotate(-90 18 18)"/>
+                    </svg>
+                    <div><div class="progress-pct">33%</div><div class="progress-sub">4 / 12</div></div>
+                  </div>
+                </td>
+                <td><span style="font-size:11.5px;font-weight:600;color:var(--blue)">SIRA License</span></td>
+                <td><span class="day-count ok">6d</span></td>
+                <td><span class="sla sla-ok">✓ On Track</span></td>
+                <td style="font-size:11px;color:var(--muted)">M. Sanish</td>
+                <td><button class="btn btn-outline btn-sm">View</button></td>
+              </tr>
+              <!-- ROW 2 — At Risk -->
+              <tr>
+                <td>
+                  <div class="emp-name">JAVED HUSSAIN KHAN</div>
+                  <div class="emp-id">USG-10418</div>
+                  <div class="emp-meta">Security Guard · Joined 5 Jun</div>
+                </td>
+                <td><span class="card-badge badge-blue">USG</span></td>
+                <td>
+                  <div class="step-dots">
+                    <div class="dot dot-done">✓</div><div class="dot dot-done">✓</div>
+                    <div class="dot dot-done">✓</div><div class="dot dot-done">✓</div>
+                    <div class="dot dot-done">✓</div><div class="dot dot-done">✓</div>
+                    <div class="dot dot-risk" title="At Risk">7</div>
+                    <div class="dot dot-empty"></div><div class="dot dot-empty"></div>
+                    <div class="dot dot-empty"></div><div class="dot dot-empty"></div>
+                    <div class="dot dot-empty"></div>
+                  </div>
+                </td>
+                <td>
+                  <div class="progress-pill">
+                    <svg class="progress-ring" viewBox="0 0 36 36">
+                      <circle cx="18" cy="18" r="14" fill="none" stroke="#E2E8F0" stroke-width="3"/>
+                      <circle cx="18" cy="18" r="14" fill="none" stroke="#D97706" stroke-width="3"
+                        stroke-dasharray="55 33.5" stroke-linecap="round" transform="rotate(-90 18 18)"/>
+                    </svg>
+                    <div><div class="progress-pct">50%</div><div class="progress-sub">6 / 12</div></div>
+                  </div>
+                </td>
+                <td><span style="font-size:11.5px;font-weight:600;color:var(--orange)">Bank Account</span></td>
+                <td><span class="day-count risk">14d</span></td>
+                <td><span class="sla sla-risk">⚠ At Risk</span></td>
+                <td style="font-size:11px;color:var(--muted)">A. Al Kaabi</td>
+                <td><button class="btn btn-outline btn-sm">View</button></td>
+              </tr>
+              <!-- ROW 3 — Overdue -->
+              <tr>
+                <td>
+                  <div class="emp-name">PRAKASH NAIR SURESH</div>
+                  <div class="emp-id">UST-10389</div>
+                  <div class="emp-meta">Technician · Joined 27 May</div>
+                </td>
+                <td><span class="card-badge badge-teal">UST</span></td>
+                <td>
+                  <div class="step-dots">
+                    <div class="dot dot-done">✓</div><div class="dot dot-done">✓</div>
+                    <div class="dot dot-done">✓</div><div class="dot dot-done">✓</div>
+                    <div class="dot dot-done">✓</div><div class="dot dot-done">✓</div>
+                    <div class="dot dot-done">✓</div><div class="dot dot-done">✓</div>
+                    <div class="dot dot-late" title="Overdue">9</div>
+                    <div class="dot dot-empty"></div><div class="dot dot-empty"></div>
+                    <div class="dot dot-empty"></div>
+                  </div>
+                </td>
+                <td>
+                  <div class="progress-pill">
+                    <svg class="progress-ring" viewBox="0 0 36 36">
+                      <circle cx="18" cy="18" r="14" fill="none" stroke="#E2E8F0" stroke-width="3"/>
+                      <circle cx="18" cy="18" r="14" fill="none" stroke="#DC2626" stroke-width="3"
+                        stroke-dasharray="73.4 15.1" stroke-linecap="round" transform="rotate(-90 18 18)"/>
+                    </svg>
+                    <div><div class="progress-pct">67%</div><div class="progress-sub">8 / 12</div></div>
+                  </div>
+                </td>
+                <td><span style="font-size:11.5px;font-weight:600;color:var(--red)">WPS Enrollment</span></td>
+                <td><span class="day-count late">23d</span></td>
+                <td><span class="sla sla-late">✗ Overdue</span></td>
+                <td style="font-size:11px;color:var(--muted)">F. Rasheed</td>
+                <td><button class="btn btn-blue btn-sm">Action</button></td>
+              </tr>
+              <!-- ROW 4 — Pending Approval -->
+              <tr>
+                <td>
+                  <div class="emp-name">ARJUN KUMAR PILLAI</div>
+                  <div class="emp-id">UG-10401</div>
+                  <div class="emp-meta">Life Support · Joined 2 Jun</div>
+                </td>
+                <td><span class="card-badge" style="background:rgba(124,58,237,.1);color:var(--purple)">UG</span></td>
+                <td>
+                  <div class="step-dots">
+                    <div class="dot dot-done">✓</div><div class="dot dot-done">✓</div>
+                    <div class="dot dot-done">✓</div><div class="dot dot-done">✓</div>
+                    <div class="dot dot-done">✓</div><div class="dot dot-done">✓</div>
+                    <div class="dot dot-done">✓</div><div class="dot dot-done">✓</div>
+                    <div class="dot dot-done">✓</div><div class="dot dot-done">✓</div>
+                    <div class="dot dot-done">✓</div><div class="dot dot-done">✓</div>
+                  </div>
+                </td>
+                <td>
+                  <div class="progress-pill">
+                    <svg class="progress-ring" viewBox="0 0 36 36">
+                      <circle cx="18" cy="18" r="14" fill="none" stroke="#E2E8F0" stroke-width="3"/>
+                      <circle cx="18" cy="18" r="14" fill="none" stroke="#7C3AED" stroke-width="3"
+                        stroke-dasharray="88 0.5" stroke-linecap="round" transform="rotate(-90 18 18)"/>
+                    </svg>
+                    <div><div class="progress-pct">100%</div><div class="progress-sub">12 / 12</div></div>
+                  </div>
+                </td>
+                <td><span style="font-size:11.5px;font-weight:600;color:var(--purple)">Pending HR Approval</span></td>
+                <td><span class="day-count ok">17d</span></td>
+                <td><span class="sla sla-pending">⏳ Pending Approval</span></td>
+                <td style="font-size:11px;color:var(--muted)">M. Sanish</td>
+                <td><button class="btn btn-sm" style="background:var(--purple);color:#fff">✓ Approve</button></td>
+              </tr>
+            </tbody>
+          </table>
+          <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);display:flex;align-items:center;gap:16px;font-size:11px;color:var(--muted)">
+            <span>Showing 4 of 7 active · </span>
+            <span style="display:flex;gap:8px">
+              <span class="dot dot-done" style="width:14px;height:14px;font-size:7px">✓</span> Done &nbsp;
+              <span class="dot dot-active" style="width:14px;height:14px;font-size:7px">▶</span> Active &nbsp;
+              <span class="dot dot-risk" style="width:14px;height:14px"></span> At Risk &nbsp;
+              <span class="dot dot-late" style="width:14px;height:14px"></span> Overdue &nbsp;
+              <span class="dot dot-empty" style="width:14px;height:14px"></span> Pending
+            </span>
+            <span style="margin-left:auto">
+              <button class="btn btn-outline btn-sm">← Prev</button>
+              <button class="btn btn-outline btn-sm" style="margin-left:6px">Next →</button>
+            </span>
+          </div>
+        </div>
+
+      </div>
+      <!-- END BENTO -->
+
+      <div style="text-align:center;font-size:11px;color:var(--muted2);margin-top:8px">
+        This is a static design preview — data is illustrative only.
+      </div>
+
+    </div>
+  </div>
+</div>
+</body>
+</html>
