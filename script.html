@@ -1998,10 +1998,13 @@ var UserMgmtAgent = {
   },
   openAdd: function() {
     document.getElementById('uf-email').value = '';
+    document.getElementById('uf-email').readOnly = false;
     document.getElementById('uf-name').value = '';
     document.getElementById('uf-role').value = '';
     document.getElementById('uf-entities').value = 'ALL';
     document.getElementById('uf-active').value = 'TRUE';
+    document.getElementById('uf-password').value = '';
+    document.getElementById('uf-password').placeholder = 'Set password (required for new user)';
     document.getElementById('uf-edit-email').value = '';
     document.getElementById('m-user-ttl').textContent = 'Add User';
     openM('m-user');
@@ -2015,6 +2018,8 @@ var UserMgmtAgent = {
     document.getElementById('uf-role').value = u.ROLE||'';
     document.getElementById('uf-entities').value = u.ENTITIES||'ALL';
     document.getElementById('uf-active').value = (u.ACTIVE==='TRUE'||u.ACTIVE==='true') ? 'TRUE' : 'FALSE';
+    document.getElementById('uf-password').value = '';
+    document.getElementById('uf-password').placeholder = 'Leave blank to keep existing password';
     document.getElementById('uf-edit-email').value = u.EMAIL;
     document.getElementById('m-user-ttl').textContent = 'Edit User';
     openM('m-user');
@@ -2025,8 +2030,12 @@ var UserMgmtAgent = {
     var role  = document.getElementById('uf-role').value;
     var ents  = document.getElementById('uf-entities').value.trim();
     var active= document.getElementById('uf-active').value;
+    var pwd   = document.getElementById('uf-password').value;
+    var isNew = !document.getElementById('uf-edit-email').value;
     if(!email || !role) { toast('Email and role are required','error'); return; }
+    if(isNew && !pwd)   { toast('Password is required for new users','error'); return; }
     var data = {EMAIL:email, DISPLAY_NAME:name, ROLE:role, ENTITIES:ents||'ALL', ACTIVE:active};
+    if(pwd) data.PASSWORD = pwd;
     GAS.saveUser(data, function(r) {
       if(!r || !r.success) { toast('Error: '+(r?r.error:'Unknown'),'error'); return; }
       toast('User saved','success');
