@@ -21,7 +21,7 @@ function normEnt(raw){
 // ============================================================
 // APP STATE
 // ============================================================
-var APP={config:{},master:[],deletions:[],onboarding:[],hrDocs:[],summary:[],loaded:false,user:{email:'',name:'',role:'',entities:[],active:true},token:''};
+var APP={config:{},master:[],deletions:[],onboarding:[],hrDocs:[],summary:[],dsTracker:[],loaded:false,user:{email:'',name:'',role:'',entities:[],active:true},token:''};
 // Track if any modal is open (to block auto-refresh during editing)
 var EDITING=false;
 
@@ -497,6 +497,7 @@ var GAS={
         if(r.onboarding &&r.onboarding.success) APP.onboarding =r.onboarding.data ||[];
         if(r.hrDocs     &&r.hrDocs.success)     APP.hrDocs     =r.hrDocs.data     ||[];
         if(r.summary    &&r.summary.success)    APP.summary    =r.summary.data    ||[];
+        if(r.dsTracker  &&r.dsTracker.success)  APP.dsTracker  =r.dsTracker.data  ||[];
         APP.config=r.config||{}; APP.loaded=true;
         if(cb) cb();
       })
@@ -534,7 +535,13 @@ var GAS={
   updateApplicationStage:function(id,s,n,cb){ GAS.call('updateApplicationStage',[id,s,n], cb); },
   transferAppToOnboarding:function(id,cb){ GAS.call('transferAppToOnboarding',[id], cb); },
   getResignations:              function(cb)   { GAS.call('getResignations',              [],    cb); },
-  generateExperienceLetterForEmp:function(id,cb){ GAS.call('generateExperienceLetterForEmp',[id], cb); }
+  generateExperienceLetterForEmp:function(id,cb){ GAS.call('generateExperienceLetterForEmp',[id], cb); },
+  // 20DS Tracker
+  get20DSTracker:      function(cb)          { GAS.call('get20DSTracker',       [],          cb); },
+  update20DSStep:      function(id,k,d,cb)   { GAS.call('update20DSStep',       [id,k,d],    cb); },
+  update20DSResponsible:function(id,hr,cb)   { GAS.call('update20DSResponsible',[id,hr],     cb); },
+  cancel20DSRecord:    function(id,rsn,cb)   { GAS.call('cancel20DSRecord',     [id,rsn],    cb); },
+  get20DSAuditLog:     function(cb)          { GAS.call('get20DSAuditLog',      [],          cb); }
 };
 
 // ============================================================
@@ -979,8 +986,10 @@ var OBAgent={
       if(!result||!result.success){ toast('Error: '+(result?result.error:'Unknown'),'error'); return; }
       APP.master.push(empData);
       cand.STATUS='Transferred';
-      toast('Transferred: '+cand.FULL_NAME,'success');
+      toast('Transferred: '+cand.FULL_NAME+' — 20DS record created','success');
       closeM('m-tr'); OBAgent.render(); EmpAgent.render(true); DashAgent.refresh();
+      // Refresh 20DS tracker data from server
+      GAS.get20DSTracker(function(r){ if(r&&r.success){ APP.dsTracker=r.data||[]; DSAgent.renderBadge(); } });
     });
   },
   cancel:function(obId){
@@ -1689,6 +1698,7 @@ var AgentManager={
       LtrAgent.render();
       DashAgent.refresh();
       CFG.loadUI();
+      DSAgent.renderBadge();
       var sl=document.getElementById('sync-label');
       if(sl) sl.textContent='Data Synced via Google';
       toast('Dashboard loaded - '+getActiveEmployees().length.toLocaleString()+' active employees','success');
@@ -1715,6 +1725,7 @@ var AgentManager={
       var role = APP.user ? APP.user.role : 'NONE';
       if(role !== 'NONE' && role !== 'EMPLOYEE') {
         EmpAgent.render(true); OBAgent.render(); LtrAgent.render(); DashAgent.refresh();
+        DSAgent.renderBadge();
       }
       var sl2=document.getElementById('sync-label'); if(sl2) sl2.textContent='Connected to live data via Google';
       var el=document.getElementById('sync-timer'); if(el) el.textContent='just now';
@@ -1753,6 +1764,7 @@ function renderNav() {
     'employees':    ['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER','VIEWER'],
     'resignations': ['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER','VIEWER'],
     'onboarding':   ['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER'],
+    '20dstracker':  ['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER'],
     'letters':      ['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER'],
     'reports':      ['SUPER_ADMIN','HR_OFFICER'],
     'logs':         ['SUPER_ADMIN','HR_OFFICER'],
@@ -1818,7 +1830,8 @@ function navigate(view){
   var titles={
     dashboard:'Dashboard', masterdata:'EMPLOYEE RECORD', employees:'Active Employees',
     resignations:'Recent Resignations',
-    onboarding:'Onboarding Pipeline', letters:'HR Letters', reports:'Monthly Report',
+    onboarding:'Onboarding Pipeline', '20dstracker':'20DS Tracker',
+    letters:'HR Letters', reports:'Monthly Report',
     logs:'Activity Logs', setup:'System Configuration',
     users:'User Management', leave:'Leave Management', recruitment:'Recruitment',
     'self-service':'My Profile'
@@ -1841,6 +1854,7 @@ function navigate(view){
   if(view==='leave') LeaveAgent.load('');
   if(view==='recruitment') RecruitmentAgent.loadJobs();
   if(view==='users') UserMgmtAgent.load();
+  if(view==='20dstracker') DSAgent.render();
 }
 
 // ============================================================
@@ -2393,6 +2407,489 @@ var RecruitmentAgent = {
       RecruitmentAgent.showApps(RecruitmentAgent._currentJobId);
       // Refresh onboarding
       GAS.call('getOnboarding',[],function(ob){ if(ob&&ob.success){ APP.onboarding=ob.data||[]; OBAgent.render(); } });
+    });
+  }
+};
+
+// ============================================================
+// DS AGENT — 20DS Tracker Module
+// ============================================================
+var DSAgent = {
+  _tab: 'summary',
+
+  // Step definitions: key → {label, statuses, substeps}
+  STEPS: {
+    STEP_VISA: {
+      label: 'Visa Issued',
+      statuses: ['Pending','Done','Problem'],
+      substeps: { mol_done: 'MOL Done', entry_permit: 'Entry Permit Submitted' }
+    },
+    STEP_LABOR: {
+      label: 'Labor Card & Tawjeeh',
+      statuses: ['Pending','Done'],
+      substeps: { tawjeeh: 'Tawjeeh Completed', labor_card: 'Labor Card Received' }
+    },
+    STEP_INSURANCE: {
+      label: 'Insurance',
+      statuses: ['Pending','Done','Problem'],
+      substeps: { app_submitted: 'Application Submitted', card_received: 'Card Received' }
+    },
+    STEP_MEDICAL: {
+      label: 'Visa Medical',
+      statuses: ['Pending','Fit','Unfit'],
+      substeps: { medical_done: 'Medical Done' }
+    },
+    STEP_NSI: {
+      label: 'NSI Training',
+      statuses: ['Not Started','Pending','Done'],
+      substeps: { app_submitted: 'Application Submitted', date_scheduled: 'Training Date Scheduled', training_completed: 'Training Completed', cert_received: 'Certificate Received' }
+    },
+    STEP_EID: {
+      label: 'Emirates ID & Residency',
+      statuses: ['Pending','Done','Problem'],
+      substeps: { eid_app_submitted: 'EID Application Submitted', biometrics: 'Biometrics / Stamping Done', card_received: 'Card Received' }
+    }
+  },
+
+  _statusClass: function(status) {
+    var map = { 'Done':'done','Pending':'pending','Problem':'problem',
+                'Not Started':'notstart','Fit':'fit','Unfit':'unfit' };
+    return map[status] || 'pending';
+  },
+
+  _daysFromDate: function(dateStr) {
+    if (!dateStr) return 0;
+    var d;
+    var m = String(dateStr).match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+    if (m) d = new Date(Number(m[3]), Number(m[2])-1, Number(m[1]));
+    else d = new Date(dateStr);
+    if (isNaN(d)) return 0;
+    return Math.floor((Date.now() - d) / 86400000);
+  },
+
+  _activeRecords: function() {
+    return (APP.dsTracker || []).filter(function(r){ return r.CANCELLED !== 'TRUE'; });
+  },
+
+  renderBadge: function() {
+    var active = this._activeRecords();
+    var nb = document.getElementById('nb-ds');
+    if (nb) nb.textContent = active.length;
+  },
+
+  switchTab: function(tab) {
+    this._tab = tab;
+    document.querySelectorAll('.ds-tab').forEach(function(t){
+      t.classList.toggle('active', t.dataset.dstab === tab);
+    });
+    ['summary','tracker','pending','delayed','cancelled','audit'].forEach(function(t){
+      var el = document.getElementById('ds-tab-' + t);
+      if (el) el.style.display = (t === tab) ? 'block' : 'none';
+    });
+    if (tab === 'summary')   DSAgent.renderSummary();
+    if (tab === 'tracker')   DSAgent.renderTracker();
+    if (tab === 'pending')   DSAgent.renderPending();
+    if (tab === 'delayed')   DSAgent.renderDelayed();
+    if (tab === 'cancelled') DSAgent.renderCancelled();
+  },
+
+  render: function() {
+    this.renderBadge();
+    this.switchTab(this._tab || 'summary');
+  },
+
+  refresh: function() {
+    var self = this;
+    GAS.get20DSTracker(function(r){
+      if (r && r.success) { APP.dsTracker = r.data || []; self.render(); toast('20DS data refreshed','info'); }
+      else toast('Error refreshing 20DS data','error');
+    });
+  },
+
+  // ── Summary Tab ──
+  renderSummary: function() {
+    var active    = this._activeRecords();
+    var cancelled = (APP.dsTracker||[]).filter(function(r){ return r.CANCELLED==='TRUE'; });
+    var complete  = active.filter(function(r){ return r.OB_COMPLETE==='TRUE'; });
+    var delayed   = active.filter(function(r){ return r.OB_COMPLETE!=='TRUE' && parseInt(r.TOTAL_DAYS_ELAPSED||0,10) > 20; });
+    var inprog    = active.filter(function(r){ return r.OB_COMPLETE!=='TRUE' && parseInt(r.TOTAL_DAYS_ELAPSED||0,10) <= 20; });
+
+    var set = function(id,v){ var el=document.getElementById(id); if(el) el.textContent=v; };
+    set('ds-kpi-total',    active.length);
+    set('ds-kpi-complete', complete.length);
+    set('ds-kpi-inprogress', inprog.length);
+    set('ds-kpi-delayed',  delayed.length);
+    set('ds-kpi-cancelled',cancelled.length);
+
+    var stepKeys = Object.keys(this.STEPS);
+    var self = this;
+    var tbody = document.getElementById('ds-summary-tbody');
+    if (!tbody) return;
+    if (!active.length) {
+      tbody.innerHTML = '<tr><td colspan="6"><div class="ds-empty"><div class="ds-empty-icon">&#9698;</div>No active records.</div></td></tr>';
+      return;
+    }
+    tbody.innerHTML = stepKeys.map(function(k){
+      var label = self.STEPS[k].label;
+      var done=0, pending=0, problem=0, notStart=0;
+      active.forEach(function(r){
+        var s = (r[k] && r[k].status) || 'Pending';
+        if (s==='Done'||s==='Fit') done++;
+        else if (s==='Problem'||s==='Unfit') problem++;
+        else if (s==='Not Started') notStart++;
+        else pending++;
+      });
+      var total = active.length;
+      var pct = total ? Math.round((done/total)*100) : 0;
+      return '<tr><td style="color:var(--ds-text);font-weight:600">'+esc(label)+'</td>'+
+             '<td><span class="ds-badge done">'+done+'</span></td>'+
+             '<td><span class="ds-badge pending">'+pending+'</span></td>'+
+             '<td><span class="ds-badge problem">'+(problem+notStart)+'</span></td>'+
+             '<td><span class="ds-badge notstart">'+notStart+'</span></td>'+
+             '<td style="min-width:120px"><div class="ds-progress-bar"><div class="ds-progress-fill" style="width:'+pct+'%"></div></div><span style="font-size:10px;color:var(--ds-muted);font-family:var(--ds-mono)">'+pct+'%</span></td></tr>';
+    }).join('');
+  },
+
+  // ── Tracker Tab ──
+  renderTracker: function() {
+    var q   = (document.getElementById('ds-q')            ||{}).value||'';
+    var sts = (document.getElementById('ds-filter-status')||{}).value||'';
+    q = q.toLowerCase();
+    var self = this;
+    var list = (APP.dsTracker||[]).filter(function(r){
+      if (r.CANCELLED === 'TRUE') return false;
+      if (sts === 'complete'  && r.OB_COMPLETE !== 'TRUE') return false;
+      if (sts === 'active'    && r.OB_COMPLETE === 'TRUE') return false;
+      if (q && ![ r.EMP_ID||'', r.EMP_NAME||'', r.DESIGNATION||'' ].some(function(v){ return v.toLowerCase().indexOf(q)>=0; })) return false;
+      return true;
+    });
+    var cnt = document.getElementById('ds-tracker-cnt');
+    if (cnt) cnt.textContent = list.length + ' records';
+    var tbody = document.getElementById('ds-tracker-tbody');
+    if (!tbody) return;
+    if (!list.length) {
+      tbody.innerHTML = '<tr><td colspan="10"><div class="ds-empty"><div class="ds-empty-icon">&#128203;</div>No records found.</div></td></tr>';
+      return;
+    }
+    var stepKeys = Object.keys(this.STEPS);
+    tbody.innerHTML = list.map(function(r){
+      var days = parseInt(r.TOTAL_DAYS_ELAPSED||0,10);
+      var daysColor = days > 20 ? 'var(--ds-red)' : days > 10 ? 'var(--ds-amber)' : 'var(--ds-green)';
+      var pills = stepKeys.map(function(k){
+        var step = r[k] || {status:'Pending'};
+        var sc = self._statusClass(step.status||'Pending');
+        var lbl = self.STEPS[k].label.substring(0,2).toUpperCase();
+        return '<span class="ds-step-pill '+sc+'" title="'+esc(self.STEPS[k].label)+': '+esc(step.status||'Pending')+'" onclick="DSAgent.openStepModal(\''+esc(r.DS_ID)+'\',\''+k+'\')">'+lbl+'</span>';
+      }).join('');
+      var compBadge = r.OB_COMPLETE==='TRUE'
+        ? '<span class="ds-badge complete">&#10003; Done</span>'
+        : '<span class="ds-badge pending">In Progress</span>';
+      return '<tr>'+
+        '<td class="mono" style="color:var(--ds-cyan)">'+esc(r.DS_ID||'—')+'</td>'+
+        '<td class="mono">'+esc(r.EMP_ID||'—')+'</td>'+
+        '<td style="font-weight:700">'+esc(r.EMP_NAME||'—')+'</td>'+
+        '<td style="font-size:11px">'+esc(r.DESIGNATION||'—')+'</td>'+
+        '<td style="font-size:11px;color:var(--ds-muted)">'+esc(r.TRANSFER_DATE||'—')+'</td>'+
+        '<td style="font-size:11px">'+esc(r.RESPONSIBLE_HR||'—')+'</td>'+
+        '<td class="mono" style="color:'+daysColor+'">'+days+'d</td>'+
+        '<td><div class="ds-steps-row">'+pills+'</div></td>'+
+        '<td>'+compBadge+'</td>'+
+        '<td><div style="display:flex;gap:4px">'+
+          '<button class="ds-btn cyan sm" onclick="DSAgent.openResponsibleModal(\''+esc(r.DS_ID)+'\')" title="Set Responsible HR">&#128101;</button>'+
+          '<button class="ds-btn red sm" onclick="DSAgent.openCancelModal(\''+esc(r.DS_ID)+'\')" title="Cancel">&#10005;</button>'+
+        '</div></td>'+
+      '</tr>';
+    }).join('');
+  },
+
+  // ── Pending Tab ──
+  renderPending: function() {
+    var self = this;
+    var rows = [];
+    (APP.dsTracker||[]).forEach(function(r){
+      if (r.CANCELLED === 'TRUE' || r.OB_COMPLETE === 'TRUE') return;
+      Object.keys(self.STEPS).forEach(function(k){
+        var step = r[k] || {status:'Pending'};
+        var s = step.status || 'Pending';
+        if (s === 'Done' || s === 'Fit') return;
+        var days = self._daysFromDate(r.TRANSFER_DATE);
+        rows.push({ emp: r.EMP_NAME, empId: r.EMP_ID, step: self.STEPS[k].label, status: s, responsible: step.responsible||r.RESPONSIBLE_HR||'—', days: days, dsId: r.DS_ID, stepKey: k });
+      });
+    });
+    var cnt = document.getElementById('ds-pending-cnt');
+    if (cnt) cnt.textContent = rows.length + ' pending steps';
+    var tbody = document.getElementById('ds-pending-tbody');
+    if (!tbody) return;
+    if (!rows.length) {
+      tbody.innerHTML = '<tr><td colspan="7"><div class="ds-empty"><div class="ds-empty-icon">&#10004;</div>All steps complete.</div></td></tr>';
+      return;
+    }
+    rows.sort(function(a,b){ return b.days - a.days; });
+    tbody.innerHTML = rows.map(function(row){
+      var sc = self._statusClass(row.status);
+      var dColor = row.days > 20 ? 'var(--ds-red)' : row.days > 10 ? 'var(--ds-amber)' : 'var(--ds-muted)';
+      return '<tr>'+
+        '<td style="font-weight:600">'+esc(row.emp||'—')+'</td>'+
+        '<td class="mono">'+esc(row.empId||'—')+'</td>'+
+        '<td>'+esc(row.step)+'</td>'+
+        '<td><span class="ds-badge '+sc+'">'+esc(row.status)+'</span></td>'+
+        '<td style="font-size:11px">'+esc(row.responsible)+'</td>'+
+        '<td class="mono" style="color:'+dColor+'">'+row.days+'d</td>'+
+        '<td><button class="ds-btn cyan sm" onclick="DSAgent.openStepModal(\''+esc(row.dsId)+'\',\''+row.stepKey+'\')">Update</button></td>'+
+      '</tr>';
+    }).join('');
+  },
+
+  // ── Delayed Tab ──
+  renderDelayed: function() {
+    var self = this;
+    var list = (APP.dsTracker||[]).filter(function(r){
+      return r.CANCELLED !== 'TRUE' && r.OB_COMPLETE !== 'TRUE' && parseInt(r.TOTAL_DAYS_ELAPSED||0,10) > 20;
+    });
+    list.sort(function(a,b){ return parseInt(b.TOTAL_DAYS_ELAPSED||0,10) - parseInt(a.TOTAL_DAYS_ELAPSED||0,10); });
+    var cnt = document.getElementById('ds-delayed-cnt');
+    if (cnt) cnt.textContent = list.length + ' delayed';
+    var tbody = document.getElementById('ds-delayed-tbody');
+    if (!tbody) return;
+    if (!list.length) {
+      tbody.innerHTML = '<tr><td colspan="7"><div class="ds-empty"><div class="ds-empty-icon">&#9989;</div>No delayed records.</div></td></tr>';
+      return;
+    }
+    tbody.innerHTML = list.map(function(r){
+      var days = parseInt(r.TOTAL_DAYS_ELAPSED||0,10);
+      var pendingSteps = Object.keys(self.STEPS).filter(function(k){
+        var s = (r[k] && r[k].status) || 'Pending';
+        return s !== 'Done' && s !== 'Fit';
+      }).map(function(k){ return self.STEPS[k].label; }).join(', ');
+      return '<tr>'+
+        '<td class="mono" style="color:var(--ds-cyan)">'+esc(r.EMP_ID||'—')+'</td>'+
+        '<td style="font-weight:600">'+esc(r.EMP_NAME||'—')+'</td>'+
+        '<td style="font-size:11px">'+esc(r.DESIGNATION||'—')+'</td>'+
+        '<td style="font-size:11px;color:var(--ds-muted)">'+esc(r.TRANSFER_DATE||'—')+'</td>'+
+        '<td class="mono" style="color:var(--ds-red);font-weight:700">'+days+'d</td>'+
+        '<td style="font-size:11px">'+esc(r.RESPONSIBLE_HR||'—')+'</td>'+
+        '<td style="font-size:11px;color:var(--ds-amber)">'+esc(pendingSteps||'—')+'</td>'+
+      '</tr>';
+    }).join('');
+  },
+
+  // ── Cancelled Tab ──
+  renderCancelled: function() {
+    var list = (APP.dsTracker||[]).filter(function(r){ return r.CANCELLED === 'TRUE'; });
+    var tbody = document.getElementById('ds-cancelled-tbody');
+    if (!tbody) return;
+    if (!list.length) {
+      tbody.innerHTML = '<tr><td colspan="6"><div class="ds-empty"><div class="ds-empty-icon">&#128683;</div>No cancelled records.</div></td></tr>';
+      return;
+    }
+    tbody.innerHTML = list.map(function(r){
+      return '<tr>'+
+        '<td class="mono" style="color:var(--ds-muted)">'+esc(r.DS_ID||'—')+'</td>'+
+        '<td class="mono">'+esc(r.EMP_ID||'—')+'</td>'+
+        '<td>'+esc(r.EMP_NAME||'—')+'</td>'+
+        '<td style="font-size:11px">'+esc(r.CANCELLED_ON||'—')+'</td>'+
+        '<td style="font-size:11px">'+esc(r.CANCELLED_BY||'—')+'</td>'+
+        '<td style="font-size:11px;color:var(--ds-muted)">'+esc(r.CANCEL_REASON||'—')+'</td>'+
+      '</tr>';
+    }).join('');
+  },
+
+  // ── Audit Tab ──
+  loadAudit: function() {
+    GAS.get20DSAuditLog(function(r){
+      if (!r||!r.success) { toast('Error loading audit log','error'); return; }
+      var cnt = document.getElementById('ds-audit-cnt');
+      if (cnt) cnt.textContent = (r.data||[]).length + ' entries';
+      var tbody = document.getElementById('ds-audit-tbody');
+      if (!tbody) return;
+      if (!r.data||!r.data.length) {
+        tbody.innerHTML = '<tr><td colspan="11"><div class="ds-empty"><div class="ds-empty-icon">&#128203;</div>No audit entries yet.</div></td></tr>';
+        return;
+      }
+      tbody.innerHTML = r.data.map(function(e){
+        return '<tr class="ds-audit-row">'+
+          '<td class="mono" style="color:var(--ds-muted)">'+esc(e.TIMESTAMP||'')+'</td>'+
+          '<td class="mono">'+esc(e.EMP_ID||'')+'</td>'+
+          '<td>'+esc(e.EMP_NAME||'')+'</td>'+
+          '<td style="font-size:10px">'+esc(e.STEP_LABEL||'')+'</td>'+
+          '<td><span class="ds-badge pending">'+esc(e.OLD_STATUS||'—')+'</span></td>'+
+          '<td><span class="ds-badge done">'+esc(e.NEW_STATUS||'—')+'</span></td>'+
+          '<td style="font-size:11px">'+esc(e.DATE_COMPLETED||'—')+'</td>'+
+          '<td style="font-size:11px;color:var(--ds-muted)">'+esc(e.REASON_NOTES||'—')+'</td>'+
+          '<td style="font-size:11px">'+esc(e.UPDATED_BY||'—')+'</td>'+
+          '<td style="font-size:10px;color:var(--ds-muted)">'+esc(e.ROLE||'')+'</td>'+
+          '<td class="mono" style="font-size:10px">'+esc(e.DAYS_SINCE_LAST_UPDATE||'—')+'</td>'+
+        '</tr>';
+      }).join('');
+    });
+  },
+
+  // ── Step Modal ──
+  openStepModal: function(dsId, stepKey) {
+    var rec = (APP.dsTracker||[]).find(function(r){ return r.DS_ID === dsId; });
+    if (!rec) { toast('Record not found','error'); return; }
+    var stepDef = this.STEPS[stepKey];
+    if (!stepDef) return;
+    var stepData = rec[stepKey] || {status:'Pending',responsible:'',substeps:{},start_date:'',complete_date:'',notes:'',reason:''};
+
+    document.getElementById('ds-m-step-dsid').value  = dsId;
+    document.getElementById('ds-m-step-key').value   = stepKey;
+    document.getElementById('ds-m-step-title').textContent = stepDef.label;
+
+    // Populate status options
+    var sel = document.getElementById('ds-m-step-status');
+    sel.innerHTML = stepDef.statuses.map(function(s){ return '<option value="'+s+'"'+(s===stepData.status?' selected':'')+'>'+s+'</option>'; }).join('');
+
+    document.getElementById('ds-m-step-responsible').value = stepData.responsible || rec.RESPONSIBLE_HR || '';
+    document.getElementById('ds-m-step-start').value    = stepData.start_date    || '';
+    document.getElementById('ds-m-step-complete').value = stepData.complete_date || '';
+    document.getElementById('ds-m-step-notes').value    = stepData.notes         || '';
+    document.getElementById('ds-m-step-reason').value   = stepData.reason        || '';
+
+    // Substeps
+    var substepDefs = stepDef.substeps || {};
+    var substepVals = stepData.substeps || {};
+    var subContainer = document.getElementById('ds-m-step-substeps');
+    subContainer.innerHTML = Object.keys(substepDefs).map(function(sk){
+      var checked = substepVals[sk] ? 'checked' : '';
+      var cls = substepVals[sk] ? 'ds-substep-row checked' : 'ds-substep-row';
+      return '<div class="'+cls+'" onclick="DSAgent._toggleSubstep(this,\''+sk+'\')" data-sk="'+sk+'" data-checked="'+(substepVals[sk]?'1':'0')+'">'+
+        '<div class="ds-substep-toggle">'+(substepVals[sk]?'&#10003;':'')+'</div>'+
+        '<div class="ds-substep-label">'+esc(substepDefs[sk])+'</div>'+
+      '</div>';
+    }).join('');
+
+    // NSI training date
+    var nsiRow = document.getElementById('ds-m-nsi-training-date-row');
+    if (nsiRow) {
+      nsiRow.style.display = (stepKey === 'STEP_NSI') ? 'block' : 'none';
+      if (stepKey === 'STEP_NSI') {
+        document.getElementById('ds-m-nsi-training-date').value = (stepData.substeps && stepData.substeps.training_date) || '';
+      }
+    }
+
+    this._onStepStatusChange();
+    document.getElementById('ds-m-step').classList.add('open');
+  },
+
+  _toggleSubstep: function(el, sk) {
+    var checked = el.dataset.checked === '1';
+    checked = !checked;
+    el.dataset.checked = checked ? '1' : '0';
+    el.classList.toggle('checked', checked);
+    var toggle = el.querySelector('.ds-substep-toggle');
+    if (toggle) { toggle.innerHTML = checked ? '&#10003;' : ''; }
+  },
+
+  _onStepStatusChange: function() {
+    var sel = document.getElementById('ds-m-step-status');
+    var status = sel ? sel.value : '';
+    var reasonRow = document.getElementById('ds-m-step-reason-row');
+    var needsReason = ['Problem','Unfit','Pending'].indexOf(status) >= 0;
+    if (reasonRow) reasonRow.style.display = needsReason ? 'block' : 'none';
+  },
+
+  closeStepModal: function() {
+    document.getElementById('ds-m-step').classList.remove('open');
+  },
+
+  saveStep: function() {
+    var dsId    = document.getElementById('ds-m-step-dsid').value;
+    var stepKey = document.getElementById('ds-m-step-key').value;
+    var status  = document.getElementById('ds-m-step-status').value;
+    var stepDef = this.STEPS[stepKey];
+    if (!stepDef) return;
+
+    // Collect substeps
+    var substeps = {};
+    document.querySelectorAll('#ds-m-step-substeps .ds-substep-row').forEach(function(el){
+      substeps[el.dataset.sk] = (el.dataset.checked === '1');
+    });
+    // NSI training date
+    var nsiDateEl = document.getElementById('ds-m-nsi-training-date');
+    if (stepKey === 'STEP_NSI' && nsiDateEl) substeps.training_date = nsiDateEl.value;
+
+    var stepData = {
+      status:       status,
+      responsible:  document.getElementById('ds-m-step-responsible').value.trim(),
+      substeps:     substeps,
+      start_date:   document.getElementById('ds-m-step-start').value,
+      complete_date:document.getElementById('ds-m-step-complete').value,
+      notes:        document.getElementById('ds-m-step-notes').value.trim(),
+      reason:       document.getElementById('ds-m-step-reason').value.trim()
+    };
+
+    var self = this;
+    GAS.update20DSStep(dsId, stepKey, stepData, function(r){
+      if (!r||!r.success) { toast('Error: '+(r?r.error:'Unknown'),'error'); return; }
+      // Update local state
+      var rec = (APP.dsTracker||[]).find(function(x){ return x.DS_ID===dsId; });
+      if (rec) {
+        rec[stepKey] = stepData;
+        var stepKeys = Object.keys(self.STEPS);
+        var allDone = stepKeys.every(function(k){
+          var s = (rec[k]&&rec[k].status)||'Pending';
+          return s==='Done'||s==='Fit';
+        });
+        rec.OB_COMPLETE = allDone ? 'TRUE' : 'FALSE';
+      }
+      toast(stepDef.label + ' updated to ' + status, 'success');
+      self.closeStepModal();
+      self.render();
+    });
+  },
+
+  // ── Cancel Modal ──
+  openCancelModal: function(dsId) {
+    document.getElementById('ds-m-cancel-dsid').value = dsId;
+    document.getElementById('ds-m-cancel-reason').value = '';
+    document.getElementById('ds-m-cancel').classList.add('open');
+  },
+  closeCancelModal: function() {
+    document.getElementById('ds-m-cancel').classList.remove('open');
+  },
+  confirmCancel: function() {
+    var dsId   = document.getElementById('ds-m-cancel-dsid').value;
+    var reason = document.getElementById('ds-m-cancel-reason').value.trim();
+    if (!reason) { toast('Please provide a cancellation reason','error'); return; }
+    var self = this;
+    GAS.cancel20DSRecord(dsId, reason, function(r){
+      if (!r||!r.success) { toast('Error: '+(r?r.error:'Unknown'),'error'); return; }
+      var rec = (APP.dsTracker||[]).find(function(x){ return x.DS_ID===dsId; });
+      if (rec) {
+        rec.CANCELLED      = 'TRUE';
+        rec.CANCEL_REASON  = reason;
+        rec.CANCELLED_BY   = (APP.user&&APP.user.name)||'';
+        rec.CANCELLED_ON   = new Date().toLocaleDateString('en-GB');
+      }
+      toast('Record cancelled','info');
+      self.closeCancelModal();
+      self.render();
+    });
+  },
+
+  // ── Responsible HR Modal ──
+  openResponsibleModal: function(dsId) {
+    var rec = (APP.dsTracker||[]).find(function(r){ return r.DS_ID===dsId; });
+    document.getElementById('ds-m-resp-dsid').value = dsId;
+    document.getElementById('ds-m-resp-name').value = (rec && rec.RESPONSIBLE_HR) || '';
+    document.getElementById('ds-m-responsible').classList.add('open');
+  },
+  closeResponsibleModal: function() {
+    document.getElementById('ds-m-responsible').classList.remove('open');
+  },
+  saveResponsible: function() {
+    var dsId = document.getElementById('ds-m-resp-dsid').value;
+    var hr   = document.getElementById('ds-m-resp-name').value.trim();
+    if (!hr) { toast('Please enter HR officer name','error'); return; }
+    var self = this;
+    GAS.update20DSResponsible(dsId, hr, function(r){
+      if (!r||!r.success) { toast('Error: '+(r?r.error:'Unknown'),'error'); return; }
+      var rec = (APP.dsTracker||[]).find(function(x){ return x.DS_ID===dsId; });
+      if (rec) rec.RESPONSIBLE_HR = hr;
+      toast('Responsible HR updated','success');
+      self.closeResponsibleModal();
+      self.render();
     });
   }
 };
