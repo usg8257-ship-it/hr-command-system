@@ -18,7 +18,9 @@ var TABS = {
   USERS:        'Users',
   LEAVE:        'Leave',
   JOBS:         'Jobs',
-  APPLICATIONS: 'Applications'
+  APPLICATIONS: 'Applications',
+  DS_TRACKER:   '20DS Tracker',
+  DS_AUDIT:     'Onboarding Audit Log'
 };
 
 // ============================================================
@@ -234,6 +236,12 @@ function runProtected(token, funcName, args) {
       transferAppToOnboarding:        function(){ return transferAppToOnboarding(a[0]); },
       // Resignations
       getResignations:                function(){ return getResignations(); },
+      // 20DS Tracker
+      get20DSTracker:                 function(){ return get20DSTracker(); },
+      update20DSStep:                 function(){ return update20DSStep(a[0], a[1], a[2]); },
+      update20DSResponsible:          function(){ return update20DSResponsible(a[0], a[1]); },
+      cancel20DSRecord:               function(){ return cancel20DSRecord(a[0], a[1]); },
+      get20DSAuditLog:                function(){ return get20DSAuditLog(); },
     };
     if (!fns[funcName]) return {success:false, error:'Unknown function: ' + funcName};
     return fns[funcName]();
@@ -275,7 +283,8 @@ function loadAllData(token) {
     onboarding: getOnboarding(profile),
     hrDocs:     getHRDocs(profile),
     summary:    getSummary(),
-    config:     getConfig()
+    config:     getConfig(),
+    dsTracker:  get20DSTracker(profile)
   };
 }
 
@@ -580,17 +589,249 @@ function transferToMaster(obId, empData) {
   try {
     var result=addEmployee(empData); if(!result.success) return result;
     var sh=SS.getSheetByName(TABS.ONBOARDING);
+    var obRow = null;
     if(sh){
       var vals=sh.getDataRange().getValues();
       var hdrs=vals[0].map(function(h){ return String(h).trim(); });
       var idCol=hdrs.indexOf('OB_ID'), stsCol=hdrs.indexOf('STATUS');
       for(var i=1;i<vals.length;i++){
-        if(String(vals[i][idCol])===String(obId)){ if(stsCol>=0) sh.getRange(i+1,stsCol+1).setValue('Transferred'); break; }
+        if(String(vals[i][idCol])===String(obId)){
+          if(stsCol>=0) sh.getRange(i+1,stsCol+1).setValue('Transferred');
+          obRow = {};
+          hdrs.forEach(function(h,idx){ obRow[h] = vals[i][idx]; });
+          break;
+        }
       }
     }
+    // Auto-create 20DS Tracker record
+    create20DSRecord(obId, empData, obRow);
     logActivity('OnboardingAgent','TRANSFER',obId+'->'+empData.ID,'SUCCESS');
     return {success:true};
   } catch(e){ return {success:false,error:e.message}; }
+}
+
+// ============================================================
+// 20DS TRACKER MODULE
+// ============================================================
+var DS_TRACKER_HEADERS = [
+  'DS_ID','EMP_ID','EMP_NAME','DESIGNATION','PHONE','EMAIL',
+  'EXP_JOIN_DATE','PIPELINE_ADDED_DATE','TRANSFER_DATE','TRANSFERRED_BY','RESPONSIBLE_HR',
+  'STEP_VISA','STEP_LABOR','STEP_INSURANCE','STEP_MEDICAL','STEP_NSI','STEP_EID',
+  'CANCELLED','CANCEL_REASON','CANCELLED_BY','CANCELLED_ON','TOTAL_DAYS_ELAPSED','OB_COMPLETE'
+];
+
+var DS_AUDIT_HEADERS = [
+  'TIMESTAMP','EMP_ID','EMP_NAME','STEP_KEY','STEP_LABEL',
+  'OLD_STATUS','NEW_STATUS','DATE_COMPLETED','REASON_NOTES',
+  'UPDATED_BY','ROLE','DAYS_SINCE_LAST_UPDATE'
+];
+
+function _emptyStep_(status) {
+  return JSON.stringify({status:status||'Pending',responsible:'',substeps:{},start_date:'',complete_date:'',notes:'',reason:''});
+}
+
+function create20DSRecord(obId, empData, obRow) {
+  try {
+    var sh = getOrCreate(TABS.DS_TRACKER, DS_TRACKER_HEADERS);
+    var transferrer = getMyProfile();
+    var dsId = genId_('DS');
+    var now = formatDate(new Date());
+    var pipelineDate = (obRow && obRow.DATE_ADDED) ? formatDate(new Date(obRow.DATE_ADDED)) : now;
+    sh.appendRow([
+      dsId,
+      empData.ID,
+      empData.NAME || (obRow && obRow.FULL_NAME) || '',
+      empData.DESIGNATION || '',
+      (obRow && obRow.MOBILE) || '',
+      '',
+      (obRow && obRow.EXP_JOIN_DATE) ? formatDate(new Date(obRow.EXP_JOIN_DATE)) : '',
+      pipelineDate,
+      now,
+      (transferrer && transferrer.name) || '',
+      (transferrer && transferrer.name) || '',
+      _emptyStep_('Pending'),
+      _emptyStep_('Pending'),
+      _emptyStep_('Pending'),
+      _emptyStep_('Pending'),
+      _emptyStep_('Not Started'),
+      _emptyStep_('Pending'),
+      'FALSE','','','','0','FALSE'
+    ]);
+    logActivity('20DSTracker','CREATE',dsId+'->'+empData.ID,'SUCCESS');
+    return {success:true, dsId:dsId};
+  } catch(e){ logActivity('20DSTracker','CREATE_ERROR','',e.message); return {success:false,error:e.message}; }
+}
+
+function get20DSTracker(profile) {
+  try {
+    var sh = getOrCreate(TABS.DS_TRACKER, DS_TRACKER_HEADERS);
+    var vals = sh.getDataRange().getValues();
+    if (vals.length < 2) return {success:true,data:[]};
+    var hdrs = vals[0].map(function(h){ return String(h).trim(); });
+    var data = [];
+    for (var i = 1; i < vals.length; i++) {
+      var row = {};
+      hdrs.forEach(function(h,idx){ row[h] = String(vals[i][idx]||''); });
+      // Parse JSON step fields
+      ['STEP_VISA','STEP_LABOR','STEP_INSURANCE','STEP_MEDICAL','STEP_NSI','STEP_EID'].forEach(function(k){
+        try { row[k] = JSON.parse(row[k]); } catch(e){ row[k] = {status:'Pending',responsible:'',substeps:{},start_date:'',complete_date:'',notes:'',reason:''}; }
+      });
+      data.push(row);
+    }
+    return {success:true, data:data};
+  } catch(e){ return {success:false,error:e.message}; }
+}
+
+function update20DSStep(dsId, stepKey, stepData) {
+  try {
+    var profile = _requireRole(['SUPER_ADMIN','HR_OFFICER']);
+    var sh = SS.getSheetByName(TABS.DS_TRACKER);
+    if (!sh) return {success:false,error:'20DS Tracker sheet not found'};
+    var vals = sh.getDataRange().getValues();
+    var hdrs = vals[0].map(function(h){ return String(h).trim(); });
+    var idCol = hdrs.indexOf('DS_ID');
+    var stepCol = hdrs.indexOf(stepKey);
+    if (stepCol < 0) return {success:false,error:'Unknown step: '+stepKey};
+    for (var i = 1; i < vals.length; i++) {
+      if (String(vals[i][idCol]) === String(dsId)) {
+        var oldStep = {};
+        try { oldStep = JSON.parse(String(vals[i][stepCol]||'{}')); } catch(e){}
+        var oldStatus = oldStep.status || 'Pending';
+        sh.getRange(i+1, stepCol+1).setValue(JSON.stringify(stepData));
+        // Update total days & OB_COMPLETE flag
+        _refreshDSTotals_(sh, vals, hdrs, i);
+        // Write audit log
+        _logDSAudit_(vals[i][hdrs.indexOf('EMP_ID')], vals[i][hdrs.indexOf('EMP_NAME')],
+          stepKey, _dsStepLabel_(stepKey), oldStatus, stepData.status||'',
+          stepData.complete_date||'', stepData.reason||stepData.notes||'', profile,
+          dsId, sh, vals, hdrs, i);
+        logActivity('20DSTracker','STEP_UPDATE',dsId+':'+stepKey+'->'+stepData.status,'SUCCESS');
+        return {success:true};
+      }
+    }
+    return {success:false,error:'Record not found'};
+  } catch(e){ return {success:false,error:e.message}; }
+}
+
+function update20DSResponsible(dsId, responsibleHR) {
+  try {
+    _requireRole(['SUPER_ADMIN','HR_OFFICER']);
+    var sh = SS.getSheetByName(TABS.DS_TRACKER);
+    if (!sh) return {success:false,error:'Sheet not found'};
+    var vals = sh.getDataRange().getValues();
+    var hdrs = vals[0].map(function(h){ return String(h).trim(); });
+    var idCol = hdrs.indexOf('DS_ID'), hrCol = hdrs.indexOf('RESPONSIBLE_HR');
+    for (var i = 1; i < vals.length; i++) {
+      if (String(vals[i][idCol]) === String(dsId)) {
+        if (hrCol >= 0) sh.getRange(i+1, hrCol+1).setValue(responsibleHR||'');
+        return {success:true};
+      }
+    }
+    return {success:false,error:'Record not found'};
+  } catch(e){ return {success:false,error:e.message}; }
+}
+
+function cancel20DSRecord(dsId, reason) {
+  try {
+    var profile = _requireRole(['SUPER_ADMIN','HR_OFFICER']);
+    var sh = SS.getSheetByName(TABS.DS_TRACKER);
+    if (!sh) return {success:false,error:'Sheet not found'};
+    var vals = sh.getDataRange().getValues();
+    var hdrs = vals[0].map(function(h){ return String(h).trim(); });
+    var idCol = hdrs.indexOf('DS_ID');
+    var cancelCol = hdrs.indexOf('CANCELLED'), reasonCol = hdrs.indexOf('CANCEL_REASON');
+    var byCol = hdrs.indexOf('CANCELLED_BY'), onCol = hdrs.indexOf('CANCELLED_ON');
+    for (var i = 1; i < vals.length; i++) {
+      if (String(vals[i][idCol]) === String(dsId)) {
+        if (cancelCol>=0) sh.getRange(i+1,cancelCol+1).setValue('TRUE');
+        if (reasonCol>=0) sh.getRange(i+1,reasonCol+1).setValue(reason||'');
+        if (byCol>=0)     sh.getRange(i+1,byCol+1).setValue((profile&&profile.name)||'');
+        if (onCol>=0)     sh.getRange(i+1,onCol+1).setValue(formatDate(new Date()));
+        logActivity('20DSTracker','CANCEL',dsId,'SUCCESS');
+        return {success:true};
+      }
+    }
+    return {success:false,error:'Record not found'};
+  } catch(e){ return {success:false,error:e.message}; }
+}
+
+function get20DSAuditLog() {
+  try {
+    _requireRole(['SUPER_ADMIN','HR_OFFICER']);
+    var sh = getOrCreate(TABS.DS_AUDIT, DS_AUDIT_HEADERS);
+    var vals = sh.getDataRange().getValues();
+    if (vals.length < 2) return {success:true,data:[]};
+    var hdrs = vals[0].map(function(h){ return String(h).trim(); });
+    var data = [];
+    for (var i = vals.length-1; i >= 1; i--) {
+      var row = {};
+      hdrs.forEach(function(h,idx){ row[h] = String(vals[i][idx]||''); });
+      data.push(row);
+    }
+    return {success:true, data:data};
+  } catch(e){ return {success:false,error:e.message}; }
+}
+
+function _dsStepLabel_(key) {
+  var labels = {
+    STEP_VISA:'Visa Issued', STEP_LABOR:'Labor Card & Tawjeeh',
+    STEP_INSURANCE:'Insurance', STEP_MEDICAL:'Visa Medical',
+    STEP_NSI:'NSI Training', STEP_EID:'Emirates ID & Residency'
+  };
+  return labels[key] || key;
+}
+
+function _refreshDSTotals_(sh, vals, hdrs, rowIdx) {
+  try {
+    var transferCol = hdrs.indexOf('TRANSFER_DATE');
+    var cancelCol   = hdrs.indexOf('CANCELLED');
+    var totalCol    = hdrs.indexOf('TOTAL_DAYS_ELAPSED');
+    var completeCol = hdrs.indexOf('OB_COMPLETE');
+    if (String(vals[rowIdx][cancelCol]||'') === 'TRUE') return;
+    var tDate = vals[rowIdx][transferCol];
+    var days = 0;
+    if (tDate) {
+      var d = new Date(tDate);
+      if (!isNaN(d.getTime())) days = Math.floor((new Date()-d)/86400000);
+    }
+    if (totalCol >= 0) sh.getRange(rowIdx+1, totalCol+1).setValue(days);
+    var stepKeys = ['STEP_VISA','STEP_LABOR','STEP_INSURANCE','STEP_MEDICAL','STEP_NSI','STEP_EID'];
+    var allDone = stepKeys.every(function(k){
+      var col = hdrs.indexOf(k);
+      if (col < 0) return false;
+      try {
+        var s = JSON.parse(String(vals[rowIdx][col]||'{}'));
+        return s.status === 'Done' || s.status === 'Fit';
+      } catch(e){ return false; }
+    });
+    if (completeCol >= 0) sh.getRange(rowIdx+1, completeCol+1).setValue(allDone?'TRUE':'FALSE');
+  } catch(e){}
+}
+
+function _logDSAudit_(empId, empName, stepKey, stepLabel, oldStatus, newStatus, dateCompleted, reason, profile, dsId, sh, vals, hdrs, rowIdx) {
+  try {
+    var auditSh = getOrCreate(TABS.DS_AUDIT, DS_AUDIT_HEADERS);
+    // Days since last update for this step
+    var daysSince = '';
+    try {
+      var lastUpdateCol = hdrs.indexOf(stepKey);
+      if (lastUpdateCol >= 0) {
+        var prev = {};
+        try { prev = JSON.parse(String(vals[rowIdx][lastUpdateCol]||'{}')); } catch(e){}
+        if (prev.start_date) {
+          var d = new Date(prev.start_date);
+          if (!isNaN(d.getTime())) daysSince = Math.floor((new Date()-d)/86400000);
+        }
+      }
+    } catch(e2){}
+    auditSh.appendRow([
+      formatDate(new Date()),
+      empId, empName, stepKey, stepLabel,
+      oldStatus, newStatus, dateCompleted, reason,
+      (profile&&profile.name)||'', (profile&&profile.role)||'',
+      daysSince
+    ]);
+  } catch(e){}
 }
 
 // ============================================================

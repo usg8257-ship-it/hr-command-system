@@ -92,6 +92,7 @@
   <div class="sb-item" data-view="employees" onclick="navigate('employees')"><span class="ic">&#128196;</span>ACTIVE MANPOWER<span class="sb-badge gold" id="nb-emp">0</span></div>
   <div class="sb-item" data-view="resignations" onclick="navigate('resignations')"><span class="ic">&#128683;</span>Recent Resignations</div>
   <div class="sb-item" data-view="onboarding" onclick="navigate('onboarding')"><span class="ic">&#128260;</span>Onboarding<span class="sb-badge" id="nb-ob">0</span></div>
+  <div class="sb-item" data-view="20dstracker" onclick="navigate('20dstracker')"><span class="ic">&#128203;</span>20DS Tracker<span class="sb-badge" id="nb-ds" style="background:rgba(0,229,255,.2);color:#00e5ff">0</span></div>
   <div class="sb-item" data-view="letters" onclick="navigate('letters')"><span class="ic">&#128196;</span>HR Letters</div>
   <div class="sb-item" data-view="leave" onclick="navigate('leave')"><span class="ic">&#128197;</span>Leave<span class="sb-badge" id="nb-leave">0</span></div>
   <div class="sb-item" data-view="recruitment" onclick="navigate('recruitment')"><span class="ic">&#128188;</span>Recruitment</div>
@@ -996,6 +997,8 @@
     </div>
   </div>
 </div>
+
+<?!= include('20ds'); ?>
 
 <div class="toast-box" id="tbox"></div>
 <?!= include('script'); ?>
