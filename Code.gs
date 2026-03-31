@@ -87,7 +87,7 @@ function getMyProfile() {
     try {
       var vals2 = sh.getDataRange().getValues();
       if (vals2.length === 1) {
-        sh.appendRow([email, email.split('@')[0], 'SUPER_ADMIN', 'ALL', 'TRUE', '']);
+        sh.appendRow([email, email.split('@')[0], 'SUPER_ADMIN', 'ALL', 'TRUE', 'Admin@1234']);
         vals = sh.getDataRange().getValues();
       } else {
         vals = vals2;
@@ -1274,21 +1274,25 @@ function saveUser(data) {
     if (!data.EMAIL) return {success:false, error:'Email required'};
     var validRoles = ['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER','VIEWER','EMPLOYEE'];
     if (validRoles.indexOf(data.ROLE) < 0) return {success:false, error:'Invalid role'};
-    var sh = getOrCreate(TABS.USERS, ['EMAIL','DISPLAY_NAME','ROLE','ENTITIES','ACTIVE']);
+    var sh = getOrCreate(TABS.USERS, ['EMAIL','DISPLAY_NAME','ROLE','ENTITIES','ACTIVE','PASSWORD']);
     var vals = sh.getDataRange().getValues();
     var hdrs = vals[0].map(function(h){ return String(h).trim(); });
     var emailIdx = hdrs.indexOf('EMAIL');
+    var pwdIdx   = hdrs.indexOf('PASSWORD');
     var emailLower = String(data.EMAIL).toLowerCase().trim();
     for (var i = 1; i < vals.length; i++) {
       if (String(vals[i][emailIdx]||'').toLowerCase().trim() === emailLower) {
-        sh.getRange(i+1, 1, 1, hdrs.length).setValues([hdrs.map(function(h){ return data[h]!==undefined?data[h]:''; })]);
-        // Invalidate cache
+        var row = hdrs.map(function(h){ return data[h]!==undefined ? data[h] : String(vals[i][hdrs.indexOf(h)]||''); });
+        // If no new password supplied, preserve existing password
+        if (!data.PASSWORD && pwdIdx >= 0) row[pwdIdx] = String(vals[i][pwdIdx]||'');
+        sh.getRange(i+1, 1, 1, row.length).setValues([row]);
         try { CacheService.getScriptCache().remove('profile_' + emailLower); } catch(e2) {}
         logActivity('UserMgmt','UPDATE', emailLower, 'SUCCESS');
         return {success:true};
       }
     }
-    sh.appendRow([emailLower, data.DISPLAY_NAME||'', data.ROLE, data.ENTITIES||'ALL', data.ACTIVE||'TRUE']);
+    var newPwd = data.PASSWORD || 'Admin@1234';
+    sh.appendRow([emailLower, data.DISPLAY_NAME||'', data.ROLE, data.ENTITIES||'ALL', data.ACTIVE||'TRUE', newPwd]);
     logActivity('UserMgmt','ADD', emailLower, 'SUCCESS');
     return {success:true};
   } catch(e) { return {success:false, error:e.message}; }
