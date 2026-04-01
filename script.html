@@ -2429,7 +2429,10 @@ var RecruitmentAgent = {
 // ============================================================
 var DSAgent = {
   _tab: 'summary',
-  _kpiFilter: null, // null | 'active' | 'nsi' | 'overstage'
+  _kpiFilter: null,   // null | 'active' | 'nsi' | 'overstage'
+  _dsPage: 1,         // current page — Tracker tab
+  _dsSummaryPage: 1,  // current page — Summary tab tracker
+  _dsPageSize: 20,    // rows per page
 
   // Step definitions: key → {label, sla(hours), statuses, substeps}
   STEPS: {
@@ -2484,6 +2487,35 @@ var DSAgent = {
     return count ? Math.round(total/count) + 'd' : '—';
   },
 
+  // ── Pagination helper ──
+  // pgEl      : DOM element to render into
+  // total     : total filtered records
+  // pageSize  : rows per page
+  // page      : current page (1-based)
+  // goCb      : string name of the DSAgent method to call, e.g. 'goTrackerPage'
+  _renderPagination: function(pgEl, total, pageSize, page, goCb) {
+    if (!pgEl) return;
+    var totalPages = Math.max(1, Math.ceil(total / pageSize));
+    if (totalPages <= 1) { pgEl.innerHTML = ''; return; }
+    var start = Math.max(1, page - 2);
+    var end   = Math.min(totalPages, start + 4);
+    start = Math.max(1, end - 4);
+    var h = '<div class="ds-pgn">';
+    h += '<button class="ds-pgbtn"'+(page<=1?' disabled':'')+' onclick="DSAgent.'+goCb+'('+(page-1)+')">&#8249;</button>';
+    if (start > 1) h += '<span class="ds-pgi">\u2026</span>';
+    for (var p = start; p <= end; p++) {
+      h += '<button class="ds-pgbtn'+(p===page?' active':'')+'" onclick="DSAgent.'+goCb+'('+p+')">'+p+'</button>';
+    }
+    if (end < totalPages) h += '<span class="ds-pgi">\u2026</span>';
+    h += '<button class="ds-pgbtn"'+(page>=totalPages?' disabled':'')+' onclick="DSAgent.'+goCb+'('+(page+1)+')">&#8250;</button>';
+    h += '<span class="ds-pgi">'+total+' records &nbsp;&middot;&nbsp; pg '+page+'/'+totalPages+'</span>';
+    h += '</div>';
+    pgEl.innerHTML = h;
+  },
+
+  goTrackerPage: function(p) { this._dsPage = p; this.renderTracker(); },
+  goSummaryTrackerPage: function(p) { this._dsSummaryPage = p; this.renderSummaryTracker(); },
+
   renderBadge: function() {
     var active = this._activeRecords();
     var nb = document.getElementById('nb-ds');
@@ -2499,7 +2531,7 @@ var DSAgent = {
       var el = document.getElementById('ds-tab-' + t);
       if (el) el.style.display = (t === tab) ? 'block' : 'none';
     });
-    if (tab === 'summary')   this.renderSummary();
+    if (tab === 'summary')   { this.renderSummary(); this.renderSummaryTracker(); }
     if (tab === 'tracker')   this.renderTracker();
     if (tab === 'pending')   this.renderPending();
     if (tab === 'delayed')   this.renderDelayed();
@@ -2690,19 +2722,38 @@ var DSAgent = {
     }
 
     var cnt = document.getElementById('ds-tracker-cnt');
-    if (cnt) cnt.textContent = list.length + ' records';
+    var total = list.length;
+    if (cnt) cnt.textContent = total + ' records';
+
     var tbody = document.getElementById('ds-tracker-tbody');
+    var pgEl  = document.getElementById('ds-tracker-pgn');
     if (!tbody) return;
-    if (!list.length) {
+
+    if (!total) {
       tbody.innerHTML = '<tr><td colspan="10"><div class="ds-empty"><div class="ds-empty-icon">&#128203;</div>No records found.</div></td></tr>';
+      if (pgEl) pgEl.innerHTML = '';
       return;
     }
+
+    // Pagination slice
+    var ps   = this._dsPageSize;
+    this._dsPage = Math.min(this._dsPage, Math.max(1, Math.ceil(total / ps)));
+    var page = this._dsPage;
+    var pageList = list.slice((page - 1) * ps, page * ps);
+
+    tbody.innerHTML = self._buildTrackerRows(pageList);
+    this._renderPagination(pgEl, total, ps, page, 'goTrackerPage');
+  },
+
+  // ── Shared row builder (used by Tracker tab + Summary tab tracker) ──
+  _buildTrackerRows: function(list) {
+    var self = this;
     var stepKeys = Object.keys(this.STEPS);
-    tbody.innerHTML = list.map(function(r){
+    return list.map(function(r){
       var days = parseInt(r.TOTAL_DAYS_ELAPSED||0,10);
       var isOver = days > 20 && r.OB_COMPLETE !== 'TRUE';
       var daysColor = isOver ? 'var(--ds-red)' : days > 10 ? 'var(--ds-amber)' : 'var(--ds-green)';
-      var rowStyle  = isOver ? 'background:rgba(255,23,68,.04);' : '';
+      var rowStyle  = isOver ? 'background:rgba(200,48,48,.04);' : '';
       var pills = stepKeys.map(function(k){
         var step = r[k] || {status:'Pending'};
         var sc = self._statusClass(step.status||'Pending');
@@ -2731,6 +2782,41 @@ var DSAgent = {
         '</div></td>'+
       '</tr>';
     }).join('');
+  },
+
+  // ── Summary Tab Tracker (mirrors Tracker tab, uses its own DOM IDs) ──
+  renderSummaryTracker: function() {
+    var q   = (document.getElementById('ds-sq')             ||{}).value||'';
+    var sts = (document.getElementById('ds-summary-status') ||{}).value||'';
+    q = q.toLowerCase();
+    var list = (APP.dsTracker||[]).filter(function(r){
+      if (r.CANCELLED === 'TRUE') return false;
+      if (sts === 'complete' && r.OB_COMPLETE !== 'TRUE') return false;
+      if (sts === 'active'   && r.OB_COMPLETE === 'TRUE') return false;
+      if (q && ![ r.EMP_ID||'', r.EMP_NAME||'', r.DESIGNATION||'' ].some(function(v){ return v.toLowerCase().indexOf(q)>=0; })) return false;
+      return true;
+    });
+
+    var total = list.length;
+    var cnt   = document.getElementById('ds-summary-tracker-cnt');
+    var tbody = document.getElementById('ds-summary-tracker-tbody');
+    var pgEl  = document.getElementById('ds-summary-tracker-pgn');
+    if (cnt) cnt.textContent = total + ' records';
+    if (!tbody) return;
+
+    if (!total) {
+      tbody.innerHTML = '<tr><td colspan="10"><div class="ds-empty"><div class="ds-empty-icon">&#128203;</div>No records found.</div></td></tr>';
+      if (pgEl) pgEl.innerHTML = '';
+      return;
+    }
+
+    var ps   = this._dsPageSize;
+    this._dsSummaryPage = Math.min(this._dsSummaryPage, Math.max(1, Math.ceil(total / ps)));
+    var page = this._dsSummaryPage;
+    var pageList = list.slice((page - 1) * ps, page * ps);
+
+    tbody.innerHTML = this._buildTrackerRows(pageList);
+    this._renderPagination(pgEl, total, ps, page, 'goSummaryTrackerPage');
   },
 
   // ── Pending Tab ──
