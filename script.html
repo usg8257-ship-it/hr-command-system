@@ -2612,79 +2612,187 @@ var DSAgent = {
              '<td style="min-width:120px"><div class="ds-progress-bar"><div class="ds-progress-fill" style="width:'+pct+'%"></div></div><span style="font-size:10px;color:var(--ds-muted);font-family:var(--ds-mono)">'+pct+'%</span></td></tr>';
     }).join('');
 
-    // ── Step Duration Bar Chart (client-side, no GAS call) ──
-    var chartData = stepKeys.map(function(k){
-      var hours = [];
-      active.forEach(function(r){
-        var step = r[k];
-        if (step && step.duration_hours && parseFloat(step.duration_hours) > 0)
-          hours.push(parseFloat(step.duration_hours));
+    // ── Unified Onboarding Intelligence ──
+    this.renderUOI();
+  },
+
+  // ── Unified Onboarding Intelligence ──
+  renderUOI: function() {
+    var all  = this._activeRecords();
+    var now  = new Date();
+    var msDay = 86400000;
+
+    // Parse a date string (yyyy-MM-dd or dd/MM/yyyy) → Date
+    var parseDate = function(d) {
+      if (!d) return null;
+      var s = String(d).trim().substring(0, 10);
+      var m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (m) return new Date(+m[1], +m[2]-1, +m[3]);
+      m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+      if (m) return new Date(+m[3], +m[2]-1, +m[1]);
+      return null;
+    };
+
+    // Time-bound slices by TRANSFER_DATE
+    var cut20 = new Date(now.getTime() - 20 * msDay);
+    var cut40 = new Date(now.getTime() - 40 * msDay);
+    var recs20 = all.filter(function(r){ var d=parseDate(r.TRANSFER_DATE); return d && d>=cut20; });
+    var recs40 = all.filter(function(r){ var d=parseDate(r.TRANSFER_DATE); return d && d>=cut40; });
+
+    // Compute avg completion days + rate for a set
+    var computeStats = function(recs) {
+      var completedRecs = recs.filter(function(r){ return r.OB_COMPLETE==='TRUE'; });
+      var avgDays = null;
+      if (completedRecs.length) {
+        var sum = completedRecs.reduce(function(a,r){ return a+parseInt(r.TOTAL_DAYS_ELAPSED||0,10); }, 0);
+        avgDays = Math.round(sum / completedRecs.length * 10) / 10;
+      }
+      var rate = recs.length ? Math.round((completedRecs.length/recs.length)*100) : null;
+      return { avgDays:avgDays, rate:rate, total:recs.length, completed:completedRecs.length };
+    };
+
+    // HR stats for a set, sorted by rate desc then avgDays asc
+    var computeHRStats = function(recs) {
+      var hrMap = {};
+      recs.forEach(function(r){
+        var hr = r.RESPONSIBLE_HR || 'Unassigned';
+        if (!hrMap[hr]) hrMap[hr] = {total:0, completed:0, totalDays:0};
+        hrMap[hr].total++;
+        if (r.OB_COMPLETE==='TRUE'){ hrMap[hr].completed++; hrMap[hr].totalDays+=parseInt(r.TOTAL_DAYS_ELAPSED||0,10); }
       });
-      var avgH = hours.length ? hours.reduce(function(a,b){return a+b;},0) / hours.length : 0;
-      var avgD = Math.round(avgH / 24 * 10) / 10;
-      return { key: k, short: self.STEPS[k].short, label: self.STEPS[k].label, avgDays: avgD, slaDays: self.STEPS[k].sla / 24, samples: hours.length };
-    });
-    var maxD = Math.max.apply(null, chartData.map(function(d){ return d.avgDays; }));
-    if (maxD < 1) maxD = 1;
+      return Object.keys(hrMap).map(function(name){
+        var h = hrMap[name];
+        var avgD = h.completed>0 ? Math.round(h.totalDays/h.completed*10)/10 : null;
+        return {name:name, avgDays:avgD, rate: h.total?Math.round((h.completed/h.total)*100):0, completed:h.completed, total:h.total};
+      }).sort(function(a,b){
+        if (b.rate!==a.rate) return b.rate-a.rate;
+        if (a.avgDays!==null && b.avgDays!==null) return a.avgDays-b.avgDays;
+        return a.avgDays===null ? 1 : -1;
+      });
+    };
 
-    var chartEl = document.getElementById('ds-summary-chart');
-    if (chartEl) {
-      chartEl.innerHTML = chartData.map(function(d){
-        var barPct  = Math.round((d.avgDays / maxD) * 100);
-        var barColor = d.avgDays === 0 ? 'var(--ds-border)'
-                     : d.avgDays > d.slaDays       ? 'var(--ds-red)'
-                     : d.avgDays > d.slaDays * 0.7 ? 'var(--ds-amber)'
-                     : 'var(--ds-green)';
-        var slaLineLeft = Math.round((d.slaDays / maxD) * 100);
-        return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:0;min-width:36px">'+
-          '<span style="font-size:10px;font-family:var(--ds-mono);color:var(--ds-muted);margin-bottom:4px;white-space:nowrap">'+(d.avgDays?d.avgDays+'d':'—')+'</span>'+
-          '<div style="width:100%;height:140px;display:flex;flex-direction:column;justify-content:flex-end;position:relative">'+
-            (slaLineLeft<=100?'<div style="position:absolute;bottom:'+(Math.round((d.slaDays/maxD)*140))+'px;left:0;right:0;height:1px;background:rgba(0,229,255,.35);border-top:1px dashed rgba(0,229,255,.4)" title="SLA: '+d.slaDays+'d"></div>':'')+
-            '<div style="width:100%;background:'+barColor+';border-radius:3px 3px 0 0;height:'+barPct+'%;min-height:'+(d.avgDays?2:0)+'px;transition:height .5s ease" title="'+esc(d.label)+': '+d.avgDays+'d avg ('+d.samples+' records)"></div>'+
-          '</div>'+
-          '<div style="width:100%;height:1px;background:var(--ds-border)"></div>'+
-          '<span style="font-size:11px;font-weight:700;color:var(--ds-text);margin-top:5px">'+esc(d.short)+'</span>'+
-          '<span style="font-size:9px;color:var(--ds-muted);margin-top:1px">SLA '+d.slaDays+'d</span>'+
-        '</div>';
-      }).join('');
+    var tbody = document.getElementById('ds-uoi-tbody');
+    if (!tbody) return;
+
+    var rows = [];
+
+    // ── Row 1: Individual employee search ──
+    var q = ((document.getElementById('ds-uoi-search')||{}).value||'').toLowerCase().trim();
+    var empRec = null;
+    if (q) {
+      empRec = all.find(function(r){
+        return (r.EMP_ID||'').toLowerCase().indexOf(q)>=0 ||
+               (r.EMP_NAME||'').toLowerCase().indexOf(q)>=0;
+      });
     }
 
-    // ── Work Speed Leaderboard (client-side) ──
-    var hrMap2 = {};
-    active.forEach(function(r){
+    if (q && !empRec) {
+      rows.push('<tr><td colspan="6"><div class="ds-empty" style="padding:10px 14px">No record found for "<strong>'+esc(q)+'</strong>"</div></td></tr>');
+    } else if (empRec) {
+      var empDays   = empRec.OB_COMPLETE==='TRUE' ? parseInt(empRec.TOTAL_DAYS_ELAPSED||0,10) : null;
+      var empDaysOk = empDays !== null && empDays <= 20;
+      var empStatus = empRec.OB_COMPLETE==='TRUE' ? 'Complete'
+                    : parseInt(empRec.TOTAL_DAYS_ELAPSED||0,10)>20 ? 'Over Stage' : 'In Progress';
+      var empStatusColor = empRec.OB_COMPLETE==='TRUE' ? 'var(--ds-green)'
+                         : parseInt(empRec.TOTAL_DAYS_ELAPSED||0,10)>20 ? 'var(--ds-red)' : 'var(--ds-cyan)';
+      var allHRStats  = computeHRStats(all);
+      var empHRName   = empRec.RESPONSIBLE_HR || '—';
+      var empHRStat   = allHRStats.find(function(h){ return h.name===(empRec.RESPONSIBLE_HR||'Unassigned'); });
+      var empHRVel    = empHRStat && empHRStat.avgDays!==null ? empHRStat.avgDays+'d avg' : '—';
+      var empDaysColor = empDays===null ? 'var(--ds-muted)' : empDaysOk ? 'var(--ds-green)' : 'var(--ds-red)';
+      rows.push(
+        '<tr style="background:rgba(0,122,138,.04)">'+
+        '<td style="border-left:3px solid var(--ds-cyan)">'+
+          '<div style="font-weight:700;color:var(--ds-text)">'+esc(empRec.EMP_NAME||'—')+'</div>'+
+          '<div style="font-size:10px;color:var(--ds-muted);font-family:var(--ds-mono)">'+esc(empRec.EMP_ID||'—')+' &middot; '+esc(empRec.DESIGNATION||'—')+'</div>'+
+        '</td>'+
+        '<td style="text-align:center;font-family:var(--ds-mono);font-weight:600">1</td>'+
+        '<td style="text-align:center">'+
+          '<span style="font-family:var(--ds-mono);font-size:13px;font-weight:700;color:'+empDaysColor+'">'+(empDays!==null?empDays+'d':'—')+'</span>'+
+          (empDays!==null?'<div style="font-size:9px;color:var(--ds-muted)">'+(empDaysOk?'Within SLA':'Exceeded SLA')+'</div>':'')+
+        '</td>'+
+        '<td style="text-align:center"><span class="ds-badge" style="background:'+empStatusColor+'22;color:'+empStatusColor+';border:1px solid '+empStatusColor+'44">'+empStatus+'</span></td>'+
+        '<td style="font-weight:600">'+esc(empHRName)+'</td>'+
+        '<td style="text-align:center;font-family:var(--ds-mono);color:var(--ds-cyan);font-weight:700">'+empHRVel+'</td>'+
+        '</tr>'
+      );
+    } else {
+      rows.push('<tr><td colspan="6" style="padding:12px 16px;font-style:italic;font-size:11px;color:var(--ds-muted)">&#128269; Search an employee name or ID above to view their individual record.</td></tr>');
+    }
+
+    // ── Rows 2 & 3: Time-bound global averages ──
+    var buildAvgRow = function(label, icon, recs, accentColor) {
+      if (!recs.length) {
+        return '<tr><td style="border-left:3px solid '+accentColor+'"><span style="color:'+accentColor+'">'+icon+'</span> <strong>'+label+'</strong></td>'+
+               '<td colspan="5" style="color:var(--ds-muted);font-size:11px;font-style:italic">No records transferred in this period.</td></tr>';
+      }
+      var stats  = computeStats(recs);
+      var hrTop  = computeHRStats(recs)[0];
+      var avgColor = stats.avgDays===null ? 'var(--ds-muted)' : stats.avgDays<=20 ? 'var(--ds-green)' : 'var(--ds-red)';
+      var rateColor = stats.rate===null ? 'var(--ds-muted)' : stats.rate>=80 ? 'var(--ds-green)' : stats.rate>=50 ? 'var(--ds-amber)' : 'var(--ds-red)';
+      return '<tr>'+
+        '<td style="border-left:3px solid '+accentColor+'">'+
+          '<div style="font-weight:700;color:var(--ds-text)"><span style="color:'+accentColor+'">'+icon+'</span> '+label+'</div>'+
+          '<div style="font-size:9px;color:var(--ds-muted);font-family:var(--ds-mono)">'+stats.completed+' completed / '+stats.total+' records</div>'+
+        '</td>'+
+        '<td style="text-align:center;font-family:var(--ds-mono);font-weight:600">'+stats.total+'</td>'+
+        '<td style="text-align:center">'+
+          '<span style="font-family:var(--ds-mono);font-size:13px;font-weight:700;color:'+avgColor+'">'+(stats.avgDays!==null?stats.avgDays+'d':'—')+'</span>'+
+          (stats.avgDays!==null?'<div style="font-size:9px;color:var(--ds-muted)">'+(stats.avgDays<=20?'Within SLA':'Exceeded SLA')+'</div>':'')+
+        '</td>'+
+        '<td style="text-align:center">'+
+          '<span class="ds-badge" style="background:'+rateColor+'22;color:'+rateColor+';border:1px solid '+rateColor+'44">'+(stats.rate!==null?stats.rate+'%':'—')+'</span>'+
+        '</td>'+
+        '<td style="font-weight:600">'+(hrTop?esc(hrTop.name):'—')+'</td>'+
+        '<td style="text-align:center;font-family:var(--ds-mono);color:var(--ds-cyan);font-weight:700">'+
+          (hrTop&&hrTop.avgDays!==null?hrTop.avgDays+'d avg':'—')+
+        '</td>'+
+        '</tr>';
+    };
+
+    rows.push(buildAvgRow('Last 20 Days Global Avg', '&#128337;', recs20, 'var(--ds-blue)'));
+    rows.push(buildAvgRow('Last 40 Days Global Avg', '&#128336;', recs40, 'var(--ds-purple)'));
+    tbody.innerHTML = rows.join('');
+
+    // ── HR breakdown sub-table ──
+    this._renderHRBreakdown(all);
+  },
+
+  _renderHRBreakdown: function(recs) {
+    var el = document.getElementById('ds-uoi-hr-tbody');
+    if (!el) return;
+    if (!recs.length) {
+      el.innerHTML = '<tr><td colspan="5"><div class="ds-empty" style="padding:10px">No HR data yet.</div></td></tr>';
+      return;
+    }
+    var hrMap = {};
+    recs.forEach(function(r){
       var hr = r.RESPONSIBLE_HR || 'Unassigned';
-      if (!hrMap2[hr]) hrMap2[hr] = {completed:0, total:0, totalDays:0};
-      hrMap2[hr].total++;
-      if (r.OB_COMPLETE === 'TRUE'){
-        hrMap2[hr].completed++;
-        var d = parseInt(r.TOTAL_DAYS_ELAPSED||0, 10);
-        if (d > 0) hrMap2[hr].totalDays += d;
-      }
+      if (!hrMap[hr]) hrMap[hr] = {total:0, completed:0, totalDays:0};
+      hrMap[hr].total++;
+      if (r.OB_COMPLETE==='TRUE'){ hrMap[hr].completed++; hrMap[hr].totalDays+=parseInt(r.TOTAL_DAYS_ELAPSED||0,10); }
     });
-    var leaders = Object.keys(hrMap2).map(function(name){
-      var h = hrMap2[name];
-      var avgD2 = h.completed > 0 ? Math.round(h.totalDays / h.completed * 10) / 10 : null;
-      var rate  = h.total > 0 ? Math.round((h.completed / h.total) * 100) : 0;
-      return {name:name, avgDays:avgD2, successRate:rate, completed:h.completed, total:h.total};
-    }).sort(function(a,b){ return b.successRate - a.successRate; });
-
-    var lbEl = document.getElementById('ds-summary-leaderboard');
-    if (lbEl) {
-      if (!leaders.length) {
-        lbEl.innerHTML = '<tr><td colspan="4"><div class="ds-empty">No HR data yet.</div></td></tr>';
-      } else {
-        lbEl.innerHTML = leaders.map(function(h, idx){
-          var medal = idx===0?'&#127945;':idx===1?'&#129352;':idx===2?'&#129353;':'';
-          var rateColor = h.successRate >= 80 ? 'var(--ds-green)' : h.successRate >= 50 ? 'var(--ds-amber)' : 'var(--ds-red)';
-          return '<tr>'+
-            '<td style="font-weight:600">'+medal+' '+esc(h.name)+'</td>'+
-            '<td class="mono" style="color:var(--ds-cyan)">'+(h.avgDays !== null ? h.avgDays+'d' : '—')+'</td>'+
-            '<td class="mono">'+h.completed+' / '+h.total+'</td>'+
-            '<td><span class="ds-badge" style="background:'+rateColor+'22;color:'+rateColor+';border:1px solid '+rateColor+'44">'+h.successRate+'%</span></td>'+
-          '</tr>';
-        }).join('');
-      }
-    }
+    var leaders = Object.keys(hrMap).map(function(name){
+      var h = hrMap[name];
+      var avgD = h.completed>0 ? Math.round(h.totalDays/h.completed*10)/10 : null;
+      return {name:name, avgDays:avgD, rate:h.total?Math.round((h.completed/h.total)*100):0, completed:h.completed, total:h.total};
+    }).sort(function(a,b){
+      if (b.rate!==a.rate) return b.rate-a.rate;
+      if (a.avgDays!==null && b.avgDays!==null) return a.avgDays-b.avgDays;
+      return a.avgDays===null ? 1 : -1;
+    });
+    el.innerHTML = leaders.map(function(h, idx){
+      var medal     = idx===0?'&#127945;':idx===1?'&#129352;':idx===2?'&#129353;':'<span style="color:var(--ds-muted);font-size:10px">'+(idx+1)+'</span>';
+      var rateColor = h.rate>=80?'var(--ds-green)':h.rate>=50?'var(--ds-amber)':'var(--ds-red)';
+      var velColor  = h.avgDays===null?'var(--ds-muted)':h.avgDays<=20?'var(--ds-green)':'var(--ds-amber)';
+      return '<tr>'+
+        '<td style="font-weight:600">'+medal+' '+esc(h.name)+'</td>'+
+        '<td style="text-align:center;font-family:var(--ds-mono)">'+h.total+'</td>'+
+        '<td style="text-align:center;font-family:var(--ds-mono)">'+h.completed+'</td>'+
+        '<td style="text-align:center"><span class="ds-badge" style="background:'+rateColor+'22;color:'+rateColor+';border:1px solid '+rateColor+'44">'+h.rate+'%</span></td>'+
+        '<td style="text-align:center;font-family:var(--ds-mono);font-weight:700;color:'+velColor+'">'+(h.avgDays!==null?h.avgDays+'d':'—')+'</td>'+
+        '</tr>';
+    }).join('');
   },
 
   // ── Tracker Tab ──
