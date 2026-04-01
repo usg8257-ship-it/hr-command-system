@@ -548,10 +548,11 @@
 }
 
 /* ── Responsive ── */
-@media (max-width: 700px) {
+@media (max-width: 900px) {
   .ds-fgrid { grid-template-columns: 1fr; }
   .ds-fgrid .ds-fg.span2 { grid-column: span 1; }
   .ds-kpi-bar { flex-direction: column; }
+  #ds-tab-summary > div[style*="grid-template-columns:1fr 1fr"] { grid-template-columns: 1fr !important; }
 }
 </style>
 
@@ -560,7 +561,7 @@
   <!-- Topbar -->
   <div class="ds-topbar">
     <div>
-      <div class="ds-topbar-title">20DS Tracker <span>Onboarding Steps Module</span></div>
+      <div class="ds-topbar-title">20 Days Strategy Tracker <span>Performance Intelligence Dashboard</span></div>
     </div>
     <div class="ds-topbar-right">
       <button class="ds-btn cyan" onclick="DSAgent.refresh()">&#8635; Refresh</button>
@@ -606,7 +607,7 @@
     <span id="ds-kpi-cancelled"  style="display:none"></span>
 
     <!-- Step completion summary -->
-    <div class="ds-table-card">
+    <div class="ds-table-card" style="margin-bottom:14px">
       <div class="ds-table-hdr">
         <span class="ds-table-hdr-title">Step Completion Overview</span>
       </div>
@@ -628,6 +629,46 @@
         </table>
       </div>
     </div>
+
+    <!-- Analytics Row: Bar Chart + Leaderboard side by side -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+
+      <!-- Step Duration Bar Chart -->
+      <div class="ds-table-card">
+        <div class="ds-table-hdr">
+          <span class="ds-table-hdr-title">&#9201; Avg Duration Per Step</span>
+          <span style="font-size:10px;color:var(--ds-muted)">Days — dashed line = SLA</span>
+        </div>
+        <div style="padding:16px 20px 12px">
+          <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:8px;height:160px" id="ds-summary-chart">
+            <div class="ds-empty" style="padding:0;margin:auto;font-size:11px">No duration data yet.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Work Speed Leaderboard -->
+      <div class="ds-table-card">
+        <div class="ds-table-hdr">
+          <span class="ds-table-hdr-title">&#127941; Work Speed Leaderboard</span>
+        </div>
+        <div class="ds-tbl-wrap">
+          <table class="ds-tbl">
+            <thead>
+              <tr>
+                <th>Responsible HR</th>
+                <th>Avg Completion</th>
+                <th>Done / Total</th>
+                <th>Success Rate</th>
+              </tr>
+            </thead>
+            <tbody id="ds-summary-leaderboard">
+              <tr><td colspan="4"><div class="ds-empty" style="padding:20px">No HR data yet.</div></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div><!-- /analytics row -->
   </div>
 
   <!-- ──────────────────── TRACKER TAB ──────────────────── -->

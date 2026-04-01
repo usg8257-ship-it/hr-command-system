@@ -2433,12 +2433,12 @@ var DSAgent = {
 
   // Step definitions: key → {label, sla(hours), statuses, substeps}
   STEPS: {
-    STEP_VISA:      { label: 'Visa/Entry Issued',        sla: 24,  statuses: ['Pending','Done','Problem'],     substeps: { mol_done: 'MOL Done', entry_permit: 'Entry Permit Submitted' } },
-    STEP_LABOR:     { label: 'Tawjeeh & Labor Card',     sla: 24,  statuses: ['Pending','Done'],               substeps: { tawjeeh: 'Tawjeeh Completed', labor_card: 'Labor Card Received' } },
-    STEP_MEDICAL:   { label: 'Visa Medical',             sla: 24,  statuses: ['Pending','Fit','Unfit'],        substeps: { medical_done: 'Medical Done' } },
-    STEP_INSURANCE: { label: 'Medical Insurance',        sla: 72,  statuses: ['Pending','Done','Problem'],     substeps: { app_submitted: 'Application Submitted', card_received: 'Card Received' } },
-    STEP_NSI:       { label: 'NSI Training',             sla: 168, statuses: ['Not Started','Pending','Done'], substeps: { app_submitted: 'Application Submitted', date_scheduled: 'Training Date Scheduled', training_completed: 'Training Completed', cert_received: 'Certificate Received' } },
-    STEP_EID:       { label: 'EID & Residency Stamping', sla: 48,  statuses: ['Pending','Done','Problem'],     substeps: { eid_app_submitted: 'EID Application Submitted', biometrics: 'Biometrics / Stamping Done', card_received: 'Card Received' } }
+    STEP_VISA:      { label: 'Visa/Entry Issued',        short: 'VI', sla: 24,  statuses: ['Pending','Done','Problem'],     substeps: { mol_done: 'MOL Done', entry_permit: 'Entry Permit Submitted' } },
+    STEP_LABOR:     { label: 'Tawjeeh & Labor Card',     short: 'LC', sla: 24,  statuses: ['Pending','Done'],               substeps: { tawjeeh: 'Tawjeeh Completed', labor_card: 'Labor Card Received' } },
+    STEP_MEDICAL:   { label: 'Visa Medical',             short: 'MD', sla: 24,  statuses: ['Pending','Fit','Unfit'],        substeps: { medical_done: 'Medical Done' } },
+    STEP_INSURANCE: { label: 'Medical Insurance',        short: 'MI', sla: 72,  statuses: ['Pending','Done','Problem'],     substeps: { app_submitted: 'Application Submitted', card_received: 'Card Received' } },
+    STEP_NSI:       { label: 'NSI Training',             short: 'NS', sla: 168, statuses: ['Not Started','Pending','Done'], substeps: { app_submitted: 'Application Submitted', date_scheduled: 'Training Date Scheduled', training_completed: 'Training Completed', cert_received: 'Certificate Received' } },
+    STEP_EID:       { label: 'EID & Residency Stamping', short: 'EI', sla: 48,  statuses: ['Pending','Done','Problem'],     substeps: { eid_app_submitted: 'EID Application Submitted', biometrics: 'Biometrics / Stamping Done', card_received: 'Card Received' } }
   },
 
   _statusClass: function(status) {
@@ -2579,6 +2579,80 @@ var DSAgent = {
              '<td><span class="ds-badge notstart">'+notStart+'</span></td>'+
              '<td style="min-width:120px"><div class="ds-progress-bar"><div class="ds-progress-fill" style="width:'+pct+'%"></div></div><span style="font-size:10px;color:var(--ds-muted);font-family:var(--ds-mono)">'+pct+'%</span></td></tr>';
     }).join('');
+
+    // ── Step Duration Bar Chart (client-side, no GAS call) ──
+    var chartData = stepKeys.map(function(k){
+      var hours = [];
+      active.forEach(function(r){
+        var step = r[k];
+        if (step && step.duration_hours && parseFloat(step.duration_hours) > 0)
+          hours.push(parseFloat(step.duration_hours));
+      });
+      var avgH = hours.length ? hours.reduce(function(a,b){return a+b;},0) / hours.length : 0;
+      var avgD = Math.round(avgH / 24 * 10) / 10;
+      return { key: k, short: self.STEPS[k].short, label: self.STEPS[k].label, avgDays: avgD, slaDays: self.STEPS[k].sla / 24, samples: hours.length };
+    });
+    var maxD = Math.max.apply(null, chartData.map(function(d){ return d.avgDays; }));
+    if (maxD < 1) maxD = 1;
+
+    var chartEl = document.getElementById('ds-summary-chart');
+    if (chartEl) {
+      chartEl.innerHTML = chartData.map(function(d){
+        var barPct  = Math.round((d.avgDays / maxD) * 100);
+        var barColor = d.avgDays === 0 ? 'var(--ds-border)'
+                     : d.avgDays > d.slaDays       ? 'var(--ds-red)'
+                     : d.avgDays > d.slaDays * 0.7 ? 'var(--ds-amber)'
+                     : 'var(--ds-green)';
+        var slaLineLeft = Math.round((d.slaDays / maxD) * 100);
+        return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:0;min-width:36px">'+
+          '<span style="font-size:10px;font-family:var(--ds-mono);color:var(--ds-muted);margin-bottom:4px;white-space:nowrap">'+(d.avgDays?d.avgDays+'d':'—')+'</span>'+
+          '<div style="width:100%;height:140px;display:flex;flex-direction:column;justify-content:flex-end;position:relative">'+
+            (slaLineLeft<=100?'<div style="position:absolute;bottom:'+(Math.round((d.slaDays/maxD)*140))+'px;left:0;right:0;height:1px;background:rgba(0,229,255,.35);border-top:1px dashed rgba(0,229,255,.4)" title="SLA: '+d.slaDays+'d"></div>':'')+
+            '<div style="width:100%;background:'+barColor+';border-radius:3px 3px 0 0;height:'+barPct+'%;min-height:'+(d.avgDays?2:0)+'px;transition:height .5s ease" title="'+esc(d.label)+': '+d.avgDays+'d avg ('+d.samples+' records)"></div>'+
+          '</div>'+
+          '<div style="width:100%;height:1px;background:var(--ds-border)"></div>'+
+          '<span style="font-size:11px;font-weight:700;color:var(--ds-text);margin-top:5px">'+esc(d.short)+'</span>'+
+          '<span style="font-size:9px;color:var(--ds-muted);margin-top:1px">SLA '+d.slaDays+'d</span>'+
+        '</div>';
+      }).join('');
+    }
+
+    // ── Work Speed Leaderboard (client-side) ──
+    var hrMap2 = {};
+    active.forEach(function(r){
+      var hr = r.RESPONSIBLE_HR || 'Unassigned';
+      if (!hrMap2[hr]) hrMap2[hr] = {completed:0, total:0, totalDays:0};
+      hrMap2[hr].total++;
+      if (r.OB_COMPLETE === 'TRUE'){
+        hrMap2[hr].completed++;
+        var d = parseInt(r.TOTAL_DAYS_ELAPSED||0, 10);
+        if (d > 0) hrMap2[hr].totalDays += d;
+      }
+    });
+    var leaders = Object.keys(hrMap2).map(function(name){
+      var h = hrMap2[name];
+      var avgD2 = h.completed > 0 ? Math.round(h.totalDays / h.completed * 10) / 10 : null;
+      var rate  = h.total > 0 ? Math.round((h.completed / h.total) * 100) : 0;
+      return {name:name, avgDays:avgD2, successRate:rate, completed:h.completed, total:h.total};
+    }).sort(function(a,b){ return b.successRate - a.successRate; });
+
+    var lbEl = document.getElementById('ds-summary-leaderboard');
+    if (lbEl) {
+      if (!leaders.length) {
+        lbEl.innerHTML = '<tr><td colspan="4"><div class="ds-empty">No HR data yet.</div></td></tr>';
+      } else {
+        lbEl.innerHTML = leaders.map(function(h, idx){
+          var medal = idx===0?'&#127945;':idx===1?'&#129352;':idx===2?'&#129353;':'';
+          var rateColor = h.successRate >= 80 ? 'var(--ds-green)' : h.successRate >= 50 ? 'var(--ds-amber)' : 'var(--ds-red)';
+          return '<tr>'+
+            '<td style="font-weight:600">'+medal+' '+esc(h.name)+'</td>'+
+            '<td class="mono" style="color:var(--ds-cyan)">'+(h.avgDays !== null ? h.avgDays+'d' : '—')+'</td>'+
+            '<td class="mono">'+h.completed+' / '+h.total+'</td>'+
+            '<td><span class="ds-badge" style="background:'+rateColor+'22;color:'+rateColor+';border:1px solid '+rateColor+'44">'+h.successRate+'%</span></td>'+
+          '</tr>';
+        }).join('');
+      }
+    }
   },
 
   // ── Tracker Tab ──
@@ -2632,8 +2706,8 @@ var DSAgent = {
       var pills = stepKeys.map(function(k){
         var step = r[k] || {status:'Pending'};
         var sc = self._statusClass(step.status||'Pending');
-        var lbl = self.STEPS[k].label.substring(0,2).toUpperCase();
-        return '<span class="ds-step-pill '+sc+'" title="'+esc(self.STEPS[k].label)+': '+esc(step.status||'Pending')+'" onclick="DSAgent.openProgressCard(\''+esc(r.DS_ID)+'\')">'+lbl+'</span>';
+        var lbl = self.STEPS[k].short;
+        return '<span class="ds-step-pill '+sc+'" title="'+esc(self.STEPS[k].label)+': '+esc(step.status||'Pending')+'" onclick="DSAgent.openStepModal(\''+esc(r.DS_ID)+'\',\''+k+'\')">'+lbl+'</span>';
       }).join('');
       var compBadge = r.OB_COMPLETE==='TRUE'
         ? '<span class="ds-badge complete">&#10003; Done</span>'
@@ -3055,8 +3129,11 @@ var DSAgent = {
     var sel = document.getElementById('ds-m-step-status');
     sel.innerHTML = stepDef.statuses.map(function(s){ return '<option value="'+s+'"'+(s===stepData.status?' selected':'')+'>'+s+'</option>'; }).join('');
 
-    document.getElementById('ds-m-step-responsible').value = stepData.responsible || rec.RESPONSIBLE_HR || '';
-    document.getElementById('ds-m-step-start').value    = stepData.start_date    || '';
+    // Auto-fill responsible with logged-in user if not already set
+    document.getElementById('ds-m-step-responsible').value = stepData.responsible || rec.RESPONSIBLE_HR || (APP.user && APP.user.name) || '';
+    // Start date defaults to the record's transfer/add date (the step "clock" begins on transfer)
+    var transferDateShort = rec.TRANSFER_DATE ? String(rec.TRANSFER_DATE).substring(0,10) : '';
+    document.getElementById('ds-m-step-start').value    = stepData.start_date    || transferDateShort || '';
     document.getElementById('ds-m-step-complete').value = stepData.complete_date || '';
     document.getElementById('ds-m-step-notes').value    = stepData.notes         || '';
     document.getElementById('ds-m-step-reason').value   = stepData.reason        || '';
