@@ -537,11 +537,14 @@ var GAS={
   getResignations:              function(cb)   { GAS.call('getResignations',              [],    cb); },
   generateExperienceLetterForEmp:function(id,cb){ GAS.call('generateExperienceLetterForEmp',[id], cb); },
   // 20DS Tracker
-  get20DSTracker:      function(cb)          { GAS.call('get20DSTracker',       [],          cb); },
-  update20DSStep:      function(id,k,d,cb)   { GAS.call('update20DSStep',       [id,k,d],    cb); },
-  update20DSResponsible:function(id,hr,cb)   { GAS.call('update20DSResponsible',[id,hr],     cb); },
-  cancel20DSRecord:    function(id,rsn,cb)   { GAS.call('cancel20DSRecord',     [id,rsn],    cb); },
-  get20DSAuditLog:     function(cb)          { GAS.call('get20DSAuditLog',      [],          cb); }
+  get20DSTracker:        function(cb)             { GAS.call('get20DSTracker',        [],             cb); },
+  update20DSStep:        function(id,k,d,cb)      { GAS.call('update20DSStep',        [id,k,d],       cb); },
+  update20DSResponsible: function(id,hr,cb)       { GAS.call('update20DSResponsible', [id,hr],        cb); },
+  cancel20DSRecord:      function(id,rsn,cb)      { GAS.call('cancel20DSRecord',      [id,rsn],       cb); },
+  get20DSAuditLog:       function(cb)             { GAS.call('get20DSAuditLog',       [],             cb); },
+  startDSStep:           function(id,k,br,cb)     { GAS.call('startDSStep',           [id,k,br],      cb); },
+  completeDSStep:        function(id,k,n,br,cb)   { GAS.call('completeDSStep',        [id,k,n,br],    cb); },
+  get20DSAnalytics:      function(cb)             { GAS.call('get20DSAnalytics',      [],             cb); }
 };
 
 // ============================================================
@@ -2422,48 +2425,25 @@ var RecruitmentAgent = {
 };
 
 // ============================================================
-// DS AGENT — 20DS Tracker Module
+// DS AGENT — 20 Days Strategy Tracker Module
 // ============================================================
 var DSAgent = {
   _tab: 'summary',
+  _kpiFilter: null, // null | 'active' | 'nsi' | 'overstage'
 
-  // Step definitions: key → {label, statuses, substeps}
+  // Step definitions: key → {label, sla(hours), statuses, substeps}
   STEPS: {
-    STEP_VISA: {
-      label: 'Visa Issued',
-      statuses: ['Pending','Done','Problem'],
-      substeps: { mol_done: 'MOL Done', entry_permit: 'Entry Permit Submitted' }
-    },
-    STEP_LABOR: {
-      label: 'Labor Card & Tawjeeh',
-      statuses: ['Pending','Done'],
-      substeps: { tawjeeh: 'Tawjeeh Completed', labor_card: 'Labor Card Received' }
-    },
-    STEP_INSURANCE: {
-      label: 'Insurance',
-      statuses: ['Pending','Done','Problem'],
-      substeps: { app_submitted: 'Application Submitted', card_received: 'Card Received' }
-    },
-    STEP_MEDICAL: {
-      label: 'Visa Medical',
-      statuses: ['Pending','Fit','Unfit'],
-      substeps: { medical_done: 'Medical Done' }
-    },
-    STEP_NSI: {
-      label: 'NSI Training',
-      statuses: ['Not Started','Pending','Done'],
-      substeps: { app_submitted: 'Application Submitted', date_scheduled: 'Training Date Scheduled', training_completed: 'Training Completed', cert_received: 'Certificate Received' }
-    },
-    STEP_EID: {
-      label: 'Emirates ID & Residency',
-      statuses: ['Pending','Done','Problem'],
-      substeps: { eid_app_submitted: 'EID Application Submitted', biometrics: 'Biometrics / Stamping Done', card_received: 'Card Received' }
-    }
+    STEP_VISA:      { label: 'Visa/Entry Issued',        sla: 24,  statuses: ['Pending','Done','Problem'],     substeps: { mol_done: 'MOL Done', entry_permit: 'Entry Permit Submitted' } },
+    STEP_LABOR:     { label: 'Tawjeeh & Labor Card',     sla: 24,  statuses: ['Pending','Done'],               substeps: { tawjeeh: 'Tawjeeh Completed', labor_card: 'Labor Card Received' } },
+    STEP_MEDICAL:   { label: 'Visa Medical',             sla: 24,  statuses: ['Pending','Fit','Unfit'],        substeps: { medical_done: 'Medical Done' } },
+    STEP_INSURANCE: { label: 'Medical Insurance',        sla: 72,  statuses: ['Pending','Done','Problem'],     substeps: { app_submitted: 'Application Submitted', card_received: 'Card Received' } },
+    STEP_NSI:       { label: 'NSI Training',             sla: 168, statuses: ['Not Started','Pending','Done'], substeps: { app_submitted: 'Application Submitted', date_scheduled: 'Training Date Scheduled', training_completed: 'Training Completed', cert_received: 'Certificate Received' } },
+    STEP_EID:       { label: 'EID & Residency Stamping', sla: 48,  statuses: ['Pending','Done','Problem'],     substeps: { eid_app_submitted: 'EID Application Submitted', biometrics: 'Biometrics / Stamping Done', card_received: 'Card Received' } }
   },
 
   _statusClass: function(status) {
     var map = { 'Done':'done','Pending':'pending','Problem':'problem',
-                'Not Started':'notstart','Fit':'fit','Unfit':'unfit' };
+                'Not Started':'notstart','Fit':'fit','Unfit':'unfit','Started':'pending' };
     return map[status] || 'pending';
   },
 
@@ -2481,6 +2461,29 @@ var DSAgent = {
     return (APP.dsTracker || []).filter(function(r){ return r.CANCELLED !== 'TRUE'; });
   },
 
+  _nsiRecords: function() {
+    return this._activeRecords().filter(function(r){
+      return r.OB_COMPLETE !== 'TRUE' && r.STEP_NSI && (r.STEP_NSI.status === 'Pending' || r.STEP_NSI.status === 'Not Started');
+    });
+  },
+
+  _overStageRecords: function() {
+    return this._activeRecords().filter(function(r){
+      return r.OB_COMPLETE !== 'TRUE' && parseInt(r.TOTAL_DAYS_ELAPSED||0,10) > 20;
+    });
+  },
+
+  _avgCompletionDays: function() {
+    var completed = this._activeRecords().filter(function(r){ return r.OB_COMPLETE === 'TRUE'; });
+    if (!completed.length) return '—';
+    var total = 0, count = 0;
+    completed.forEach(function(r){
+      var d = parseInt(r.TOTAL_DAYS_ELAPSED||0, 10);
+      if (d > 0) { total += d; count++; }
+    });
+    return count ? Math.round(total/count) + 'd' : '—';
+  },
+
   renderBadge: function() {
     var active = this._activeRecords();
     var nb = document.getElementById('nb-ds');
@@ -2492,15 +2495,16 @@ var DSAgent = {
     document.querySelectorAll('.ds-tab').forEach(function(t){
       t.classList.toggle('active', t.dataset.dstab === tab);
     });
-    ['summary','tracker','pending','delayed','cancelled','audit'].forEach(function(t){
+    ['summary','tracker','pending','delayed','cancelled','audit','analytics'].forEach(function(t){
       var el = document.getElementById('ds-tab-' + t);
       if (el) el.style.display = (t === tab) ? 'block' : 'none';
     });
-    if (tab === 'summary')   DSAgent.renderSummary();
-    if (tab === 'tracker')   DSAgent.renderTracker();
-    if (tab === 'pending')   DSAgent.renderPending();
-    if (tab === 'delayed')   DSAgent.renderDelayed();
-    if (tab === 'cancelled') DSAgent.renderCancelled();
+    if (tab === 'summary')   this.renderSummary();
+    if (tab === 'tracker')   this.renderTracker();
+    if (tab === 'pending')   this.renderPending();
+    if (tab === 'delayed')   this.renderDelayed();
+    if (tab === 'cancelled') this.renderCancelled();
+    if (tab === 'analytics') this.renderAnalytics();
   },
 
   render: function() {
@@ -2512,8 +2516,18 @@ var DSAgent = {
     var self = this;
     GAS.get20DSTracker(function(r){
       if (r && r.success) { APP.dsTracker = r.data || []; self.render(); toast('20DS data refreshed','info'); }
-      else toast('Error refreshing 20DS data','error');
+      else toast('Error refreshing 20DS data: '+(r?r.error:''),'error');
     });
+  },
+
+  // ── KPI Card Click Filter ──
+  filterByKPI: function(type) {
+    if (type === 'analytics') { this.switchTab('analytics'); return; }
+    this._kpiFilter = (this._kpiFilter === type) ? null : type;
+    document.querySelectorAll('.ds-kpi-clickable').forEach(function(el){
+      el.classList.toggle('kpi-active', el.dataset.kpi === DSAgent._kpiFilter);
+    });
+    this.switchTab('tracker');
   },
 
   // ── Summary Tab ──
@@ -2521,15 +2535,22 @@ var DSAgent = {
     var active    = this._activeRecords();
     var cancelled = (APP.dsTracker||[]).filter(function(r){ return r.CANCELLED==='TRUE'; });
     var complete  = active.filter(function(r){ return r.OB_COMPLETE==='TRUE'; });
-    var delayed   = active.filter(function(r){ return r.OB_COMPLETE!=='TRUE' && parseInt(r.TOTAL_DAYS_ELAPSED||0,10) > 20; });
+    var delayed   = this._overStageRecords();
     var inprog    = active.filter(function(r){ return r.OB_COMPLETE!=='TRUE' && parseInt(r.TOTAL_DAYS_ELAPSED||0,10) <= 20; });
+    var nsiNow    = this._nsiRecords();
 
     var set = function(id,v){ var el=document.getElementById(id); if(el) el.textContent=v; };
-    set('ds-kpi-total',    active.length);
-    set('ds-kpi-complete', complete.length);
-    set('ds-kpi-inprogress', inprog.length);
-    set('ds-kpi-delayed',  delayed.length);
-    set('ds-kpi-cancelled',cancelled.length);
+    // 4 main KPI cards
+    set('ds-kpi-active20ds',  inprog.length);
+    set('ds-kpi-nsi',         nsiNow.length);
+    set('ds-kpi-overstage',   delayed.length);
+    set('ds-kpi-avgspeed',    this._avgCompletionDays());
+    // legacy ids (kept for backward compat)
+    set('ds-kpi-total',       active.length);
+    set('ds-kpi-complete',    complete.length);
+    set('ds-kpi-inprogress',  inprog.length);
+    set('ds-kpi-delayed',     delayed.length);
+    set('ds-kpi-cancelled',   cancelled.length);
 
     var stepKeys = Object.keys(this.STEPS);
     var self = this;
@@ -2566,13 +2587,34 @@ var DSAgent = {
     var sts = (document.getElementById('ds-filter-status')||{}).value||'';
     q = q.toLowerCase();
     var self = this;
+    var kf   = this._kpiFilter;
     var list = (APP.dsTracker||[]).filter(function(r){
       if (r.CANCELLED === 'TRUE') return false;
-      if (sts === 'complete'  && r.OB_COMPLETE !== 'TRUE') return false;
-      if (sts === 'active'    && r.OB_COMPLETE === 'TRUE') return false;
+      if (kf === 'active') {
+        if (r.OB_COMPLETE === 'TRUE') return false;
+        if (parseInt(r.TOTAL_DAYS_ELAPSED||0,10) > 20) return false;
+      } else if (kf === 'nsi') {
+        if (r.OB_COMPLETE === 'TRUE') return false;
+        if (!r.STEP_NSI || (r.STEP_NSI.status !== 'Pending' && r.STEP_NSI.status !== 'Not Started')) return false;
+      } else if (kf === 'overstage') {
+        if (r.OB_COMPLETE === 'TRUE') return false;
+        if (parseInt(r.TOTAL_DAYS_ELAPSED||0,10) <= 20) return false;
+      }
+      if (sts === 'complete' && r.OB_COMPLETE !== 'TRUE') return false;
+      if (sts === 'active'   && r.OB_COMPLETE === 'TRUE') return false;
       if (q && ![ r.EMP_ID||'', r.EMP_NAME||'', r.DESIGNATION||'' ].some(function(v){ return v.toLowerCase().indexOf(q)>=0; })) return false;
       return true;
     });
+
+    // Filter badge
+    var fb = document.getElementById('ds-kpi-filter-badge');
+    if (fb) {
+      var lmap = { active:'Active 20DS', nsi:'NSI Currently', overstage:'Over-Stage Alerts' };
+      fb.textContent = kf ? ('Filter: ' + (lmap[kf]||kf) + ' ×') : '';
+      fb.style.display = kf ? 'inline-block' : 'none';
+      fb.onclick = function(){ DSAgent._kpiFilter=null; document.querySelectorAll('.ds-kpi-clickable').forEach(function(el){ el.classList.remove('kpi-active'); }); if(fb) fb.style.display='none'; DSAgent.renderTracker(); };
+    }
+
     var cnt = document.getElementById('ds-tracker-cnt');
     if (cnt) cnt.textContent = list.length + ' records';
     var tbody = document.getElementById('ds-tracker-tbody');
@@ -2584,28 +2626,33 @@ var DSAgent = {
     var stepKeys = Object.keys(this.STEPS);
     tbody.innerHTML = list.map(function(r){
       var days = parseInt(r.TOTAL_DAYS_ELAPSED||0,10);
-      var daysColor = days > 20 ? 'var(--ds-red)' : days > 10 ? 'var(--ds-amber)' : 'var(--ds-green)';
+      var isOver = days > 20 && r.OB_COMPLETE !== 'TRUE';
+      var daysColor = isOver ? 'var(--ds-red)' : days > 10 ? 'var(--ds-amber)' : 'var(--ds-green)';
+      var rowStyle  = isOver ? 'background:rgba(255,23,68,.04);' : '';
       var pills = stepKeys.map(function(k){
         var step = r[k] || {status:'Pending'};
         var sc = self._statusClass(step.status||'Pending');
         var lbl = self.STEPS[k].label.substring(0,2).toUpperCase();
-        return '<span class="ds-step-pill '+sc+'" title="'+esc(self.STEPS[k].label)+': '+esc(step.status||'Pending')+'" onclick="DSAgent.openStepModal(\''+esc(r.DS_ID)+'\',\''+k+'\')">'+lbl+'</span>';
+        return '<span class="ds-step-pill '+sc+'" title="'+esc(self.STEPS[k].label)+': '+esc(step.status||'Pending')+'" onclick="DSAgent.openProgressCard(\''+esc(r.DS_ID)+'\')">'+lbl+'</span>';
       }).join('');
       var compBadge = r.OB_COMPLETE==='TRUE'
         ? '<span class="ds-badge complete">&#10003; Done</span>'
-        : '<span class="ds-badge pending">In Progress</span>';
-      return '<tr>'+
+        : isOver
+          ? '<span class="ds-badge problem">&#9888; Over-Stage</span>'
+          : '<span class="ds-badge pending">In Progress</span>';
+      return '<tr style="'+rowStyle+'">'+
         '<td class="mono" style="color:var(--ds-cyan)">'+esc(r.DS_ID||'—')+'</td>'+
         '<td class="mono">'+esc(r.EMP_ID||'—')+'</td>'+
         '<td style="font-weight:700">'+esc(r.EMP_NAME||'—')+'</td>'+
         '<td style="font-size:11px">'+esc(r.DESIGNATION||'—')+'</td>'+
-        '<td style="font-size:11px;color:var(--ds-muted)">'+esc(r.TRANSFER_DATE||'—')+'</td>'+
+        '<td style="font-size:11px;color:var(--ds-muted)">'+esc((r.TRANSFER_DATE||'—').substring(0,10))+'</td>'+
         '<td style="font-size:11px">'+esc(r.RESPONSIBLE_HR||'—')+'</td>'+
-        '<td class="mono" style="color:'+daysColor+'">'+days+'d</td>'+
+        '<td class="mono" style="color:'+daysColor+';font-weight:700">'+days+'d</td>'+
         '<td><div class="ds-steps-row">'+pills+'</div></td>'+
         '<td>'+compBadge+'</td>'+
         '<td><div style="display:flex;gap:4px">'+
-          '<button class="ds-btn cyan sm" onclick="DSAgent.openResponsibleModal(\''+esc(r.DS_ID)+'\')" title="Set Responsible HR">&#128101;</button>'+
+          '<button class="ds-btn cyan sm" onclick="DSAgent.openProgressCard(\''+esc(r.DS_ID)+'\')" title="Progress Card">&#9654;</button>'+
+          '<button class="ds-btn ghost sm" onclick="DSAgent.openResponsibleModal(\''+esc(r.DS_ID)+'\')" title="Set HR">&#128101;</button>'+
           '<button class="ds-btn red sm" onclick="DSAgent.openCancelModal(\''+esc(r.DS_ID)+'\')" title="Cancel">&#10005;</button>'+
         '</div></td>'+
       '</tr>';
@@ -2734,6 +2781,264 @@ var DSAgent = {
     });
   },
 
+  // ── Progress Card Modal ──
+  openProgressCard: function(dsId) {
+    var rec = (APP.dsTracker||[]).find(function(r){ return r.DS_ID === dsId; });
+    if (!rec) { toast('Record not found','error'); return; }
+    var days = parseInt(rec.TOTAL_DAYS_ELAPSED||0,10);
+    var isOver = days > 20 && rec.OB_COMPLETE !== 'TRUE';
+    var pct = Math.min(100, Math.round((days/20)*100));
+
+    var el = document.getElementById('ds-m-progress');
+    if (!el) return;
+    document.getElementById('ds-m-prog-dsid').value = dsId;
+
+    // Header info
+    var setText = function(id, v){ var e=document.getElementById(id); if(e) e.textContent=v||'—'; };
+    setText('ds-m-prog-name',  rec.EMP_NAME);
+    setText('ds-m-prog-id',    rec.EMP_ID);
+    setText('ds-m-prog-desig', rec.DESIGNATION);
+    setText('ds-m-prog-hr',    rec.RESPONSIBLE_HR);
+    setText('ds-m-prog-start', (rec.TRANSFER_DATE||'').substring(0,10));
+
+    // Progress bar
+    var bar = document.getElementById('ds-m-prog-bar-fill');
+    if (bar) {
+      bar.style.width = pct + '%';
+      if (rec.OB_COMPLETE === 'TRUE') {
+        bar.className = 'ds-prog-bar-fill';
+        bar.style.background = 'linear-gradient(90deg, #232840 0%, #448aff 40%, #00e676 100%)';
+      } else if (isOver) {
+        bar.className = 'ds-prog-bar-fill overstage';
+        bar.style.background = 'var(--ds-red)';
+      } else {
+        bar.className = 'ds-prog-bar-fill';
+        var mid = Math.max(20, pct * 0.5);
+        bar.style.background = 'linear-gradient(90deg, #232840 0%, #448aff '+mid+'%, #00e676 100%)';
+      }
+    }
+    var dayLbl = document.getElementById('ds-m-prog-days');
+    if (dayLbl) {
+      if (rec.OB_COMPLETE === 'TRUE') {
+        dayLbl.textContent = 'COMPLETED \u2713';
+        dayLbl.style.color = 'var(--ds-green)';
+      } else if (isOver) {
+        dayLbl.textContent = 'DAY ' + days + ' \u2014 OVER STAGE';
+        dayLbl.style.color = 'var(--ds-red)';
+      } else {
+        dayLbl.textContent = 'DAY ' + days + ' / 20';
+        dayLbl.style.color = days > 10 ? 'var(--ds-amber)' : 'var(--ds-cyan)';
+      }
+    }
+
+    // Blocker section
+    var bs = document.getElementById('ds-m-prog-blocker-section');
+    if (bs) {
+      bs.style.display = isOver ? 'block' : 'none';
+      var bi = document.getElementById('ds-m-prog-blocker');
+      if (bi) bi.value = rec.BLOCKER_REASON || '';
+    }
+
+    this._renderProgressSteps(rec, isOver);
+    el.classList.add('open');
+  },
+
+  _renderProgressSteps: function(rec, isOver) {
+    var self = this;
+    var dsId = rec.DS_ID;
+    var stepKeys = Object.keys(this.STEPS);
+    var container = document.getElementById('ds-m-prog-steps');
+    if (!container) return;
+    container.innerHTML = stepKeys.map(function(k, idx){
+      var def   = self.STEPS[k];
+      var step  = rec[k] || {status:'Pending', start_dt:'', end_dt:'', duration_hours:''};
+      var sc    = self._statusClass(step.status||'Pending');
+      var isStarted  = !!step.start_dt;
+      var isComplete = step.status==='Done' || step.status==='Fit';
+      var slaExceeded = step.duration_hours && parseFloat(step.duration_hours) > def.sla;
+      var slaHtml = isComplete
+        ? (slaExceeded
+            ? '<span style="font-size:10px;color:var(--ds-red)">&#9888; '+step.duration_hours+'h / SLA '+def.sla+'h</span>'
+            : '<span style="font-size:10px;color:var(--ds-green)">&#10003; '+step.duration_hours+'h / SLA '+def.sla+'h</span>')
+        : '<span style="font-size:10px;color:var(--ds-muted)">SLA: '+def.sla+'h</span>';
+      var startInfo = isStarted
+        ? '<span style="font-size:10px;color:var(--ds-muted)">Start: <span class="mono">'+esc((step.start_dt||'').substring(0,10))+'</span></span>'
+        : '';
+      var endInfo = isComplete && step.end_dt
+        ? '<span style="font-size:10px;color:var(--ds-muted)">End: <span class="mono">'+esc((step.end_dt||'').substring(0,10))+'</span></span>'
+        : '';
+      var startBtn = (!isStarted && !isComplete)
+        ? '<button class="ds-btn green sm" onclick="DSAgent._progStart(\''+dsId+'\',\''+k+'\')">&#9654; Start</button>'
+        : '';
+      var completeBtn = (isStarted && !isComplete)
+        ? '<button class="ds-btn cyan sm" onclick="DSAgent._progComplete(\''+dsId+'\',\''+k+'\')">&#10003; Complete</button>'
+        : '';
+      var editBtn = '<button class="ds-btn ghost sm" onclick="DSAgent.openStepModal(\''+dsId+'\',\''+k+'\')" title="Edit step details">&#9998;</button>';
+      var stateClass = isComplete ? 'done' : (isStarted ? 'active' : '');
+      return '<div class="ds-prog-step '+stateClass+'">'+
+        '<div class="ds-prog-step-hdr">'+
+          '<div class="ds-prog-step-num">'+(idx+1)+'</div>'+
+          '<div style="flex:1;min-width:0">'+
+            '<div style="font-size:12px;font-weight:700;color:var(--ds-text)">'+esc(def.label)+'</div>'+
+            '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:2px">'+slaHtml+startInfo+endInfo+'</div>'+
+          '</div>'+
+          '<span class="ds-badge '+sc+'" style="flex-shrink:0">'+esc(step.status||'Pending')+'</span>'+
+        '</div>'+
+        '<div class="ds-prog-step-actions">'+startBtn+completeBtn+editBtn+'</div>'+
+      '</div>';
+    }).join('');
+  },
+
+  _progStart: function(dsId, stepKey) {
+    var rec = (APP.dsTracker||[]).find(function(r){ return r.DS_ID===dsId; });
+    var days = rec ? parseInt(rec.TOTAL_DAYS_ELAPSED||0,10) : 0;
+    var blocker = '';
+    if (days > 20) {
+      blocker = ((document.getElementById('ds-m-prog-blocker')||{}).value||'').trim();
+      if (!blocker) { toast('Blocker Reason is required for Over-Stage records','error'); var bi=document.getElementById('ds-m-prog-blocker'); if(bi) bi.focus(); return; }
+    }
+    var self = this;
+    toast('Recording start timestamp...','info');
+    GAS.startDSStep(dsId, stepKey, blocker, function(r){
+      if (!r||!r.success) {
+        if (r && r.error === 'BLOCKER_REQUIRED') { toast('Blocker Reason is required for Over-Stage records','error'); return; }
+        toast('Error: '+(r?r.error:'Unknown'),'error'); return;
+      }
+      if (rec) {
+        if (!rec[stepKey]) rec[stepKey] = {status:'Pending'};
+        rec[stepKey].start_dt = r.start_dt || '';
+        rec[stepKey].status   = 'Pending';
+      }
+      toast('Step started \u2014 ' + (r.start_dt||''), 'success');
+      self._renderProgressSteps(rec, days>20);
+    });
+  },
+
+  _progComplete: function(dsId, stepKey) {
+    var rec = (APP.dsTracker||[]).find(function(r){ return r.DS_ID===dsId; });
+    var days = rec ? parseInt(rec.TOTAL_DAYS_ELAPSED||0,10) : 0;
+    var blocker = '';
+    if (days > 20) {
+      blocker = ((document.getElementById('ds-m-prog-blocker')||{}).value||'').trim();
+      if (!blocker) { toast('Blocker Reason is required for Over-Stage records','error'); var bi=document.getElementById('ds-m-prog-blocker'); if(bi) bi.focus(); return; }
+    }
+    var self = this;
+    toast('Recording completion...','info');
+    GAS.completeDSStep(dsId, stepKey, '', blocker, function(r){
+      if (!r||!r.success) {
+        if (r && r.error === 'BLOCKER_REQUIRED') { toast('Blocker Reason is required for Over-Stage records','error'); return; }
+        toast('Error: '+(r?r.error:'Unknown'),'error'); return;
+      }
+      if (rec) {
+        if (!rec[stepKey]) rec[stepKey] = {};
+        rec[stepKey].end_dt         = r.end_dt || '';
+        rec[stepKey].duration_hours = r.duration_hours || '';
+        rec[stepKey].status         = (stepKey==='STEP_MEDICAL') ? 'Fit' : 'Done';
+      }
+      // Auto-check if all done
+      var stepKeys = Object.keys(self.STEPS);
+      var allDone = stepKeys.every(function(k){
+        var s = (rec[k]&&rec[k].status)||'Pending';
+        return s==='Done'||s==='Fit';
+      });
+      if (allDone && rec) {
+        rec.OB_COMPLETE = 'TRUE';
+        var dayLbl = document.getElementById('ds-m-prog-days');
+        if (dayLbl) { dayLbl.textContent = 'COMPLETED \u2713'; dayLbl.style.color = 'var(--ds-green)'; }
+        var bar = document.getElementById('ds-m-prog-bar-fill');
+        if (bar) { bar.style.width='100%'; bar.style.background='linear-gradient(90deg,#232840 0%,#448aff 40%,#00e676 100%)'; bar.className='ds-prog-bar-fill'; }
+        toast('Onboarding COMPLETED!', 'success');
+      } else {
+        toast('Step completed \u2014 ' + (r.duration_hours?r.duration_hours+'h':''), 'success');
+      }
+      self._renderProgressSteps(rec, days>20 && !allDone);
+      self.renderBadge();
+    });
+  },
+
+  closeProgressCard: function() {
+    document.getElementById('ds-m-progress').classList.remove('open');
+    this.render();
+  },
+
+  // ── Analytics Tab ──
+  renderAnalytics: function() {
+    var el = document.getElementById('ds-tab-analytics');
+    if (!el) return;
+    el.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;padding:60px;color:var(--ds-muted)"><div style="text-align:center"><div style="font-size:28px;margin-bottom:12px;opacity:.4">&#128200;</div>Loading analytics\u2026</div></div>';
+    GAS.get20DSAnalytics(function(r){
+      if (!r||!r.success) { el.innerHTML = '<div class="ds-empty"><div class="ds-empty-icon">&#9888;</div>Could not load analytics.</div>'; return; }
+      DSAgent._drawAnalytics(r, el);
+    });
+  },
+
+  _drawAnalytics: function(r, el) {
+    // Work Speed Report table
+    var hrRows = (r.hrReport||[]).map(function(h){
+      var total = h.completed + h.overStage;
+      var osRate = total > 0 ? Math.round((h.overStage/total)*100) : 0;
+      var rateColor = osRate > 30 ? 'var(--ds-red)' : osRate > 10 ? 'var(--ds-amber)' : 'var(--ds-green)';
+      return '<tr>'+
+        '<td style="font-weight:600">'+esc(h.name)+'</td>'+
+        '<td class="mono" style="color:var(--ds-cyan)">'+h.avgHours+'h</td>'+
+        '<td class="mono">'+h.completed+'</td>'+
+        '<td class="mono" style="color:'+rateColor+'">'+osRate+'%</td>'+
+      '</tr>';
+    }).join('') || '<tr><td colspan="4" class="ds-empty">No HR data yet.</td></tr>';
+
+    // Bottleneck heatmap bars
+    var maxH = 1;
+    (r.bottleneck||[]).forEach(function(b){ if(b.avgHours>maxH) maxH=b.avgHours; });
+    var bBars = (r.bottleneck||[]).map(function(b){
+      var pct   = maxH > 0 ? Math.round((b.avgHours/maxH)*100) : 0;
+      var color = b.avgHours > b.sla ? 'var(--ds-red)' : b.avgHours > b.sla*0.7 ? 'var(--ds-amber)' : 'var(--ds-green)';
+      return '<div style="margin-bottom:14px">'+
+        '<div style="display:flex;justify-content:space-between;margin-bottom:4px">'+
+          '<span style="font-size:11px;font-weight:600">'+esc(b.label)+'</span>'+
+          '<span class="mono" style="font-size:11px;color:'+color+'">'+b.avgHours+'h <span style="color:var(--ds-muted)">/ SLA '+b.sla+'h</span></span>'+
+        '</div>'+
+        '<div style="height:14px;background:var(--ds-border);border-radius:7px;overflow:hidden">'+
+          '<div style="height:100%;width:'+pct+'%;background:'+color+';border-radius:7px;transition:width .5s ease"></div>'+
+        '</div>'+
+        '<div style="font-size:10px;color:var(--ds-muted);margin-top:3px">'+b.count+' records &nbsp;|&nbsp; '+b.overSLA+' over SLA</div>'+
+      '</div>';
+    }).join('') || '<div class="ds-empty">No step duration data yet.</div>';
+
+    // Idle time table
+    var idleRows = (r.idleTime||[]).map(function(g){
+      var color = g.avgIdleHours > 24 ? 'var(--ds-red)' : g.avgIdleHours > 8 ? 'var(--ds-amber)' : 'var(--ds-green)';
+      return '<tr>'+
+        '<td style="font-size:11px;color:var(--ds-muted)">'+esc(g.label)+'</td>'+
+        '<td class="mono" style="color:'+color+'">'+g.avgIdleHours+'h</td>'+
+        '<td class="mono" style="color:var(--ds-muted)">'+g.count+'</td>'+
+      '</tr>';
+    }).join('') || '<tr><td colspan="3" class="ds-empty">No idle time data yet.</td></tr>';
+
+    el.innerHTML =
+      '<div style="padding:20px 24px">'+
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">'+
+        '<div class="ds-table-card">'+
+          '<div class="ds-table-hdr"><span class="ds-table-hdr-title">&#128200; Work Speed Report</span></div>'+
+          '<div class="ds-tbl-wrap"><table class="ds-tbl">'+
+            '<thead><tr><th>Responsible HR</th><th>Avg Processing</th><th>Steps Done</th><th>Over-Stage %</th></tr></thead>'+
+            '<tbody>'+hrRows+'</tbody>'+
+          '</table></div>'+
+        '</div>'+
+        '<div class="ds-table-card">'+
+          '<div class="ds-table-hdr"><span class="ds-table-hdr-title">&#9201; Idle Time Between Steps</span></div>'+
+          '<div class="ds-tbl-wrap"><table class="ds-tbl">'+
+            '<thead><tr><th>Transition</th><th>Avg Idle</th><th>Samples</th></tr></thead>'+
+            '<tbody>'+idleRows+'</tbody>'+
+          '</table></div>'+
+        '</div>'+
+      '</div>'+
+      '<div class="ds-table-card">'+
+        '<div class="ds-table-hdr"><span class="ds-table-hdr-title">&#128293; Bottleneck Heatmap \u2014 Avg Duration Per Step vs SLA</span></div>'+
+        '<div style="padding:16px 20px">'+bBars+'</div>'+
+      '</div>'+
+      '</div>';
+  },
+
   // ── Step Modal ──
   openStepModal: function(dsId, stepKey) {
     var rec = (APP.dsTracker||[]).find(function(r){ return r.DS_ID === dsId; });
@@ -2797,6 +3102,12 @@ var DSAgent = {
     var reasonRow = document.getElementById('ds-m-step-reason-row');
     var needsReason = ['Problem','Unfit','Pending'].indexOf(status) >= 0;
     if (reasonRow) reasonRow.style.display = needsReason ? 'block' : 'none';
+    // Show blocker row if record is over-stage
+    var dsId = (document.getElementById('ds-m-step-dsid')||{}).value || '';
+    var rec  = dsId ? (APP.dsTracker||[]).find(function(r){ return r.DS_ID===dsId; }) : null;
+    var days = rec ? parseInt(rec.TOTAL_DAYS_ELAPSED||0,10) : 0;
+    var br = document.getElementById('ds-m-step-blocker-row');
+    if (br) br.style.display = (days > 20) ? 'block' : 'none';
   },
 
   closeStepModal: function() {
@@ -2819,19 +3130,33 @@ var DSAgent = {
     var nsiDateEl = document.getElementById('ds-m-nsi-training-date');
     if (stepKey === 'STEP_NSI' && nsiDateEl) substeps.training_date = nsiDateEl.value;
 
+    // Over-stage blocker gate
+    var rec2 = (APP.dsTracker||[]).find(function(x){ return x.DS_ID===dsId; });
+    var days2 = rec2 ? parseInt(rec2.TOTAL_DAYS_ELAPSED||0,10) : 0;
+    var blockerVal = ((document.getElementById('ds-m-step-blocker')||{}).value||'').trim();
+    if (days2 > 20 && !blockerVal) {
+      toast('This record is Over-Stage — Blocker Reason is required before saving.','error');
+      var be = document.getElementById('ds-m-step-blocker'); if(be) be.focus();
+      return;
+    }
+
     var stepData = {
-      status:       status,
-      responsible:  document.getElementById('ds-m-step-responsible').value.trim(),
-      substeps:     substeps,
-      start_date:   document.getElementById('ds-m-step-start').value,
-      complete_date:document.getElementById('ds-m-step-complete').value,
-      notes:        document.getElementById('ds-m-step-notes').value.trim(),
-      reason:       document.getElementById('ds-m-step-reason').value.trim()
+      status:        status,
+      responsible:   document.getElementById('ds-m-step-responsible').value.trim(),
+      substeps:      substeps,
+      start_date:    document.getElementById('ds-m-step-start').value,
+      complete_date: document.getElementById('ds-m-step-complete').value,
+      notes:         document.getElementById('ds-m-step-notes').value.trim(),
+      reason:        document.getElementById('ds-m-step-reason').value.trim(),
+      blocker_reason: blockerVal
     };
 
     var self = this;
     GAS.update20DSStep(dsId, stepKey, stepData, function(r){
-      if (!r||!r.success) { toast('Error: '+(r?r.error:'Unknown'),'error'); return; }
+      if (!r||!r.success) {
+        if (r && r.error === 'BLOCKER_REQUIRED') { toast('This record is Over-Stage — a Blocker Reason is required.','error'); return; }
+        toast('Error: '+(r?r.error:'Unknown'),'error'); return;
+      }
       // Update local state
       var rec = (APP.dsTracker||[]).find(function(x){ return x.DS_ID===dsId; });
       if (rec) {
