@@ -455,6 +455,98 @@
 /* ── Audit log row ── */
 .ds-audit-row td { font-size: 11px; }
 
+/* ── Clickable KPI Cards ── */
+.ds-kpi-clickable {
+  cursor: pointer;
+  transition: transform .18s, box-shadow .18s, border-color .18s;
+}
+.ds-kpi-clickable:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0,0,0,.4);
+  border-color: rgba(0,229,255,.25);
+}
+.ds-kpi-clickable.kpi-active { box-shadow: 0 0 0 2px var(--ds-cyan),   0 6px 20px rgba(0,229,255,.2); }
+.ds-kpi-clickable.red.kpi-active    { box-shadow: 0 0 0 2px var(--ds-red),   0 6px 20px rgba(255,23,68,.2); }
+.ds-kpi-clickable.green.kpi-active  { box-shadow: 0 0 0 2px var(--ds-green), 0 6px 20px rgba(0,230,118,.2); }
+.ds-kpi-clickable.purple.kpi-active { box-shadow: 0 0 0 2px var(--ds-purple),0 6px 20px rgba(206,147,216,.2); }
+
+/* ── KPI Filter Badge ── */
+.ds-kpi-filter-badge {
+  display: none;
+  padding: 4px 10px;
+  background: rgba(0,229,255,.1);
+  border: 1px solid rgba(0,229,255,.3);
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ds-cyan);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+.ds-kpi-filter-badge:hover { background: rgba(0,229,255,.18); }
+
+/* ── Progress Card Bar ── */
+.ds-prog-bar-wrap {
+  height: 10px;
+  background: var(--ds-border);
+  border-radius: 5px;
+  overflow: hidden;
+  margin: 10px 0 4px;
+}
+.ds-prog-bar-fill {
+  height: 100%;
+  border-radius: 5px;
+  transition: width .5s ease, background .4s;
+}
+@keyframes pulseBad { 0%,100%{opacity:1} 50%{opacity:.45} }
+.ds-prog-bar-fill.overstage { animation: pulseBad 1.2s ease-in-out infinite; }
+
+/* ── Progress Steps ── */
+.ds-prog-step {
+  padding: 12px 14px;
+  background: rgba(255,255,255,.025);
+  border: 1px solid var(--ds-border);
+  border-radius: 8px;
+  margin-bottom: 8px;
+  transition: border-color .15s, background .15s;
+}
+.ds-prog-step.active { border-color: rgba(255,193,7,.4);  background: rgba(255,193,7,.04); }
+.ds-prog-step.done   { border-color: rgba(0,230,118,.3);  background: rgba(0,230,118,.04); }
+.ds-prog-step-hdr {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.ds-prog-step-num {
+  width: 26px; height: 26px;
+  border-radius: 50%;
+  background: var(--ds-border);
+  color: var(--ds-muted);
+  font-size: 11px; font-weight: 800;
+  font-family: var(--ds-mono);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  transition: background .15s, color .15s;
+}
+.ds-prog-step.active .ds-prog-step-num { background: rgba(255,193,7,.2);  color: var(--ds-amber); }
+.ds-prog-step.done   .ds-prog-step-num { background: rgba(0,230,118,.2);  color: var(--ds-green); }
+.ds-prog-step-actions { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+
+/* ── Blocker Banner ── */
+.ds-blocker-banner {
+  background: rgba(255,23,68,.07);
+  border: 1px solid rgba(255,23,68,.35);
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+}
+.ds-blocker-banner-title {
+  font-size: 10px; font-weight: 700;
+  letter-spacing: .08em; text-transform: uppercase;
+  color: var(--ds-red); margin-bottom: 6px;
+}
+
 /* ── Responsive ── */
 @media (max-width: 700px) {
   .ds-fgrid { grid-template-columns: 1fr; }
@@ -483,32 +575,35 @@
     <div class="ds-tab"       data-dstab="delayed"     onclick="DSAgent.switchTab('delayed')">Delayed</div>
     <div class="ds-tab"       data-dstab="cancelled"   onclick="DSAgent.switchTab('cancelled')">Cancelled</div>
     <div class="ds-tab"       data-dstab="audit"       onclick="DSAgent.switchTab('audit')">Audit Log</div>
+    <div class="ds-tab"       data-dstab="analytics"   onclick="DSAgent.switchTab('analytics')">&#128200; Analytics</div>
   </div>
 
   <!-- ──────────────────── SUMMARY TAB ──────────────────── -->
   <div class="ds-content" id="ds-tab-summary">
     <div class="ds-kpi-bar" id="ds-kpi-bar">
-      <div class="ds-kpi cyan">
-        <div class="ds-kpi-val" id="ds-kpi-total">—</div>
-        <div class="ds-kpi-lbl">Total Active</div>
+      <div class="ds-kpi cyan ds-kpi-clickable" data-kpi="active" onclick="DSAgent.filterByKPI('active')" title="Click to filter Active 20DS employees">
+        <div class="ds-kpi-val" id="ds-kpi-active20ds">—</div>
+        <div class="ds-kpi-lbl">Active 20DS</div>
       </div>
-      <div class="ds-kpi green">
-        <div class="ds-kpi-val" id="ds-kpi-complete">—</div>
-        <div class="ds-kpi-lbl">Completed</div>
+      <div class="ds-kpi green ds-kpi-clickable" data-kpi="nsi" onclick="DSAgent.filterByKPI('nsi')" title="Click to filter employees currently in NSI Training">
+        <div class="ds-kpi-val" id="ds-kpi-nsi">—</div>
+        <div class="ds-kpi-lbl">NSI Currently</div>
       </div>
-      <div class="ds-kpi amber">
-        <div class="ds-kpi-val" id="ds-kpi-inprogress">—</div>
-        <div class="ds-kpi-lbl">In Progress</div>
+      <div class="ds-kpi red ds-kpi-clickable" data-kpi="overstage" onclick="DSAgent.filterByKPI('overstage')" title="Click to filter Over-Stage employees (&gt;20 days)">
+        <div class="ds-kpi-val" id="ds-kpi-overstage">—</div>
+        <div class="ds-kpi-lbl">Over-Stage Alerts</div>
       </div>
-      <div class="ds-kpi red">
-        <div class="ds-kpi-val" id="ds-kpi-delayed">—</div>
-        <div class="ds-kpi-lbl">Delayed (&gt;20d)</div>
-      </div>
-      <div class="ds-kpi purple">
-        <div class="ds-kpi-val" id="ds-kpi-cancelled">—</div>
-        <div class="ds-kpi-lbl">Cancelled</div>
+      <div class="ds-kpi purple ds-kpi-clickable" data-kpi="analytics" onclick="DSAgent.filterByKPI('analytics')" title="Click to open Analytics &amp; Performance Report">
+        <div class="ds-kpi-val" id="ds-kpi-avgspeed">—</div>
+        <div class="ds-kpi-lbl">Avg Completion Speed</div>
       </div>
     </div>
+    <!-- hidden legacy ids kept for backward compat with renderSummary() -->
+    <span id="ds-kpi-total"      style="display:none"></span>
+    <span id="ds-kpi-complete"   style="display:none"></span>
+    <span id="ds-kpi-inprogress" style="display:none"></span>
+    <span id="ds-kpi-delayed"    style="display:none"></span>
+    <span id="ds-kpi-cancelled"  style="display:none"></span>
 
     <!-- Step completion summary -->
     <div class="ds-table-card">
@@ -547,6 +642,7 @@
         <option value="active">Active</option>
         <option value="complete">Completed</option>
       </select>
+      <span class="ds-kpi-filter-badge" id="ds-kpi-filter-badge"></span>
     </div>
     <div class="ds-table-card">
       <div class="ds-table-hdr">
@@ -694,7 +790,78 @@
     </div>
   </div>
 
+  <!-- ──────────────────── ANALYTICS TAB ──────────────────── -->
+  <div id="ds-tab-analytics" style="display:none">
+    <!-- populated dynamically by DSAgent._drawAnalytics() -->
+  </div>
+
 </div><!-- /#view-20dstracker -->
+
+<!-- ──────────────────── PROGRESS CARD MODAL ──────────────────── -->
+<div class="ds-modal-overlay" id="ds-m-progress">
+  <div class="ds-modal" style="width:620px">
+    <div class="ds-modal-hdr">
+      <span class="ds-modal-title">&#9654; Individual Progress Card</span>
+      <button class="ds-modal-close" onclick="DSAgent.closeProgressCard()">&#10005;</button>
+    </div>
+    <div class="ds-modal-body">
+      <input type="hidden" id="ds-m-prog-dsid">
+
+      <!-- Employee Info Row -->
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px">
+        <div>
+          <div class="ds-flabel">Employee Name</div>
+          <div style="font-size:13px;font-weight:700;color:var(--ds-text);margin-top:3px" id="ds-m-prog-name">—</div>
+        </div>
+        <div>
+          <div class="ds-flabel">Emp ID</div>
+          <div style="font-size:12px;font-family:var(--ds-mono);color:var(--ds-cyan);margin-top:3px" id="ds-m-prog-id">—</div>
+        </div>
+        <div>
+          <div class="ds-flabel">Designation</div>
+          <div style="font-size:12px;color:var(--ds-text);margin-top:3px" id="ds-m-prog-desig">—</div>
+        </div>
+        <div>
+          <div class="ds-flabel">Responsible HR</div>
+          <div style="font-size:12px;color:var(--ds-text);margin-top:3px" id="ds-m-prog-hr">—</div>
+        </div>
+        <div>
+          <div class="ds-flabel">Transfer Date</div>
+          <div style="font-size:12px;font-family:var(--ds-mono);color:var(--ds-muted);margin-top:3px" id="ds-m-prog-start">—</div>
+        </div>
+      </div>
+
+      <!-- Gradient Progress Bar -->
+      <div class="ds-prog-bar-wrap">
+        <div class="ds-prog-bar-fill" id="ds-m-prog-bar-fill" style="width:0%"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:14px">
+        <span style="font-size:10px;color:var(--ds-muted)">Day 0</span>
+        <span style="font-size:11px;font-weight:700;font-family:var(--ds-mono)" id="ds-m-prog-days">DAY 0 / 20</span>
+        <span style="font-size:10px;color:var(--ds-muted)">Day 20</span>
+      </div>
+
+      <!-- Over-Stage Blocker Section -->
+      <div id="ds-m-prog-blocker-section" style="display:none">
+        <div class="ds-blocker-banner">
+          <div class="ds-blocker-banner-title">&#9888; Over-Stage — Blocker Reason Required</div>
+          <div class="ds-fg">
+            <label class="ds-flabel">Blocker Reason <span style="color:var(--ds-red)">*</span></label>
+            <input type="text" class="ds-fi" id="ds-m-prog-blocker"
+              placeholder="State why this onboarding has exceeded 20 days…"
+              style="border-color:rgba(255,23,68,.4);background:rgba(255,23,68,.04)">
+          </div>
+        </div>
+      </div>
+
+      <!-- Step-by-step list (populated by _renderProgressSteps) -->
+      <div id="ds-m-prog-steps"></div>
+    </div>
+    <div class="ds-modal-ftr">
+      <button class="ds-btn ghost" onclick="DSAgent.closeProgressCard()">Close</button>
+    </div>
+  </div>
+</div>
 
 <!-- ──────────────────── STEP EDITOR MODAL ──────────────────── -->
 <div class="ds-modal-overlay" id="ds-m-step">
@@ -728,6 +895,17 @@
         <label class="ds-flabel">Reason</label>
         <input type="text" class="ds-fi" id="ds-m-step-reason" placeholder="Reason / details">
       </div>
+      <!-- Over-Stage Blocker gate — shown when record is >20 days -->
+      <div class="ds-fg" id="ds-m-step-blocker-row" style="margin-bottom:12px;display:none">
+        <label class="ds-flabel" style="color:var(--ds-red)">
+          Blocker Reason <span>*</span>
+          <span style="font-size:9px;font-weight:400;text-transform:none;letter-spacing:0;margin-left:6px">Required — this record is Over-Stage (&gt;20 days)</span>
+        </label>
+        <input type="text" class="ds-fi" id="ds-m-step-blocker"
+          placeholder="State the reason this onboarding has exceeded 20 days…"
+          style="border-color:rgba(255,23,68,.4);background:rgba(255,23,68,.04)">
+      </div>
+
       <div class="ds-fg" style="margin-bottom:14px">
         <label class="ds-flabel">Notes</label>
         <textarea class="ds-fta" id="ds-m-step-notes" placeholder="Additional notes…"></textarea>
