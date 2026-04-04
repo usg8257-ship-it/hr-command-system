@@ -676,11 +676,11 @@ var EmpAgent={
         '<td><span class="pph" title="PP: '+esc(r['PASSPORT NO']||'N/A')+'">'+id+'</span></td>'+
         '<td style="font-weight:600">'+nm.substring(0,26)+(nm.length>26?'&hellip;':'')+'</td>'+
         '<td>'+licB(r['LIC AUTH']||'NIL')+'</td>'+
-        '<td class="eid-cell" id="eid-cell-'+id+'"><span id="eid-text-'+id+'" style="cursor:pointer" title="Click to edit" onclick="EmpAgent.editEID(\''+id+'\')">'+esc(r['EID NO']||'—')+'</span></td>'+
+        '<td class="eid-cell" id="eid-cell-'+id+'"><span id="eid-text-'+id+'" '+(isReadOnly()?'':'style="cursor:pointer" title="Click to edit" onclick="EmpAgent.editEID(\''+id+'\')"')+'>'+esc(r['EID NO']||'—')+'</span></td>'+
         '<td><div class="act-btns">'+
           '<button class="btn btn-secondary btn-icon btn-sm" data-action="view-emp" data-id="'+id+'" title="View Details">&#128100;</button>'+
-          '<button class="btn btn-secondary btn-icon btn-sm" data-action="edit-emp" data-id="'+id+'" title="Edit">&#9998;</button>'+
-          '<button class="btn btn-danger btn-icon btn-sm" data-action="del-emp" data-id="'+id+'" data-name="'+nm+'" title="Delete">&#128465;</button>'+
+          (!isReadOnly() ? '<button class="btn btn-secondary btn-icon btn-sm" data-action="edit-emp" data-id="'+id+'" title="Edit">&#9998;</button>' : '')+
+          (!isReadOnly() ? '<button class="btn btn-danger btn-icon btn-sm" data-action="del-emp" data-id="'+id+'" data-name="'+nm+'" title="Delete">&#128465;</button>' : '')+
         '</div></td></tr>';
     };
     // Active table row (9 cols)
@@ -697,8 +697,8 @@ var EmpAgent={
         '<td class="eid-cell" id="eid-cell2-'+id+'"><span style="font-family:monospace;font-size:11px">'+esc(r['EID NO']||'—')+'</span></td>'+
         '<td><div class="act-btns">'+
           '<button class="btn btn-secondary btn-icon btn-sm" data-action="view-emp" data-id="'+id+'" title="View Details">&#128100;</button>'+
-          '<button class="btn btn-secondary btn-icon btn-sm" data-action="edit-emp" data-id="'+id+'" title="Edit">&#9998;</button>'+
-          '<button class="btn btn-danger btn-icon btn-sm" data-action="del-emp" data-id="'+id+'" data-name="'+nm+'" title="Delete">&#128465;</button>'+
+          (!isReadOnly() ? '<button class="btn btn-secondary btn-icon btn-sm" data-action="edit-emp" data-id="'+id+'" title="Edit">&#9998;</button>' : '')+
+          (!isReadOnly() ? '<button class="btn btn-danger btn-icon btn-sm" data-action="del-emp" data-id="'+id+'" data-name="'+nm+'" title="Delete">&#128465;</button>' : '')+
         '</div></td></tr>';
     };
     var emptyM='<tr><td colspan="6" style="text-align:center;padding:32px;color:var(--muted)">No records found.</td></tr>';
@@ -922,11 +922,12 @@ var OBAgent={
     var tB=function(t){ return t==='PSBD'?'<span class="badge bp">PSBD</span>':'<span class="badge bs">SIRA</span>'; };
     tb.innerHTML=list.map(function(r){
       var obid=esc(r.OB_ID||''), nm=esc(r.FULL_NAME||'—');
-      var canAct=r.STATUS==='Pending';
+      var canAct=r.STATUS==='Pending' && !isReadOnly();
       var trBtn=canAct?'<button class="btn btn-primary btn-sm" data-action="transfer" data-obid="'+obid+'" data-name="'+nm+'" title="Transfer to Master">&rarr;</button>':'';
       var olBtn=canAct?'<button class="btn btn-gold btn-sm" data-action="gen-ol" data-obid="'+obid+'" data-name="'+nm+'" data-type="'+esc(r.POSITION_TYPE||'PSBD')+'" data-pp="'+esc(r.PASSPORT_NO||'')+'" title="Generate Offer Letter">&#128196;</button>':'';
       var assignedTo=esc(r.ASSIGNED_TO||'—');
-      return '<tr><td style="font-family:monospace;font-size:10px;color:var(--gold)">'+esc(r.OB_ID||'—')+'</td><td style="font-weight:600">'+nm+'</td><td style="font-family:monospace;font-size:10.5px">'+esc(r.PASSPORT_NO||'—')+'</td><td>'+tB(r.POSITION_TYPE)+'</td><td style="font-size:11px">'+esc(r.MOBILE||'—')+'</td><td style="font-size:11px">'+esc(r.VISA_STATUS||'—')+'</td><td style="font-size:11px">'+fmtD(r.EXP_JOIN_DATE||'—')+'</td><td style="font-size:10px;color:var(--muted)">'+fmtD(r.DATE_ADDED||'—')+'</td><td>'+sB(r.STATUS)+'</td><td style="font-size:11px;color:var(--muted)">'+assignedTo+'</td><td><div class="act-btns">'+trBtn+olBtn+'<button class="btn btn-secondary btn-icon btn-sm" data-action="edit-ob" data-obid="'+obid+'" title="Edit">&#9998;</button><button class="btn btn-danger btn-icon btn-sm" data-action="cancel-ob" data-obid="'+obid+'" title="Cancel">&#10005;</button></div></td></tr>';
+      var actBtns=isReadOnly()?'':('<button class="btn btn-secondary btn-icon btn-sm" data-action="edit-ob" data-obid="'+obid+'" title="Edit">&#9998;</button><button class="btn btn-danger btn-icon btn-sm" data-action="cancel-ob" data-obid="'+obid+'" title="Cancel">&#10005;</button>');
+      return '<tr><td style="font-family:monospace;font-size:10px;color:var(--gold)">'+esc(r.OB_ID||'—')+'</td><td style="font-weight:600">'+nm+'</td><td style="font-family:monospace;font-size:10.5px">'+esc(r.PASSPORT_NO||'—')+'</td><td>'+tB(r.POSITION_TYPE)+'</td><td style="font-size:11px">'+esc(r.MOBILE||'—')+'</td><td style="font-size:11px">'+esc(r.VISA_STATUS||'—')+'</td><td style="font-size:11px">'+fmtD(r.EXP_JOIN_DATE||'—')+'</td><td style="font-size:10px;color:var(--muted)">'+fmtD(r.DATE_ADDED||'—')+'</td><td>'+sB(r.STATUS)+'</td><td style="font-size:11px;color:var(--muted)">'+assignedTo+'</td><td><div class="act-btns">'+trBtn+olBtn+actBtns+'</div></td></tr>';
     }).join('');
   },
   resetF:function(){
@@ -2159,21 +2160,21 @@ var UserMgmtAgent = {
     // STAFF = renamed from VIEWER (read-only role)
     var roleLabels = {'SUPER_ADMIN':'Super Admin','HR_OFFICER':'HR Officer','ENTITY_MANAGER':'Entity Mgr','STAFF':'Staff','EMPLOYEE':'Employee'};
     var sections = [
-      { title: '&#128218; Modules', rows: [
+      { title: '&#128218; Modules (&#128100; = view-only for Staff)', rows: [
         {label:'Dashboard',          access:['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER','STAFF']},
-        {label:'Master Data',        access:['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER','STAFF']},
+        {label:'Onboarding',         access:['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER','STAFF']},
+        {label:'Progress Tracker',   access:['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER','STAFF']},
         {label:'Active Manpower',    access:['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER','STAFF']},
-        {label:'Resignations',       access:['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER','STAFF']},
-        {label:'Onboarding',         access:['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER']},
-        {label:'Progress Tracker',   access:['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER']},
+        {label:'Recent Resignations',access:['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER']},
+        {label:'Master Data',        access:['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER']},
         {label:'Letter Generator',   access:['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER']},
-        {label:'Leave',              access:['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER','STAFF']},
+        {label:'Leave',              access:['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER']},
         {label:'Recruitment',        access:['SUPER_ADMIN','HR_OFFICER']},
-        {label:'Reports',            access:['SUPER_ADMIN','HR_OFFICER']},
+        {label:'Monthly Report',     access:['SUPER_ADMIN','HR_OFFICER']},
         {label:'Activity Logs',      access:['SUPER_ADMIN','HR_OFFICER']},
-        {label:'User Management',    access:['SUPER_ADMIN']},
+        {label:'User Management',    access:['SUPER_ADMIN','HR_OFFICER']},
         {label:'System Setup',       access:['SUPER_ADMIN']},
-        {label:'Self Service',       access:['EMPLOYEE']},
+        {label:'My Profile',         access:['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER','STAFF','EMPLOYEE']},
       ]},
       { title: '&#128296; Actions', rows: [
         {label:'Add Employee',       access:['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER']},
@@ -2340,31 +2341,53 @@ var AgentManager={
 // ============================================================
 function renderNav() {
   var role = APP.user ? APP.user.role : 'NONE';
+
+  // Full access rules — who can navigate to & use this view
   var rules = {
-    // SUPER_ADMIN — everything
-    // HR_OFFICER  — everything except Setup
-    // ENTITY_MANAGER — operational modules only
-    // STAFF       — view/search only (ticked by admin)
-    // EMPLOYEE    — self-service only
     'dashboard':    ['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER','STAFF'],
-    'onboarding':   ['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER'],
-    '20dstracker':  ['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER'],
+    'onboarding':   ['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER','STAFF'],
+    '20dstracker':  ['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER','STAFF'],
     'employees':    ['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER','STAFF'],
-    'resignations': ['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER','STAFF'],
-    'masterdata':   ['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER','STAFF'],
+    'resignations': ['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER'],
+    'masterdata':   ['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER'],
     'letters':      ['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER'],
-    'leave':        ['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER','STAFF'],
+    'leave':        ['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER'],
     'recruitment':  ['SUPER_ADMIN','HR_OFFICER'],
     'reports':      ['SUPER_ADMIN','HR_OFFICER'],
     'logs':         ['SUPER_ADMIN','HR_OFFICER'],
     'users':        ['SUPER_ADMIN','HR_OFFICER'],
-    'setup':        ['SUPER_ADMIN'],              // HR_OFFICER excluded
+    'setup':        ['SUPER_ADMIN'],
     'self-service': ['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER','STAFF','EMPLOYEE']
   };
+
+  // Sidebar visibility: who sees the item at all (show to more roles, just lock it)
+  // EMPLOYEE sees only self-service; everyone else sees full sidebar (some items locked)
+  var alwaysHide = {
+    'self-service': ['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER','STAFF'], // already in nav
+  };
+
   document.querySelectorAll('.sb-item[data-view]').forEach(function(item) {
     var view = item.dataset.view;
     var allowed = rules[view] || [];
-    item.style.display = (allowed.indexOf(role) >= 0) ? '' : 'none';
+    var canAccess = allowed.indexOf(role) >= 0;
+
+    if (role === 'EMPLOYEE') {
+      // Employee sees only self-service
+      item.style.display = (view === 'self-service') ? '' : 'none';
+      item.classList.remove('sb-locked');
+    } else if (role === 'STAFF') {
+      // STAFF: show all items, lock the ones they can't access
+      item.style.display = '';
+      if (canAccess) {
+        item.classList.remove('sb-locked');
+      } else {
+        item.classList.add('sb-locked');
+      }
+    } else {
+      // All other roles: hide items they have no access to
+      item.style.display = canAccess ? '' : 'none';
+      item.classList.remove('sb-locked');
+    }
   });
   // Populate sidebar user avatar
   if (APP.user) {
@@ -2377,6 +2400,12 @@ function renderNav() {
     if (elRole) elRole.textContent = APP.user.role || '—';
     if (elAv)   elAv.textContent   = initials;
   }
+}
+
+// Returns true if the current user is read-only (STAFF or EMPLOYEE)
+function isReadOnly() {
+  var role = APP.user ? APP.user.role : 'NONE';
+  return role === 'STAFF' || role === 'EMPLOYEE';
 }
 
 function canDo(action) {
@@ -2419,7 +2448,16 @@ function showSelfServicePortal() {
 // ============================================================
 // NAVIGATION
 // ============================================================
+// Modules STAFF role is permitted to open (view-only)
+var _STAFF_VIEWS = ['dashboard','onboarding','20dstracker','employees','self-service'];
+
 function navigate(view){
+  // STAFF guard — block navigation to restricted views
+  var role = APP.user ? APP.user.role : 'NONE';
+  if (role === 'STAFF' && _STAFF_VIEWS.indexOf(view) < 0) {
+    toast('Access restricted — contact your administrator', 'error');
+    return;
+  }
   document.querySelectorAll('.view').forEach(function(v){ v.classList.remove('active'); });
   document.querySelectorAll('.sb-item').forEach(function(i){ i.classList.remove('active'); });
   var v=document.getElementById('view-'+view); if(v) v.classList.add('active');
@@ -3592,7 +3630,7 @@ var DSAgent = {
         var step = r[k] || {status:'Pending'};
         var sc = self._statusClass(step.status||'Pending');
         var lbl = self.STEPS[k].short;
-        return '<span class="ds-step-pill '+sc+'" title="'+esc(self.STEPS[k].label)+': '+esc(step.status||'Pending')+'" onclick="DSAgent.openStepModal(\''+esc(r.DS_ID)+'\',\''+k+'\')">'+lbl+'</span>';
+        return '<span class="ds-step-pill '+sc+'" title="'+esc(self.STEPS[k].label)+': '+esc(step.status||'Pending')+'"'+(isReadOnly()?'':' onclick="DSAgent.openStepModal(\''+esc(r.DS_ID)+'\',\''+k+'\')"')+'>'+lbl+'</span>';
       }).join('');
       var compBadge = r.OB_COMPLETE==='TRUE'
         ? '<span class="ds-badge complete">&#10003; Done</span>'
@@ -3710,7 +3748,7 @@ var DSAgent = {
         html += '<td>'+esc(row.step)+'</td>';
         html += '<td><span class="ds-badge '+sc+'">'+esc(row.status)+'</span></td>';
         html += '<td class="mono" style="color:'+dColor+';font-weight:700">'+row.days+'d</td>';
-        html += '<td><button class="ds-btn cyan sm" onclick="DSAgent.openStepModal(\''+esc(row.dsId)+'\',\''+row.stepKey+'\')">Update</button></td>';
+        html += isReadOnly() ? '<td></td>' : '<td><button class="ds-btn cyan sm" onclick="DSAgent.openStepModal(\''+esc(row.dsId)+'\',\''+row.stepKey+'\')">Update</button></td>';
         html += '</tr>';
       });
     });
@@ -3893,7 +3931,7 @@ var DSAgent = {
       var completeBtn = (isStarted && !isComplete)
         ? '<button class="ds-btn cyan sm" onclick="DSAgent._progComplete(\''+dsId+'\',\''+k+'\')">&#10003; Complete</button>'
         : '';
-      var editBtn = '<button class="ds-btn ghost sm" onclick="DSAgent.openStepModal(\''+dsId+'\',\''+k+'\')" title="Edit step details">&#9998;</button>';
+      var editBtn = isReadOnly() ? '' : '<button class="ds-btn ghost sm" onclick="DSAgent.openStepModal(\''+dsId+'\',\''+k+'\')" title="Edit step details">&#9998;</button>';
       var stateClass = isComplete ? 'done' : (isStarted ? 'active' : '');
       return '<div class="ds-prog-step '+stateClass+'">'+
         '<div class="ds-prog-step-hdr">'+

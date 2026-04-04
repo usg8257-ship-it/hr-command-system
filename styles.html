@@ -35,6 +35,9 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,-ap
 .sb-item{display:flex;align-items:center;gap:9px;padding:10px 15px;cursor:pointer;color:rgba(255,255,255,.6);font-size:12px;font-weight:400;border-left:3px solid transparent;transition:all .14s;user-select:none;}
 .sb-item:hover{color:#fff;background:rgba(255,255,255,.08);}
 .sb-item.active{color:#fff;background:rgba(255,255,255,.14);border-left-color:#00c9b8;}
+/* Locked sidebar item — visible but disabled for restricted roles */
+.sb-item.sb-locked{opacity:.35;cursor:not-allowed;pointer-events:none;}
+.sb-item.sb-locked::after{content:'🔒';font-size:9px;margin-left:auto;opacity:.7;}
 .sb-item .ic{font-size:15px;width:19px;text-align:center;flex-shrink:0;}
 .sb-badge{background:#00c9b8;color:#001;font-size:9px;font-weight:700;padding:2px 6px;border-radius:9px;margin-left:auto;transition:background .2s;}
 .sb-badge.gold{background:#d4890a;color:#fff;}
