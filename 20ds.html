@@ -240,24 +240,44 @@
 .ds-badge.cancelled{ background: rgba(82,98,120,.08);  color: var(--ds-muted);  border: 1px solid rgba(82,98,120,.2); }
 
 /* ── Step Pills ── */
-.ds-steps-row { display: flex; gap: 4px; flex-wrap: wrap; }
+@keyframes ds-pulse {
+  0%,100% { box-shadow: 0 0 0 0 rgba(184,112,0,.45); }
+  50%      { box-shadow: 0 0 0 5px rgba(184,112,0,0); }
+}
+.ds-steps-row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 .ds-step-pill {
-  width: 22px; height: 22px;
+  width: 30px; height: 30px;
   border-radius: 50%;
   display: inline-flex; align-items: center; justify-content: center;
-  font-size: 9px; font-weight: 800;
+  font-size: 10px; font-weight: 800;
   font-family: var(--ds-mono);
   cursor: pointer;
-  border: 1.5px solid;
+  border: 2px solid;
   transition: transform .15s, box-shadow .15s;
+  position: relative;
 }
-.ds-step-pill:hover { transform: scale(1.2); box-shadow: 0 2px 8px rgba(18,36,80,.15); }
-.ds-step-pill.done     { background: rgba(19,110,66,.12);  color: var(--ds-green);  border-color: rgba(19,110,66,.45); }
-.ds-step-pill.pending  { background: rgba(184,112,0,.1);   color: var(--ds-amber);  border-color: rgba(184,112,0,.45); }
-.ds-step-pill.problem  { background: rgba(200,48,48,.09);  color: var(--ds-red);    border-color: rgba(200,48,48,.4); }
+.ds-step-pill:hover { transform: scale(1.25); box-shadow: 0 4px 14px rgba(0,122,138,.28); }
+.ds-step-pill.done     { background: rgba(19,110,66,.14);  color: var(--ds-green);  border-color: rgba(19,110,66,.5); }
+.ds-step-pill.pending  { background: rgba(184,112,0,.12);  color: var(--ds-amber);  border-color: rgba(184,112,0,.55); animation: ds-pulse 1.8s ease-in-out infinite; }
+.ds-step-pill.problem  { background: rgba(200,48,48,.1);   color: var(--ds-red);    border-color: rgba(200,48,48,.5); }
 .ds-step-pill.notstart { background: rgba(82,98,120,.08);  color: var(--ds-muted);  border-color: var(--ds-border); }
-.ds-step-pill.fit      { background: rgba(19,110,66,.12);  color: var(--ds-green);  border-color: rgba(19,110,66,.45); }
-.ds-step-pill.unfit    { background: rgba(200,48,48,.09);  color: var(--ds-red);    border-color: rgba(200,48,48,.4); }
+.ds-step-pill.fit      { background: rgba(19,110,66,.14);  color: var(--ds-green);  border-color: rgba(19,110,66,.5); }
+.ds-step-pill.unfit    { background: rgba(200,48,48,.1);   color: var(--ds-red);    border-color: rgba(200,48,48,.5); }
+
+/* ── Steps Column Header & Cell ── */
+.ds-steps-col-hdr {
+  background: rgba(0,122,138,.1) !important;
+  color: var(--ds-cyan) !important;
+  font-size: 11px !important;
+  letter-spacing: 0.08em;
+  border-bottom: 2px solid var(--ds-cyan) !important;
+  text-shadow: 0 0 8px rgba(0,122,138,.4);
+}
+.ds-steps-cell {
+  border-left: 2px solid rgba(0,122,138,.2);
+  background: rgba(0,122,138,.025);
+  padding: 10px 14px !important;
+}
 
 /* ── DS Buttons ── */
 .ds-btn {
@@ -573,20 +593,18 @@
         <table class="ds-tbl">
           <thead>
             <tr>
-              <th>DS ID</th>
               <th>Emp ID</th>
               <th>Name</th>
               <th>Designation</th>
               <th>Transferred</th>
               <th>Responsible HR</th>
               <th>Days</th>
-              <th style="min-width:160px">Steps</th>
-              <th>Status</th>
+              <th class="ds-steps-col-hdr" style="min-width:240px">&#9654; Steps</th>
               <th>Actions</th>
             </tr>
           </thead>
           <tbody id="ds-summary-tracker-tbody">
-            <tr><td colspan="10"><div class="ds-empty"><div class="ds-empty-icon">&#128203;</div>No records yet.</div></td></tr>
+            <tr><td colspan="8"><div class="ds-empty"><div class="ds-empty-icon">&#128203;</div>No records yet.</div></td></tr>
           </tbody>
         </table>
       </div>

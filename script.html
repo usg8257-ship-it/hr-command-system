@@ -2874,15 +2874,13 @@ var DSAgent = {
           ? '<span class="ds-badge problem">&#9888; Over-Stage</span>'
           : '<span class="ds-badge pending">In Progress</span>';
       return '<tr style="'+rowStyle+'">'+
-        '<td class="mono" style="color:var(--ds-cyan)">'+esc(r.DS_ID||'—')+'</td>'+
         '<td class="mono">'+esc(r.EMP_ID||'—')+'</td>'+
         '<td style="font-weight:700">'+esc(r.EMP_NAME||'—')+'</td>'+
         '<td style="font-size:11px">'+esc(r.DESIGNATION||'—')+'</td>'+
         '<td style="font-size:11px;color:var(--ds-muted)">'+esc((r.TRANSFER_DATE||'—').substring(0,10))+'</td>'+
         '<td style="font-size:11px">'+esc(r.RESPONSIBLE_HR||'—')+'</td>'+
         '<td class="mono" style="color:'+daysColor+';font-weight:700">'+days+'d</td>'+
-        '<td><div class="ds-steps-row">'+pills+'</div></td>'+
-        '<td>'+compBadge+'</td>'+
+        '<td class="ds-steps-cell"><div class="ds-steps-row">'+pills+'</div></td>'+
         '<td><div style="display:flex;gap:4px">'+
           '<button class="ds-btn cyan sm" onclick="DSAgent.openProgressCard(\''+esc(r.DS_ID)+'\')" title="Progress Card">&#9654;</button>'+
           '<button class="ds-btn ghost sm" onclick="DSAgent.openResponsibleModal(\''+esc(r.DS_ID)+'\')" title="Set HR">&#128101;</button>'+
@@ -2913,7 +2911,7 @@ var DSAgent = {
     if (!tbody) return;
 
     if (!total) {
-      tbody.innerHTML = '<tr><td colspan="10"><div class="ds-empty"><div class="ds-empty-icon">&#128203;</div>No records found.</div></td></tr>';
+      tbody.innerHTML = '<tr><td colspan="8"><div class="ds-empty"><div class="ds-empty-icon">&#128203;</div>No records found.</div></td></tr>';
       if (pgEl) pgEl.innerHTML = '';
       return;
     }
