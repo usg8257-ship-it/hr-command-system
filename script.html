@@ -3961,6 +3961,30 @@ var DSAgent = {
         var lbl = self.STEPS[k].short;
         return '<span class="ds-step-pill '+sc+'" title="'+esc(self.STEPS[k].label)+': '+esc(step.status||'Pending')+'"'+(isReadOnly()?'':' onclick="DSAgent.openStepModal(\''+esc(r.DS_ID)+'\',\''+k+'\')"')+'>'+lbl+'</span>';
       }).join('');
+      // Progress bar computation
+      var totalSteps = stepKeys.length || 1;
+      var doneSteps  = stepKeys.filter(function(k){ return (r[k]||{}).status === 'Done'; }).length;
+      var pct        = Math.round(doneSteps / totalSteps * 100);
+      var barBg, barClass;
+      if (r.OB_COMPLETE === 'TRUE') {
+        barBg    = 'linear-gradient(90deg,#232840 0%,#448aff 40%,#00e676 100%)';
+        barClass = 'ds-inline-bar-fill';
+      } else if (isOver) {
+        barBg    = 'var(--ds-red)';
+        barClass = 'ds-inline-bar-fill overstage';
+      } else {
+        var mid  = Math.max(20, pct * 0.5);
+        barBg    = 'linear-gradient(90deg,#232840 0%,#448aff '+mid+'%,#00e676 100%)';
+        barClass = 'ds-inline-bar-fill';
+      }
+      var barLabel = r.OB_COMPLETE === 'TRUE'
+        ? 'Completed ✓'
+        : (isOver ? 'Day '+days+' — Over Stage' : doneSteps+' / '+totalSteps+' steps · '+pct+'%');
+      var progBar =
+        '<div class="ds-inline-bar-wrap">'+
+          '<div class="'+barClass+'" style="width:'+pct+'%;background:'+barBg+'"></div>'+
+        '</div>'+
+        '<div class="ds-inline-bar-label">'+barLabel+'</div>';
       var compBadge = r.OB_COMPLETE==='TRUE'
         ? '<span class="ds-badge complete">&#10003; Done</span>'
         : isOver
@@ -3972,7 +3996,7 @@ var DSAgent = {
         '<td style="font-size:11px">'+esc(r.DESIGNATION||'—')+'</td>'+
         '<td style="font-size:11px">'+esc(r.RESPONSIBLE_HR||'—')+'</td>'+
         '<td class="mono" style="color:'+daysColor+';font-weight:700">'+days+'d</td>'+
-        '<td class="ds-steps-cell"><div class="ds-steps-row">'+pills+'</div></td>'+
+        '<td class="ds-steps-cell"><div class="ds-steps-row">'+pills+'</div>'+progBar+'</td>'+
         '<td><div style="display:flex;gap:4px">'+
           '<button class="ds-btn cyan sm" onclick="DSAgent.openProgressCard(\''+esc(r.DS_ID)+'\')" title="Progress Card">&#9654;</button>'+
           '<button class="ds-btn ghost sm" onclick="DSAgent.openResponsibleModal(\''+esc(r.DS_ID)+'\')" title="Set HR">&#128101;</button>'+

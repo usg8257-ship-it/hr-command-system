@@ -456,6 +456,20 @@
 @keyframes pulseBad { 0%,100%{opacity:1} 50%{opacity:.4} }
 .ds-prog-bar-fill.overstage { animation: pulseBad 1.2s ease-in-out infinite; }
 
+/* ── Inline Progress Bar (inside Steps column in tracker table) ── */
+.ds-inline-bar-wrap {
+  height: 6px; background: var(--ds-border);
+  border-radius: 3px; overflow: hidden; margin: 8px 0 3px;
+}
+.ds-inline-bar-fill {
+  height: 100%; border-radius: 3px; transition: width .5s ease, background .4s;
+}
+.ds-inline-bar-fill.overstage { animation: pulseBad 1.2s ease-in-out infinite; }
+.ds-inline-bar-label {
+  font-size: 10px; color: var(--ds-muted); font-family: var(--ds-mono);
+  letter-spacing: .02em;
+}
+
 /* ── Progress Steps (in modal) ── */
 .ds-prog-step {
   padding: 11px 14px; background: var(--ds-surface2);
