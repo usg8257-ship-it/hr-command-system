@@ -102,7 +102,7 @@
   <div class="sb-sec">System</div>
   <div class="sb-item" data-view="users" onclick="navigate('users')"><span class="ic">&#128101;</span>Users</div>
   <div class="sb-item" data-view="setup" onclick="navigate('setup')"><span class="ic">&#9881;</span>Setup</div>
-  <div class="sb-item" data-view="self-service" style="display:none" onclick="navigate('self-service')"><span class="ic">&#128100;</span>My Profile</div>
+  <div class="sb-item" data-view="self-service" onclick="navigate('self-service')"><span class="ic">&#128100;</span>My Profile</div>
   <div class="sb-user-block">
     <div class="sb-avatar" id="sb-avatar-initials">HR</div>
     <div style="min-width:0">
@@ -770,42 +770,217 @@
   </div>
 </div>
 
-<!-- ===== SELF-SERVICE VIEW ===== -->
+<!-- ===== SELF-SERVICE / MY PROFILE VIEW ===== -->
 <div id="view-self-service" class="view">
   <div class="sec-hdr">
-    <div class="sec-hdr-left"><h2>My Profile</h2><p id="ss-welcome">Welcome</p></div>
+    <div class="sec-hdr-left"><h2>My Profile</h2><p id="ss-welcome">Account &amp; security settings</p></div>
   </div>
-  <div id="ss-profile-card" class="tcard" style="padding:20px 24px;margin-bottom:14px">
-    <div style="text-align:center;padding:24px;color:var(--muted)">Loading your profile...</div>
-  </div>
-  <div class="setup-step">
-    <div class="step-num">1</div>
-    <h3>Update Document Expiry Dates</h3>
-    <p style="color:var(--muted);font-size:12px;margin-bottom:12px">You may update the expiry dates of your documents below. Other fields are managed by HR.</p>
-    <div class="fgrid">
-      <div class="fg"><label class="flabel">Passport Expiry</label><input class="fi" type="text" id="ss-pp-exp" placeholder="DD/MM/YYYY"/></div>
-      <div class="fg"><label class="flabel">Emirates ID Expiry</label><input class="fi" type="text" id="ss-eid-exp" placeholder="DD/MM/YYYY"/></div>
-      <div class="fg"><label class="flabel">Visa Expiry</label><input class="fi" type="text" id="ss-visa-exp" placeholder="DD/MM/YYYY"/></div>
+
+  <!-- Profile Card -->
+  <div class="tcard" style="margin-bottom:16px">
+    <div class="ttop"><h3>&#128100; Account Information</h3></div>
+    <div style="padding:20px 24px;display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap">
+      <!-- Avatar -->
+      <div style="flex-shrink:0;text-align:center">
+        <div id="prof-avatar" style="width:72px;height:72px;border-radius:50%;background:linear-gradient(135deg,var(--navy),var(--teal));display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:800;color:#fff;letter-spacing:1px">HR</div>
+        <div id="prof-role-badge" style="margin-top:8px;font-size:11px;font-weight:600;color:var(--navy);background:rgba(30,71,153,.1);border-radius:5px;padding:2px 10px">—</div>
+      </div>
+      <!-- Info grid -->
+      <div style="flex:1;min-width:240px">
+        <div style="display:grid;grid-template-columns:120px 1fr;gap:8px 16px;font-size:13px">
+          <span style="color:var(--muted);font-weight:600">Email</span><span id="prof-email" style="font-family:monospace;font-size:12px">—</span>
+          <span style="color:var(--muted);font-weight:600">Display Name</span>
+          <span style="display:flex;align-items:center;gap:8px">
+            <span id="prof-name-display">—</span>
+            <button class="btn btn-secondary btn-sm" style="padding:1px 8px;font-size:11px" onclick="ProfileAgent.toggleNameEdit()">&#9998; Edit</button>
+          </span>
+          <span style="color:var(--muted);font-weight:600">Entities</span><span id="prof-entities">—</span>
+          <span style="color:var(--muted);font-weight:600">Session</span><span id="prof-session" style="font-size:11px;color:var(--muted)">Active</span>
+        </div>
+        <div id="prof-name-edit-row" style="display:none;margin-top:12px;display:none">
+          <div style="display:flex;gap:8px;align-items:center">
+            <input class="fi" id="prof-name-input" type="text" placeholder="New display name" style="max-width:220px;margin:0"/>
+            <button class="btn btn-navy btn-sm" onclick="ProfileAgent.saveName()">Save</button>
+            <button class="btn btn-secondary btn-sm" onclick="ProfileAgent.toggleNameEdit()">Cancel</button>
+          </div>
+        </div>
+      </div>
     </div>
-    <div style="margin-top:12px;text-align:right"><button class="btn btn-gold" onclick="SelfServiceAgent.saveExpiry()">&#128190; Save Changes</button></div>
   </div>
-  <div id="ss-leave-section"></div>
+
+  <!-- Change Password -->
+  <div class="tcard" style="margin-bottom:16px">
+    <div class="ttop"><h3>&#128273; Change Password</h3></div>
+    <div style="padding:20px 24px;max-width:420px">
+      <div id="prof-must-change-banner" style="display:none;background:rgba(184,112,0,.12);border:1px solid rgba(184,112,0,.3);border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:12px;color:var(--gold);font-weight:600">
+        &#9888; You must change your password before continuing.
+      </div>
+      <div class="fgrid">
+        <div class="fg full">
+          <label class="flabel">Current Password <span class="req">*</span></label>
+          <input class="fi" id="prof-pwd-current" type="password" placeholder="Your current password" autocomplete="current-password"/>
+        </div>
+        <div class="fg full">
+          <label class="flabel">New Password <span class="req">*</span></label>
+          <input class="fi" id="prof-pwd-new" type="password" placeholder="Min 6 characters" autocomplete="new-password" oninput="ProfileAgent.checkPwdStrength()"/>
+          <div id="prof-pwd-strength" style="height:4px;border-radius:2px;margin-top:4px;background:var(--border);overflow:hidden"><div id="prof-pwd-bar" style="height:100%;width:0%;background:var(--green);transition:width .2s,background .2s"></div></div>
+        </div>
+        <div class="fg full">
+          <label class="flabel">Confirm New Password <span class="req">*</span></label>
+          <input class="fi" id="prof-pwd-confirm" type="password" placeholder="Repeat new password" autocomplete="new-password"/>
+        </div>
+      </div>
+      <div style="margin-top:14px"><button class="btn btn-navy" onclick="ProfileAgent.changePassword()">&#128273; Update Password</button></div>
+    </div>
+  </div>
+
+  <!-- Employee-only: Document Expiry + Leave sections -->
+  <div id="ss-emp-section" style="display:none">
+    <div class="setup-step">
+      <div class="step-num">&#128196;</div>
+      <h3>Update Document Expiry Dates</h3>
+      <p style="color:var(--muted);font-size:12px;margin-bottom:12px">You may update the expiry dates of your documents below. Other fields are managed by HR.</p>
+      <div class="fgrid">
+        <div class="fg"><label class="flabel">Passport Expiry</label><input class="fi" type="text" id="ss-pp-exp" placeholder="DD/MM/YYYY"/></div>
+        <div class="fg"><label class="flabel">Emirates ID Expiry</label><input class="fi" type="text" id="ss-eid-exp" placeholder="DD/MM/YYYY"/></div>
+        <div class="fg"><label class="flabel">Visa Expiry</label><input class="fi" type="text" id="ss-visa-exp" placeholder="DD/MM/YYYY"/></div>
+      </div>
+      <div style="margin-top:12px;text-align:right"><button class="btn btn-gold" onclick="SelfServiceAgent.saveExpiry()">&#128190; Save Changes</button></div>
+    </div>
+    <div id="ss-leave-section"></div>
+    <div id="ss-profile-card" class="tcard" style="padding:20px 24px;margin-bottom:14px;display:none"></div>
+  </div>
+</div>
+
+<!-- ===== MUST-CHANGE PASSWORD MODAL (blocks app until changed) ===== -->
+<div class="modal-backdrop" id="must-change-backdrop" style="display:none"></div>
+<div class="modal-box" id="must-change-modal" style="display:none;max-width:420px">
+  <div class="modal-hdr"><span>&#128273; Password Change Required</span></div>
+  <div class="modal-body" style="padding:20px 24px">
+    <div style="font-size:12.5px;color:var(--muted);margin-bottom:16px">Your password has been reset by an administrator. Please set a new password to continue.</div>
+    <div class="fgrid">
+      <div class="fg full"><label class="flabel">New Password <span class="req">*</span></label>
+        <input class="fi" id="mc-pwd-new" type="password" placeholder="Min 6 characters" autocomplete="new-password"/>
+      </div>
+      <div class="fg full"><label class="flabel">Confirm Password <span class="req">*</span></label>
+        <input class="fi" id="mc-pwd-confirm" type="password" placeholder="Repeat new password" autocomplete="new-password"/>
+      </div>
+    </div>
+  </div>
+  <div class="modal-footer">
+    <button class="btn btn-navy" onclick="ProfileAgent.forcedPasswordChange()">&#128273; Set Password &amp; Continue</button>
+  </div>
 </div>
 
 <!-- ===== USERS VIEW ===== -->
 <div id="view-users" class="view">
   <div class="sec-hdr">
-    <div class="sec-hdr-left"><h2>User Management</h2><p>Manage system user accounts and roles</p></div>
-    <div class="sec-hdr-right"><button class="abtn" onclick="UserMgmtAgent.openAdd()">&#10133; Add User</button></div>
-  </div>
-  <div class="tcard">
-    <div class="ttop"><h3>&#128101; System Users</h3><span class="tcnt" id="users-cnt">0 users</span></div>
-    <div class="twrap lazy">
-      <table>
-        <thead><tr><th>Email</th><th>Display Name</th><th>Role</th><th>Entities</th><th>Active</th><th>Actions</th></tr></thead>
-        <tbody id="users-tbody"></tbody>
-      </table>
+    <div class="sec-hdr-left"><h2>User Management</h2><p>Manage system user accounts, roles &amp; permissions</p></div>
+    <div class="sec-hdr-right" id="users-sec-hdr-btns">
+      <button class="btn btn-secondary btn-sm" id="um-tab-users-btn" onclick="UserMgmtAgent.setTab('users')" style="font-weight:600">&#128101; Users</button>
+      <button class="btn btn-secondary btn-sm" id="um-tab-matrix-btn" onclick="UserMgmtAgent.setTab('matrix')">&#128272; Permissions</button>
+      <button class="abtn" onclick="UserMgmtAgent.openAdd()">&#10133; Add User</button>
     </div>
+  </div>
+
+  <!-- Users Tab -->
+  <div id="um-tab-users">
+    <!-- Stats row -->
+    <div id="um-stats-row" style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap"></div>
+    <div class="tcard">
+      <div class="ttop">
+        <h3>&#128101; System Users</h3>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div class="sw"><span class="si">&#128269;</span><input type="text" id="um-q" placeholder="Search email or name..." oninput="UserMgmtAgent.render()" style="width:200px"/></div>
+          <select id="um-filter-role" onchange="UserMgmtAgent.render()" style="height:28px;font-size:11px;padding:0 8px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)">
+            <option value="">All Roles</option>
+            <option>SUPER_ADMIN</option><option>HR_OFFICER</option><option>ENTITY_MANAGER</option><option>VIEWER</option><option>EMPLOYEE</option>
+          </select>
+          <span class="tcnt" id="users-cnt">0 users</span>
+        </div>
+      </div>
+      <div class="twrap lazy">
+        <table>
+          <thead><tr><th>Email</th><th>Display Name</th><th>Role</th><th>Entities</th><th>Password</th><th>Status</th><th>Actions</th></tr></thead>
+          <tbody id="users-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Permissions Matrix Tab -->
+  <div id="um-tab-matrix" style="display:none">
+    <div id="um-matrix-content"></div>
+  </div>
+</div>
+
+<!-- ===== USER ADD/EDIT MODAL ===== -->
+<div class="modal-backdrop" id="um-modal-backdrop" style="display:none" onclick="UserMgmtAgent.closeModal()"></div>
+<div class="modal-box" id="um-modal" style="display:none;max-width:520px">
+  <div class="modal-hdr">
+    <span id="um-modal-title">Add User</span>
+    <button class="modal-close" onclick="UserMgmtAgent.closeModal()">&#10005;</button>
+  </div>
+  <div class="modal-body" style="padding:20px 24px">
+    <input type="hidden" id="um-m-mode" value="add"/>
+    <input type="hidden" id="um-m-orig-email" value=""/>
+    <div class="fgrid">
+      <div class="fg full">
+        <label class="flabel">Email Address <span class="req">*</span></label>
+        <input class="fi" id="um-m-email" type="email" placeholder="user@company.com" autocomplete="off"/>
+      </div>
+      <div class="fg full">
+        <label class="flabel">Display Name <span class="req">*</span></label>
+        <input class="fi" id="um-m-name" type="text" placeholder="Full name"/>
+      </div>
+      <div class="fg">
+        <label class="flabel">Role <span class="req">*</span></label>
+        <select class="fi" id="um-m-role">
+          <option value="HR_OFFICER">HR Officer</option>
+          <option value="ENTITY_MANAGER">Entity Manager</option>
+          <option value="VIEWER">Viewer</option>
+          <option value="EMPLOYEE">Employee</option>
+          <option value="SUPER_ADMIN">Super Admin</option>
+        </select>
+      </div>
+      <div class="fg">
+        <label class="flabel">Active</label>
+        <select class="fi" id="um-m-active">
+          <option value="TRUE">Active</option>
+          <option value="FALSE">Inactive</option>
+        </select>
+      </div>
+      <div class="fg full">
+        <label class="flabel">Entities Access</label>
+        <div id="um-m-entities" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px">
+          <label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer"><input type="checkbox" id="um-ent-ALL" value="ALL" onchange="UserMgmtAgent.onEntAll(this)"/> All Entities</label>
+          <label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer"><input type="checkbox" id="um-ent-UG" value="UG"/> UG</label>
+          <label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer"><input type="checkbox" id="um-ent-UST" value="UST"/> UST</label>
+          <label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer"><input type="checkbox" id="um-ent-USG" value="USG"/> USG</label>
+          <label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer"><input type="checkbox" id="um-ent-USGM" value="USG-M"/> USG-M</label>
+        </div>
+      </div>
+      <div class="fg full" id="um-m-pwd-row">
+        <label class="flabel" id="um-m-pwd-label">Password <span class="req">*</span></label>
+        <input class="fi" id="um-m-password" type="password" placeholder="Set initial password" autocomplete="new-password"/>
+        <div style="font-size:10.5px;color:var(--muted);margin-top:3px">Min 6 characters. User will be prompted to change after first login.</div>
+      </div>
+    </div>
+  </div>
+  <div class="modal-footer">
+    <button class="btn btn-secondary" onclick="UserMgmtAgent.closeModal()">Cancel</button>
+    <button class="btn btn-navy" onclick="UserMgmtAgent.save()">&#128190; Save User</button>
+  </div>
+</div>
+
+<!-- ===== PASSWORD RESET RESULT MODAL ===== -->
+<div class="modal-backdrop" id="um-pwd-backdrop" style="display:none" onclick="UserMgmtAgent.closePwdModal()"></div>
+<div class="modal-box" id="um-pwd-modal" style="display:none;max-width:400px;text-align:center">
+  <div class="modal-hdr"><span>Temporary Password</span><button class="modal-close" onclick="UserMgmtAgent.closePwdModal()">&#10005;</button></div>
+  <div class="modal-body" style="padding:24px">
+    <div style="font-size:13px;color:var(--muted);margin-bottom:14px">Share this one-time password with the user. They will be required to change it on next login.</div>
+    <div id="um-temp-pwd-display" style="font-family:monospace;font-size:22px;font-weight:700;letter-spacing:3px;color:var(--navy);background:var(--surface2);border:2px dashed var(--border);border-radius:10px;padding:14px 20px;margin-bottom:14px"></div>
+    <button class="btn btn-secondary btn-sm" onclick="UserMgmtAgent.copyTempPwd()">&#128203; Copy</button>
   </div>
 </div>
 

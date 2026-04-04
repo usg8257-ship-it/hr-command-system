@@ -108,7 +108,9 @@ function getMyProfile() {
         return {email:email,name:name,role:'NONE',entities:[],active:false};
       }
       var entities = entRaw.toUpperCase() === 'ALL' ? 'ALL' : entRaw.split(',').map(function(e){ return e.trim(); }).filter(Boolean);
-      var profile = {email:email, name:name||email.split('@')[0], role:role, entities:entities, active:true};
+      var mcIdx = hdrs.indexOf('MUST_CHANGE');
+      var mustChange = mcIdx >= 0 && String(vals[i][mcIdx]||'').toUpperCase() === 'TRUE';
+      var profile = {email:email, name:name||email.split('@')[0], role:role, entities:entities, active:true, mustChange:mustChange};
       cache.put(cacheKey, JSON.stringify(profile), 60);
       return profile;
     }
@@ -147,12 +149,15 @@ function loginUser(email, password) {
       CacheService.getScriptCache().put('ughr_sess_' + token, normEmail, 28800);
       var entRaw   = String(vals[i][entIdx]||'ALL').trim();
       var entities = entRaw.toUpperCase() === 'ALL' ? 'ALL' : entRaw.split(',').map(function(e){ return e.trim(); }).filter(Boolean);
+      var mcIdx2 = hdrs.indexOf('MUST_CHANGE');
+      var mustChange = mcIdx2 >= 0 && String(vals[i][mcIdx2]||'').toUpperCase() === 'TRUE';
       var profile  = {
-        email:    normEmail,
-        name:     String(vals[i][nIdx]||'').trim() || normEmail.split('@')[0],
-        role:     String(vals[i][rIdx]||'VIEWER').trim(),
-        entities: entities,
-        active:   true
+        email:      normEmail,
+        name:       String(vals[i][nIdx]||'').trim() || normEmail.split('@')[0],
+        role:       String(vals[i][rIdx]||'VIEWER').trim(),
+        entities:   entities,
+        active:     true,
+        mustChange: mustChange
       };
       logActivity('AuthAgent', 'LOGIN', normEmail, 'SUCCESS');
       return {success:true, token:token, profile:profile};
@@ -220,6 +225,10 @@ function runProtected(token, funcName, args) {
       getUsers:                       function(){ return getUsers(); },
       saveUser:                       function(){ return saveUser(a[0]); },
       deleteUser:                     function(){ return deleteUser(a[0]); },
+      toggleUserActive:               function(){ return toggleUserActive(a[0], a[1]); },
+      resetUserPassword:              function(){ return resetUserPassword(a[0]); },
+      changeMyPassword:               function(){ return changeMyPassword(a[0], a[1]); },
+      updateMyProfile:                function(){ return updateMyProfile(a[0]); },
       // Self-service
       getMyEmployeeRecord:            function(){ return getMyEmployeeRecord(); },
       updateMyExpiryDates:            function(){ return updateMyExpiryDates(a[0]); },
@@ -1481,13 +1490,19 @@ function generateExperienceLetterForEmp(empId) {
 function getUsers() {
   try {
     _requireRole(['SUPER_ADMIN']);
-    var sh = getOrCreate(TABS.USERS, ['EMAIL','DISPLAY_NAME','ROLE','ENTITIES','ACTIVE']);
+    var sh = getOrCreate(TABS.USERS, ['EMAIL','DISPLAY_NAME','ROLE','ENTITIES','ACTIVE','PASSWORD']);
     var vals = sh.getDataRange().getValues();
     if (vals.length < 2) return {success:true, data:[]};
     var hdrs = vals[0].map(function(h){ return String(h).trim(); });
+    var pwdIdx = hdrs.indexOf('PASSWORD');
     var rows = [];
     for (var i = 1; i < vals.length; i++) {
-      var row = {}; for (var j = 0; j < hdrs.length; j++) row[hdrs[j]] = String(vals[i][j]||'');
+      var row = {};
+      for (var j = 0; j < hdrs.length; j++) {
+        if (j === pwdIdx) continue; // never send passwords to client
+        row[hdrs[j]] = String(vals[i][j]||'');
+      }
+      row.HAS_PASSWORD = pwdIdx >= 0 && String(vals[i][pwdIdx]||'').length > 0;
       rows.push(row);
     }
     return {success:true, data:rows};
@@ -1541,6 +1556,110 @@ function deleteUser(email) {
       }
     }
     return {success:false, error:'User not found'};
+  } catch(e) { return {success:false, error:e.message}; }
+}
+
+function toggleUserActive(email, active) {
+  try {
+    _requireRole(['SUPER_ADMIN']);
+    var emailLower = String(email).toLowerCase().trim();
+    var callerProfile = getMyProfile();
+    if (callerProfile.email === emailLower) return {success:false, error:'Cannot deactivate your own account'};
+    var sh = SS.getSheetByName(TABS.USERS); if (!sh) return {success:false, error:'Users sheet not found'};
+    var vals = sh.getDataRange().getValues();
+    var hdrs = vals[0].map(function(h){ return String(h).trim(); });
+    var emailIdx = hdrs.indexOf('EMAIL'), activeIdx = hdrs.indexOf('ACTIVE');
+    for (var i = 1; i < vals.length; i++) {
+      if (String(vals[i][emailIdx]||'').toLowerCase().trim() === emailLower) {
+        if (activeIdx >= 0) sh.getRange(i+1, activeIdx+1).setValue(active ? 'TRUE' : 'FALSE');
+        try { CacheService.getScriptCache().remove('profile_' + emailLower); } catch(e2) {}
+        logActivity('UserMgmt', active ? 'ACTIVATE' : 'DEACTIVATE', emailLower, 'SUCCESS');
+        return {success:true};
+      }
+    }
+    return {success:false, error:'User not found'};
+  } catch(e) { return {success:false, error:e.message}; }
+}
+
+function resetUserPassword(email) {
+  try {
+    _requireRole(['SUPER_ADMIN']);
+    var emailLower = String(email).toLowerCase().trim();
+    var sh = SS.getSheetByName(TABS.USERS); if (!sh) return {success:false, error:'Users sheet not found'};
+    var vals = sh.getDataRange().getValues();
+    var hdrs = vals[0].map(function(h){ return String(h).trim(); });
+    var emailIdx = hdrs.indexOf('EMAIL'), pwdIdx = hdrs.indexOf('PASSWORD');
+    var mcIdx = hdrs.indexOf('MUST_CHANGE');
+    // Add MUST_CHANGE column if missing
+    if (mcIdx < 0) {
+      sh.getRange(1, hdrs.length + 1).setValue('MUST_CHANGE');
+      mcIdx = hdrs.length;
+      hdrs.push('MUST_CHANGE');
+    }
+    // Generate temp password: 3 uppercase + 3 digits + 2 special
+    var chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ'; var nums = '23456789';
+    var tempPwd = '';
+    for (var k = 0; k < 3; k++) tempPwd += chars.charAt(Math.floor(Math.random()*chars.length));
+    for (var k = 0; k < 3; k++) tempPwd += nums.charAt(Math.floor(Math.random()*nums.length));
+    tempPwd += '@' + nums.charAt(Math.floor(Math.random()*nums.length));
+    for (var i = 1; i < vals.length; i++) {
+      if (String(vals[i][emailIdx]||'').toLowerCase().trim() === emailLower) {
+        if (pwdIdx >= 0) sh.getRange(i+1, pwdIdx+1).setValue(tempPwd);
+        sh.getRange(i+1, mcIdx+1).setValue('TRUE');
+        try { CacheService.getScriptCache().remove('profile_' + emailLower); } catch(e2) {}
+        logActivity('UserMgmt', 'RESET_PASSWORD', emailLower, 'SUCCESS');
+        return {success:true, tempPassword:tempPwd};
+      }
+    }
+    return {success:false, error:'User not found'};
+  } catch(e) { return {success:false, error:e.message}; }
+}
+
+function changeMyPassword(currentPwd, newPwd) {
+  try {
+    var profile = _requireRole(['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER','VIEWER','EMPLOYEE']);
+    if (!newPwd || String(newPwd).length < 6) return {success:false, error:'New password must be at least 6 characters'};
+    var sh = SS.getSheetByName(TABS.USERS); if (!sh) return {success:false, error:'Users sheet not found'};
+    var vals = sh.getDataRange().getValues();
+    var hdrs = vals[0].map(function(h){ return String(h).trim(); });
+    var emailIdx = hdrs.indexOf('EMAIL'), pwdIdx = hdrs.indexOf('PASSWORD');
+    var mcIdx = hdrs.indexOf('MUST_CHANGE');
+    for (var i = 1; i < vals.length; i++) {
+      if (String(vals[i][emailIdx]||'').toLowerCase().trim() === profile.email) {
+        var stored = String(vals[i][pwdIdx]||'');
+        var mustChangeFlag = mcIdx >= 0 && String(vals[i][mcIdx]||'').toUpperCase() === 'TRUE';
+        // Allow bypass of current-pw check only when MUST_CHANGE is TRUE and sentinel is passed
+        if (!(mustChangeFlag && String(currentPwd) === '__MUST_CHANGE__')) {
+          if (stored !== String(currentPwd)) return {success:false, error:'Current password is incorrect'};
+        }
+        sh.getRange(i+1, pwdIdx+1).setValue(String(newPwd));
+        if (mcIdx >= 0) sh.getRange(i+1, mcIdx+1).setValue('FALSE');
+        try { CacheService.getScriptCache().remove('profile_' + profile.email); } catch(e2) {}
+        logActivity('UserMgmt', 'CHANGE_PASSWORD', profile.email, 'SUCCESS');
+        return {success:true};
+      }
+    }
+    return {success:false, error:'User record not found'};
+  } catch(e) { return {success:false, error:e.message}; }
+}
+
+function updateMyProfile(displayName) {
+  try {
+    var profile = _requireRole(['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER','VIEWER','EMPLOYEE']);
+    if (!displayName || !String(displayName).trim()) return {success:false, error:'Name cannot be empty'};
+    var sh = SS.getSheetByName(TABS.USERS); if (!sh) return {success:false, error:'Users sheet not found'};
+    var vals = sh.getDataRange().getValues();
+    var hdrs = vals[0].map(function(h){ return String(h).trim(); });
+    var emailIdx = hdrs.indexOf('EMAIL'), nameIdx = hdrs.indexOf('DISPLAY_NAME');
+    for (var i = 1; i < vals.length; i++) {
+      if (String(vals[i][emailIdx]||'').toLowerCase().trim() === profile.email) {
+        sh.getRange(i+1, nameIdx+1).setValue(String(displayName).trim());
+        try { CacheService.getScriptCache().remove('profile_' + profile.email); } catch(e2) {}
+        logActivity('UserMgmt', 'UPDATE_PROFILE', profile.email, 'SUCCESS');
+        return {success:true};
+      }
+    }
+    return {success:false, error:'User record not found'};
   } catch(e) { return {success:false, error:e.message}; }
 }
 

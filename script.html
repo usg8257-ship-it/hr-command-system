@@ -459,6 +459,52 @@ document.addEventListener('keydown', function(e){
 var _PUBLIC_FNS = ['loginUser','validateSession','logoutUser','loadAllData',
                    'getPublicJobs','submitApplication','uploadCV'];
 
+// ── Entity Filter — restricts data for ENTITY_MANAGER / VIEWER with specific entities ──
+var EntityFilter = {
+  // Returns true if this user should see ALL entities
+  isUnrestricted: function() {
+    var u = APP.user;
+    if (!u) return true;
+    if (u.role === 'SUPER_ADMIN' || u.role === 'HR_OFFICER') return true;
+    return u.entities === 'ALL' || (Array.isArray(u.entities) && u.entities.length === 0);
+  },
+  // Returns array of allowed entity codes (uppercase, trimmed)
+  allowedEntities: function() {
+    var u = APP.user;
+    if (!u || !Array.isArray(u.entities)) return [];
+    return u.entities.map(function(e){ return String(e).toUpperCase().trim(); });
+  },
+  // Main filter — called after loadAll
+  apply: function() {
+    if (this.isUnrestricted()) return; // nothing to filter
+    var allowed = this.allowedEntities();
+    if (!allowed.length) return;
+    // Filter master data (ENTITY column)
+    APP.master = (APP.master||[]).filter(function(r){
+      return allowed.indexOf(String(r.ENTITY||r['COMPANY']||'').toUpperCase().trim()) >= 0;
+    });
+    // Filter onboarding (ENTITY column)
+    APP.onboarding = (APP.onboarding||[]).filter(function(r){
+      return allowed.indexOf(String(r.ENTITY||'').toUpperCase().trim()) >= 0;
+    });
+    // Filter 20DS tracker — match ENTITY or EMP_ID via master set
+    var allowedIds = {};
+    APP.master.forEach(function(r){ allowedIds[r.ID] = true; });
+    APP.dsTracker = (APP.dsTracker||[]).filter(function(r){
+      return allowedIds[r.EMP_ID] || allowed.indexOf(String(r.ENTITY||'').toUpperCase().trim()) >= 0;
+    });
+    // Filter leave (EMP_ID cross-reference)
+    APP.leave = (APP.leave||[]).filter(function(r){
+      return allowedIds[r.EMP_ID] || allowedIds[r.ID];
+    });
+  },
+  // Test if a single record is accessible (for runtime checks)
+  canAccess: function(entityCode) {
+    if (this.isUnrestricted()) return true;
+    return this.allowedEntities().indexOf(String(entityCode||'').toUpperCase().trim()) >= 0;
+  }
+};
+
 var GAS={
   call:function(fn,args,ok,err){
     function _onErr(e){
@@ -499,6 +545,7 @@ var GAS={
         if(r.summary    &&r.summary.success)    APP.summary    =r.summary.data    ||[];
         if(r.dsTracker  &&r.dsTracker.success)  APP.dsTracker  =r.dsTracker.data  ||[];
         APP.config=r.config||{}; APP.loaded=true;
+        EntityFilter.apply();
         if(cb) cb();
       })
       .withFailureHandler(function(e){ toast('Load error: '+(e.message||e),'error'); })
@@ -1753,6 +1800,425 @@ function _fillAndDownload(templateB64, name, pp, dateStr, msg, btn){
 }
 
 // ============================================================
+// PROFILE AGENT — My Profile page + forced password change
+// ============================================================
+var ProfileAgent = {
+  _nameEditing: false,
+
+  load: function() {
+    var u = APP.user || {};
+    var initials = (u.name||u.email||'?').split(/\s+/).map(function(w){return w[0]||'';}).slice(0,2).join('').toUpperCase() || '?';
+    var av = document.getElementById('prof-avatar'); if(av) av.textContent = initials;
+    var roleMeta = {
+      SUPER_ADMIN:{label:'Super Admin',color:'var(--navy)'}, HR_OFFICER:{label:'HR Officer',color:'var(--teal)'},
+      ENTITY_MANAGER:{label:'Entity Manager',color:'var(--purple)'}, VIEWER:{label:'Viewer',color:'var(--muted)'},
+      EMPLOYEE:{label:'Employee',color:'var(--gold)'}
+    };
+    var rm = roleMeta[u.role] || {label:u.role||'—',color:'var(--muted)'};
+    var rb = document.getElementById('prof-role-badge');
+    if(rb){ rb.textContent = rm.label; rb.style.color = rm.color; }
+    setText('prof-email', u.email||'—');
+    setText('prof-name-display', u.name||'—');
+    var entEl = document.getElementById('prof-entities');
+    if(entEl){
+      var ents = u.entities;
+      entEl.textContent = (ents === 'ALL' || (Array.isArray(ents) && ents.length === 0)) ? 'All Entities' :
+        Array.isArray(ents) ? ents.join(', ') : String(ents||'—');
+    }
+    var banner = document.getElementById('prof-must-change-banner');
+    if(banner) banner.style.display = u.mustChange ? 'block' : 'none';
+    var empSec = document.getElementById('ss-emp-section');
+    if(empSec) empSec.style.display = (u.role === 'EMPLOYEE') ? 'block' : 'none';
+    ['prof-pwd-current','prof-pwd-new','prof-pwd-confirm'].forEach(function(id){ var el=document.getElementById(id); if(el) el.value=''; });
+    var bar=document.getElementById('prof-pwd-bar'); if(bar) bar.style.width='0%';
+    if(u.role === 'EMPLOYEE') SelfServiceAgent.load();
+    if(u.mustChange) this._showForcedChange();
+  },
+
+  _showForcedChange: function() {
+    var el1=document.getElementById('mc-pwd-new'), el2=document.getElementById('mc-pwd-confirm');
+    if(el1) el1.value=''; if(el2) el2.value='';
+    s('must-change-backdrop','display:block');
+    s('must-change-modal','display:block');
+  },
+
+  forcedPasswordChange: function() {
+    var np = document.getElementById('mc-pwd-new') ? document.getElementById('mc-pwd-new').value : '';
+    var cp = document.getElementById('mc-pwd-confirm') ? document.getElementById('mc-pwd-confirm').value : '';
+    if(!np || np.length < 6) { toast('Password must be at least 6 characters','error'); return; }
+    if(np !== cp) { toast('Passwords do not match','error'); return; }
+    call('changeMyPassword', ['__MUST_CHANGE__', np], function(r){
+      if(!r||!r.success){ toast(r&&r.error||'Failed to change password','error'); return; }
+      APP.user.mustChange = false;
+      s('must-change-backdrop','display:none');
+      s('must-change-modal','display:none');
+      toast('Password updated. Welcome!','success');
+    });
+  },
+
+  toggleNameEdit: function() {
+    this._nameEditing = !this._nameEditing;
+    var row = document.getElementById('prof-name-edit-row');
+    if(row) row.style.display = this._nameEditing ? 'block' : 'none';
+    if(this._nameEditing) {
+      var inp = document.getElementById('prof-name-input');
+      if(inp){ inp.value = (APP.user && APP.user.name) || ''; inp.focus(); }
+    }
+  },
+
+  saveName: function() {
+    var val = document.getElementById('prof-name-input') ? document.getElementById('prof-name-input').value.trim() : '';
+    if(!val){ toast('Name cannot be empty','error'); return; }
+    call('updateMyProfile', [val], function(r){
+      if(!r||!r.success){ toast(r&&r.error||'Failed','error'); return; }
+      if(APP.user) APP.user.name = val;
+      setText('prof-name-display', val);
+      var sn=document.getElementById('sb-user-name'); if(sn) sn.textContent=val;
+      var initials=val.split(/\s+/).map(function(w){return w[0]||'';}).slice(0,2).join('').toUpperCase();
+      var av=document.getElementById('prof-avatar'); if(av) av.textContent=initials;
+      var sav=document.getElementById('sb-avatar-initials'); if(sav) sav.textContent=initials;
+      ProfileAgent.toggleNameEdit();
+      toast('Display name updated','success');
+    });
+  },
+
+  checkPwdStrength: function() {
+    var v = document.getElementById('prof-pwd-new') ? document.getElementById('prof-pwd-new').value : '';
+    var score = 0;
+    if(v.length >= 6) score++;
+    if(v.length >= 10) score++;
+    if(/[A-Z]/.test(v)) score++;
+    if(/[0-9]/.test(v)) score++;
+    if(/[^A-Za-z0-9]/.test(v)) score++;
+    var colors = ['var(--red)','var(--red)','var(--gold)','var(--gold)','var(--green)'];
+    var pct = Math.round((score/5)*100);
+    var bar=document.getElementById('prof-pwd-bar');
+    if(bar){ bar.style.width=pct+'%'; bar.style.background=colors[Math.max(0,score-1)]||'var(--border)'; }
+  },
+
+  changePassword: function() {
+    var cur  = document.getElementById('prof-pwd-current') ? document.getElementById('prof-pwd-current').value : '';
+    var np   = document.getElementById('prof-pwd-new') ? document.getElementById('prof-pwd-new').value : '';
+    var conf = document.getElementById('prof-pwd-confirm') ? document.getElementById('prof-pwd-confirm').value : '';
+    if(!cur)  { toast('Enter your current password','error'); return; }
+    if(!np || np.length < 6) { toast('New password must be at least 6 characters','error'); return; }
+    if(np !== conf) { toast('Passwords do not match','error'); return; }
+    call('changeMyPassword', [cur, np], function(r){
+      if(!r||!r.success){ toast(r&&r.error||'Failed','error'); return; }
+      if(APP.user) APP.user.mustChange = false;
+      var banner=document.getElementById('prof-must-change-banner'); if(banner) banner.style.display='none';
+      ['prof-pwd-current','prof-pwd-new','prof-pwd-confirm'].forEach(function(id){ var el=document.getElementById(id); if(el) el.value=''; });
+      var bar=document.getElementById('prof-pwd-bar'); if(bar) bar.style.width='0%';
+      toast('Password changed successfully','success');
+    });
+  },
+};
+
+// ============================================================
+// USER MANAGEMENT AGENT
+// ============================================================
+var UserMgmtAgent = {
+  _data: [],
+  _tab: 'users',
+  _tempPwd: '',
+
+  ROLE_META: {
+    SUPER_ADMIN:    {label:'Super Admin',    color:'var(--navy)',   bg:'rgba(30,71,153,.12)'},
+    HR_OFFICER:     {label:'HR Officer',     color:'var(--teal)',   bg:'rgba(0,122,138,.12)'},
+    ENTITY_MANAGER: {label:'Entity Manager', color:'var(--purple)', bg:'rgba(78,66,184,.12)'},
+    VIEWER:         {label:'Viewer',         color:'var(--muted)',  bg:'rgba(82,98,120,.10)'},
+    EMPLOYEE:       {label:'Employee',       color:'var(--gold)',   bg:'rgba(184,112,0,.12)'},
+  },
+
+  load: function() {
+    var self = this;
+    call('getUsers', [], function(r) {
+      if (!r || !r.success) { toast('Could not load users', 'error'); return; }
+      self._data = r.data || [];
+      self.render();
+      self._renderStats();
+    });
+  },
+
+  setTab: function(tab) {
+    this._tab = tab;
+    s('um-tab-users',  tab === 'users'  ? 'display:block' : 'display:none');
+    s('um-tab-matrix', tab === 'matrix' ? 'display:block' : 'display:none');
+    s('um-tab-users-btn',  'font-weight:' + (tab === 'users'  ? '700' : '400'));
+    s('um-tab-matrix-btn', 'font-weight:' + (tab === 'matrix' ? '700' : '400'));
+    if (tab === 'matrix') this._renderMatrix();
+  },
+
+  _renderStats: function() {
+    var data = this._data;
+    var total = data.length;
+    var active = data.filter(function(u){ return String(u.ACTIVE||'').toUpperCase() === 'TRUE'; }).length;
+    var byRole = {};
+    data.forEach(function(u){ byRole[u.ROLE] = (byRole[u.ROLE]||0) + 1; });
+    var self = this;
+    var cards = [
+      {label:'Total Users', val:total, icon:'&#128101;', color:'var(--navy)'},
+      {label:'Active', val:active, icon:'&#9989;', color:'var(--green)'},
+      {label:'Inactive', val:total-active, icon:'&#9940;', color:'var(--red)'},
+    ];
+    Object.keys(self.ROLE_META).forEach(function(role){
+      if (byRole[role]) cards.push({label:self.ROLE_META[role].label, val:byRole[role], icon:'&#128100;', color:self.ROLE_META[role].color});
+    });
+    var el = document.getElementById('um-stats-row');
+    if (!el) return;
+    el.innerHTML = cards.map(function(c){
+      return '<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px 16px;display:flex;align-items:center;gap:10px;min-width:110px">'+
+        '<span style="font-size:18px">'+c.icon+'</span>'+
+        '<div><div style="font-size:18px;font-weight:700;color:'+c.color+'">'+c.val+'</div>'+
+        '<div style="font-size:10px;color:var(--muted);white-space:nowrap">'+c.label+'</div></div>'+
+      '</div>';
+    }).join('');
+  },
+
+  render: function() {
+    var q    = (document.getElementById('um-q') ? document.getElementById('um-q').value : '').toLowerCase();
+    var role = document.getElementById('um-filter-role') ? document.getElementById('um-filter-role').value : '';
+    var self = this;
+    var rows = this._data.filter(function(u) {
+      if (role && u.ROLE !== role) return false;
+      if (q && String(u.EMAIL+' '+u.DISPLAY_NAME).toLowerCase().indexOf(q) < 0) return false;
+      return true;
+    });
+    var myEmail = APP.user && APP.user.email ? APP.user.email.toLowerCase() : '';
+    var html = rows.map(function(u) {
+      var meta    = self.ROLE_META[u.ROLE] || {label:u.ROLE, color:'var(--muted)', bg:'rgba(0,0,0,.06)'};
+      var isActive = String(u.ACTIVE||'').toUpperCase() === 'TRUE';
+      var isMe     = String(u.EMAIL||'').toLowerCase() === myEmail;
+      var entStr   = String(u.ENTITIES||'ALL');
+      var entChips = entStr.toUpperCase() === 'ALL'
+        ? '<span style="background:rgba(0,122,138,.1);color:var(--teal);border-radius:4px;padding:1px 7px;font-size:10px;font-weight:600">ALL</span>'
+        : entStr.split(',').map(function(e){ return '<span style="background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:1px 6px;font-size:10px">'+esc(e.trim())+'</span>'; }).join(' ');
+      var mcFlag = String(u.MUST_CHANGE||'').toUpperCase() === 'TRUE'
+        ? '<span title="Must change password" style="color:var(--gold);font-size:11px"> &#9888;</span>' : '';
+      return '<tr>'+
+        '<td style="font-family:monospace;font-size:11px">'+esc(u.EMAIL)+(isMe ? ' <span style="background:rgba(0,122,138,.15);color:var(--teal);font-size:9px;border-radius:3px;padding:1px 5px;font-family:inherit">YOU</span>' : '')+'</td>'+
+        '<td style="font-weight:600">'+esc(u.DISPLAY_NAME||'—')+'</td>'+
+        '<td><span style="background:'+meta.bg+';color:'+meta.color+';border-radius:5px;padding:2px 8px;font-size:11px;font-weight:600">'+meta.label+'</span></td>'+
+        '<td>'+entChips+'</td>'+
+        '<td style="text-align:center">'+(u.HAS_PASSWORD === true || u.HAS_PASSWORD === 'true' ? '<span style="color:var(--green);font-size:12px">&#9679;</span>' : '<span style="color:var(--red);font-size:11px">Not set</span>')+mcFlag+'</td>'+
+        '<td>'+
+          (isActive
+            ? '<span style="background:rgba(19,110,66,.1);color:var(--green);border-radius:5px;padding:2px 8px;font-size:11px;font-weight:600">Active</span>'
+            : '<span style="background:rgba(200,48,48,.1);color:var(--red);border-radius:5px;padding:2px 8px;font-size:11px;font-weight:600">Inactive</span>'
+          )+
+        '</td>'+
+        '<td style="white-space:nowrap">'+
+          '<button class="btn btn-secondary btn-sm" style="padding:2px 8px;font-size:11px" onclick="UserMgmtAgent.openEdit(\''+esc(u.EMAIL)+'\')">&#9998; Edit</button> '+
+          '<button class="btn btn-secondary btn-sm" style="padding:2px 8px;font-size:11px;color:var(--gold)" onclick="UserMgmtAgent.resetPassword(\''+esc(u.EMAIL)+'\')">&#128273; Reset</button> '+
+          (!isMe ? '<button class="btn btn-secondary btn-sm" style="padding:2px 8px;font-size:11px;color:'+(isActive?'var(--red)':'var(--green)')+'" onclick="UserMgmtAgent.toggleActive(\''+esc(u.EMAIL)+'\','+(isActive?'false':'true')+')">'+
+            (isActive ? '&#9940; Deactivate' : '&#9989; Activate')+'</button>' : '') +
+        '</td>'+
+      '</tr>';
+    }).join('') || '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:28px">No users found.</td></tr>';
+    var tbody = document.getElementById('users-tbody');
+    if (tbody) tbody.innerHTML = html;
+    var cnt = document.getElementById('users-cnt');
+    if (cnt) cnt.textContent = rows.length + ' user' + (rows.length !== 1 ? 's' : '');
+  },
+
+  openAdd: function() {
+    document.getElementById('um-m-mode').value = 'add';
+    document.getElementById('um-m-orig-email').value = '';
+    document.getElementById('um-modal-title').textContent = 'Add User';
+    document.getElementById('um-m-email').value = '';
+    document.getElementById('um-m-email').disabled = false;
+    document.getElementById('um-m-name').value = '';
+    document.getElementById('um-m-role').value = 'HR_OFFICER';
+    document.getElementById('um-m-active').value = 'TRUE';
+    document.getElementById('um-m-password').value = '';
+    document.getElementById('um-m-pwd-row').style.display = 'block';
+    document.getElementById('um-m-pwd-label').innerHTML = 'Password <span class="req">*</span>';
+    ['ALL','UG','UST','USG','USGM'].forEach(function(id){ var el=document.getElementById('um-ent-'+id); if(el) el.checked = id==='ALL'; });
+    s('um-modal-backdrop', 'display:block');
+    s('um-modal', 'display:block');
+    setTimeout(function(){ var e=document.getElementById('um-m-email'); if(e) e.focus(); }, 80);
+  },
+
+  openEdit: function(email) {
+    var u = this._data.find(function(x){ return String(x.EMAIL||'').toLowerCase() === String(email||'').toLowerCase(); });
+    if (!u) return;
+    document.getElementById('um-m-mode').value = 'edit';
+    document.getElementById('um-m-orig-email').value = u.EMAIL;
+    document.getElementById('um-modal-title').textContent = 'Edit User';
+    document.getElementById('um-m-email').value = u.EMAIL;
+    document.getElementById('um-m-email').disabled = true; // email is the key, can't change
+    document.getElementById('um-m-name').value = u.DISPLAY_NAME || '';
+    document.getElementById('um-m-role').value = u.ROLE || 'VIEWER';
+    document.getElementById('um-m-active').value = String(u.ACTIVE||'TRUE').toUpperCase() === 'FALSE' ? 'FALSE' : 'TRUE';
+    // Show password field as optional on edit
+    document.getElementById('um-m-pwd-row').style.display = 'block';
+    document.getElementById('um-m-pwd-label').innerHTML = 'New Password <span style="color:var(--muted);font-weight:400">(leave blank to keep current)</span>';
+    document.getElementById('um-m-password').value = '';
+    // Entities
+    var entStr = String(u.ENTITIES||'ALL').trim();
+    var isAll = entStr.toUpperCase() === 'ALL';
+    ['UG','UST','USG','USGM'].forEach(function(id){
+      var val = id === 'USGM' ? 'USG-M' : id;
+      var el = document.getElementById('um-ent-'+id); if(!el) return;
+      el.checked = isAll || entStr.split(',').map(function(e){return e.trim().toUpperCase();}).indexOf(val) >= 0;
+      el.disabled = isAll;
+    });
+    var allEl = document.getElementById('um-ent-ALL'); if(allEl) { allEl.checked = isAll; }
+    s('um-modal-backdrop','display:block');
+    s('um-modal','display:block');
+  },
+
+  onEntAll: function(checkbox) {
+    var checked = checkbox.checked;
+    ['UG','UST','USG','USGM'].forEach(function(id){
+      var el = document.getElementById('um-ent-'+id); if(!el) return;
+      el.checked = checked;
+      el.disabled = checked;
+    });
+  },
+
+  save: function() {
+    var mode  = document.getElementById('um-m-mode').value;
+    var email = String(document.getElementById('um-m-email').value||'').trim().toLowerCase();
+    var name  = String(document.getElementById('um-m-name').value||'').trim();
+    var role  = document.getElementById('um-m-role').value;
+    var active= document.getElementById('um-m-active').value;
+    var pwd   = document.getElementById('um-m-password').value;
+    if (!email) { toast('Email is required','error'); return; }
+    if (!name)  { toast('Display name is required','error'); return; }
+    if (mode === 'add' && !pwd) { toast('Password is required for new users','error'); return; }
+    if (pwd && pwd.length < 6) { toast('Password must be at least 6 characters','error'); return; }
+    // Entities
+    var allEl = document.getElementById('um-ent-ALL');
+    var entities;
+    if (allEl && allEl.checked) {
+      entities = 'ALL';
+    } else {
+      var picked = [];
+      [{id:'UG',val:'UG'},{id:'UST',val:'UST'},{id:'USG',val:'USG'},{id:'USGM',val:'USG-M'}].forEach(function(e){
+        var el = document.getElementById('um-ent-'+e.id); if(el && el.checked) picked.push(e.val);
+      });
+      entities = picked.length ? picked.join(',') : 'ALL';
+    }
+    var data = {EMAIL:email, DISPLAY_NAME:name, ROLE:role, ENTITIES:entities, ACTIVE:active};
+    if (pwd) data.PASSWORD = pwd;
+    var self = this;
+    call('saveUser', [data], function(r){
+      if (!r||!r.success) { toast(r&&r.error||'Save failed','error'); return; }
+      toast('User saved','success');
+      self.closeModal();
+      self.load();
+    });
+  },
+
+  toggleActive: function(email, active) {
+    var self = this;
+    var label = active ? 'activate' : 'deactivate';
+    if (!confirm('Are you sure you want to ' + label + ' ' + email + '?')) return;
+    call('toggleUserActive', [email, active], function(r){
+      if (!r||!r.success) { toast(r&&r.error||'Failed','error'); return; }
+      toast('User ' + (active?'activated':'deactivated'), 'success');
+      self.load();
+    });
+  },
+
+  resetPassword: function(email) {
+    var self = this;
+    if (!confirm('Reset password for ' + email + '?\n\nA temporary password will be generated and shown to you once.')) return;
+    call('resetUserPassword', [email], function(r){
+      if (!r||!r.success) { toast(r&&r.error||'Reset failed','error'); return; }
+      self._tempPwd = r.tempPassword || '';
+      document.getElementById('um-temp-pwd-display').textContent = self._tempPwd;
+      s('um-pwd-backdrop','display:block');
+      s('um-pwd-modal','display:block');
+      self.load();
+    });
+  },
+
+  copyTempPwd: function() {
+    if (!this._tempPwd) return;
+    try { navigator.clipboard.writeText(this._tempPwd).then(function(){ toast('Copied!','success'); }); }
+    catch(e) { toast(this._tempPwd, 'info'); }
+  },
+
+  closePwdModal: function() {
+    this._tempPwd = '';
+    s('um-pwd-backdrop','display:none');
+    s('um-pwd-modal','display:none');
+  },
+
+  closeModal: function() {
+    s('um-modal-backdrop','display:none');
+    s('um-modal','display:none');
+  },
+
+  _renderMatrix: function() {
+    var el = document.getElementById('um-matrix-content');
+    if (!el) return;
+    var roles = ['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER','VIEWER','EMPLOYEE'];
+    var roleLabels = {'SUPER_ADMIN':'Super Admin','HR_OFFICER':'HR Officer','ENTITY_MANAGER':'Entity Mgr','VIEWER':'Viewer','EMPLOYEE':'Employee'};
+    var sections = [
+      { title: '&#128218; Modules', rows: [
+        {label:'Dashboard',          access:['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER','VIEWER']},
+        {label:'Master Data',        access:['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER','VIEWER']},
+        {label:'Active Manpower',    access:['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER','VIEWER']},
+        {label:'Resignations',       access:['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER','VIEWER']},
+        {label:'Onboarding',         access:['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER']},
+        {label:'20DS Tracker',       access:['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER']},
+        {label:'HR Letters',         access:['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER']},
+        {label:'Leave',              access:['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER','VIEWER']},
+        {label:'Recruitment',        access:['SUPER_ADMIN','HR_OFFICER']},
+        {label:'Reports',            access:['SUPER_ADMIN','HR_OFFICER']},
+        {label:'Activity Logs',      access:['SUPER_ADMIN','HR_OFFICER']},
+        {label:'User Management',    access:['SUPER_ADMIN']},
+        {label:'System Setup',       access:['SUPER_ADMIN']},
+        {label:'Self Service',       access:['EMPLOYEE']},
+      ]},
+      { title: '&#128296; Actions', rows: [
+        {label:'Add Employee',       access:['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER']},
+        {label:'Edit Employee',      access:['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER']},
+        {label:'Delete Employee',    access:['SUPER_ADMIN','HR_OFFICER']},
+        {label:'Add Onboarding',     access:['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER']},
+        {label:'Edit Onboarding',    access:['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER']},
+        {label:'Issue Letter',       access:['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER']},
+        {label:'Approve Leave',      access:['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER']},
+        {label:'Manage Jobs',        access:['SUPER_ADMIN','HR_OFFICER']},
+        {label:'Transfer to Master', access:['SUPER_ADMIN','HR_OFFICER']},
+        {label:'Manage Users',       access:['SUPER_ADMIN']},
+        {label:'System Config',      access:['SUPER_ADMIN']},
+        {label:'View Logs',          access:['SUPER_ADMIN','HR_OFFICER']},
+      ]},
+    ];
+    var colW = '80px';
+    var html = '<div style="padding:0 0 24px">';
+    sections.forEach(function(sec){
+      html += '<div class="tcard" style="margin-bottom:16px">'+
+        '<div class="ttop"><h3>'+sec.title+'</h3><span style="font-size:11px;color:var(--muted)">Read-only reference — roles are system-defined</span></div>'+
+        '<div class="twrap" style="overflow-x:auto"><table style="min-width:600px">'+
+        '<thead><tr><th style="text-align:left;width:200px">Permission</th>'+
+        roles.map(function(r){
+          return '<th style="text-align:center;width:'+colW+';font-size:11px;color:var(--navy)">'+roleLabels[r]+'</th>';
+        }).join('')+
+        '</tr></thead><tbody>';
+      sec.rows.forEach(function(row){
+        html += '<tr><td style="font-weight:500;font-size:12px">'+row.label+'</td>';
+        roles.forEach(function(r){
+          var has = row.access.indexOf(r) >= 0;
+          html += '<td style="text-align:center">'+(has
+            ? '<span style="color:var(--green);font-size:15px">&#10003;</span>'
+            : '<span style="color:var(--border);font-size:13px">&mdash;</span>'
+          )+'</td>';
+        });
+        html += '</tr>';
+      });
+      html += '</tbody></table></div></div>';
+    });
+    html += '</div>';
+    el.innerHTML = html;
+  },
+};
+
+// ============================================================
 // DARK MODE
 // ============================================================
 var DarkMode = {
@@ -1887,7 +2353,7 @@ function renderNav() {
     'users':        ['SUPER_ADMIN'],
     'leave':        ['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER','VIEWER'],
     'recruitment':  ['SUPER_ADMIN','HR_OFFICER'],
-    'self-service': ['EMPLOYEE']
+    'self-service': ['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER','VIEWER','EMPLOYEE']
   };
   document.querySelectorAll('.sb-item[data-view]').forEach(function(item) {
     var view = item.dataset.view;
@@ -1941,7 +2407,7 @@ function showSelfServicePortal() {
   document.getElementById('main-content').style.display = 'block';
   renderNav();
   navigate('self-service');
-  SelfServiceAgent.init();
+  // ProfileAgent.load() is called by navigate(); SelfServiceAgent.load() called within ProfileAgent for EMPLOYEE role
 }
 
 // ============================================================
@@ -1980,6 +2446,7 @@ function navigate(view){
   if(view==='leave') LeaveAgent.load('');
   if(view==='recruitment') RecruitmentAgent.loadJobs();
   if(view==='users') UserMgmtAgent.load();
+  if(view==='self-service') ProfileAgent.load();
   if(view==='20dstracker') DSAgent.render();
 }
 
@@ -2050,6 +2517,7 @@ function doLogin() {
       sessionStorage.setItem('ughr_token', r.token);
       hideLoginScreen();
       AgentManager.init();
+      if (r.profile && r.profile.mustChange) ProfileAgent._showForcedChange();
     })
     .withFailureHandler(function(e){
       if(btn){ btn.disabled=false; btn.textContent='Sign In'; }
