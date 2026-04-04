@@ -154,7 +154,7 @@ function loginUser(email, password) {
       var profile  = {
         email:      normEmail,
         name:       String(vals[i][nIdx]||'').trim() || normEmail.split('@')[0],
-        role:       String(vals[i][rIdx]||'VIEWER').trim(),
+        role:       String(vals[i][rIdx]||'STAFF').trim(),
         entities:   entities,
         active:     true,
         mustChange: mustChange
@@ -1513,7 +1513,7 @@ function saveUser(data) {
   try {
     _requireRole(['SUPER_ADMIN']);
     if (!data.EMAIL) return {success:false, error:'Email required'};
-    var validRoles = ['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER','VIEWER','EMPLOYEE'];
+    var validRoles = ['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER','STAFF','EMPLOYEE'];
     if (validRoles.indexOf(data.ROLE) < 0) return {success:false, error:'Invalid role'};
     var sh = getOrCreate(TABS.USERS, ['EMAIL','DISPLAY_NAME','ROLE','ENTITIES','ACTIVE','PASSWORD']);
     var vals = sh.getDataRange().getValues();
@@ -1617,7 +1617,7 @@ function resetUserPassword(email) {
 
 function changeMyPassword(currentPwd, newPwd) {
   try {
-    var profile = _requireRole(['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER','VIEWER','EMPLOYEE']);
+    var profile = _requireRole(['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER','STAFF','EMPLOYEE']);
     if (!newPwd || String(newPwd).length < 6) return {success:false, error:'New password must be at least 6 characters'};
     var sh = SS.getSheetByName(TABS.USERS); if (!sh) return {success:false, error:'Users sheet not found'};
     var vals = sh.getDataRange().getValues();
@@ -1645,7 +1645,7 @@ function changeMyPassword(currentPwd, newPwd) {
 
 function updateMyProfile(displayName) {
   try {
-    var profile = _requireRole(['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER','VIEWER','EMPLOYEE']);
+    var profile = _requireRole(['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER','STAFF','EMPLOYEE']);
     if (!displayName || !String(displayName).trim()) return {success:false, error:'Name cannot be empty'};
     var sh = SS.getSheetByName(TABS.USERS); if (!sh) return {success:false, error:'Users sheet not found'};
     var vals = sh.getDataRange().getValues();
@@ -1668,7 +1668,7 @@ function updateMyProfile(displayName) {
 // ============================================================
 function getMyEmployeeRecord() {
   try {
-    var profile = _requireRole(['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER','VIEWER','EMPLOYEE']);
+    var profile = _requireRole(['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER','STAFF','EMPLOYEE']);
     return getMasterData(profile);
   } catch(e) { return {success:false, error:e.message}; }
 }
@@ -1720,7 +1720,7 @@ function _getEmpByEmail(email) {
 // ============================================================
 function getLeave(empId) {
   try {
-    var profile = _requireRole(['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER','VIEWER','EMPLOYEE']);
+    var profile = _requireRole(['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER','STAFF','EMPLOYEE']);
     var sh = getOrCreate(TABS.LEAVE, ['LEAVE_ID','EMP_ID','EMP_NAME','LEAVE_TYPE','START_DATE','END_DATE','DAYS','STATUS','APPROVED_BY','NOTES','DATE_ADDED']);
     var vals = sh.getDataRange().getValues();
     if (vals.length < 2) return {success:true, data:[]};

@@ -1811,7 +1811,7 @@ var ProfileAgent = {
     var av = document.getElementById('prof-avatar'); if(av) av.textContent = initials;
     var roleMeta = {
       SUPER_ADMIN:{label:'Super Admin',color:'var(--navy)'}, HR_OFFICER:{label:'HR Officer',color:'var(--teal)'},
-      ENTITY_MANAGER:{label:'Entity Manager',color:'var(--purple)'}, VIEWER:{label:'Viewer',color:'var(--muted)'},
+      ENTITY_MANAGER:{label:'Entity Manager',color:'var(--purple)'}, STAFF:{label:'Staff',color:'var(--muted)'},
       EMPLOYEE:{label:'Employee',color:'var(--gold)'}
     };
     var rm = roleMeta[u.role] || {label:u.role||'—',color:'var(--muted)'};
@@ -1926,7 +1926,7 @@ var UserMgmtAgent = {
     SUPER_ADMIN:    {label:'Super Admin',    color:'var(--navy)',   bg:'rgba(30,71,153,.12)'},
     HR_OFFICER:     {label:'HR Officer',     color:'var(--teal)',   bg:'rgba(0,122,138,.12)'},
     ENTITY_MANAGER: {label:'Entity Manager', color:'var(--purple)', bg:'rgba(78,66,184,.12)'},
-    VIEWER:         {label:'Viewer',         color:'var(--muted)',  bg:'rgba(82,98,120,.10)'},
+    STAFF:          {label:'Staff',           color:'var(--muted)',  bg:'rgba(82,98,120,.10)'},
     EMPLOYEE:       {label:'Employee',       color:'var(--gold)',   bg:'rgba(184,112,0,.12)'},
   },
 
@@ -2048,7 +2048,7 @@ var UserMgmtAgent = {
     document.getElementById('um-m-email').value = u.EMAIL;
     document.getElementById('um-m-email').disabled = true; // email is the key, can't change
     document.getElementById('um-m-name').value = u.DISPLAY_NAME || '';
-    document.getElementById('um-m-role').value = u.ROLE || 'VIEWER';
+    document.getElementById('um-m-role').value = u.ROLE || 'STAFF';
     document.getElementById('um-m-active').value = String(u.ACTIVE||'TRUE').toUpperCase() === 'FALSE' ? 'FALSE' : 'TRUE';
     // Show password field as optional on edit
     document.getElementById('um-m-pwd-row').style.display = 'block';
@@ -2155,18 +2155,19 @@ var UserMgmtAgent = {
   _renderMatrix: function() {
     var el = document.getElementById('um-matrix-content');
     if (!el) return;
-    var roles = ['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER','VIEWER','EMPLOYEE'];
-    var roleLabels = {'SUPER_ADMIN':'Super Admin','HR_OFFICER':'HR Officer','ENTITY_MANAGER':'Entity Mgr','VIEWER':'Viewer','EMPLOYEE':'Employee'};
+    var roles = ['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER','STAFF','EMPLOYEE'];
+    // STAFF = renamed from VIEWER (read-only role)
+    var roleLabels = {'SUPER_ADMIN':'Super Admin','HR_OFFICER':'HR Officer','ENTITY_MANAGER':'Entity Mgr','STAFF':'Staff','EMPLOYEE':'Employee'};
     var sections = [
       { title: '&#128218; Modules', rows: [
-        {label:'Dashboard',          access:['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER','VIEWER']},
-        {label:'Master Data',        access:['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER','VIEWER']},
-        {label:'Active Manpower',    access:['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER','VIEWER']},
-        {label:'Resignations',       access:['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER','VIEWER']},
+        {label:'Dashboard',          access:['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER','STAFF']},
+        {label:'Master Data',        access:['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER','STAFF']},
+        {label:'Active Manpower',    access:['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER','STAFF']},
+        {label:'Resignations',       access:['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER','STAFF']},
         {label:'Onboarding',         access:['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER']},
-        {label:'20DS Tracker',       access:['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER']},
-        {label:'HR Letters',         access:['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER']},
-        {label:'Leave',              access:['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER','VIEWER']},
+        {label:'Progress Tracker',   access:['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER']},
+        {label:'Letter Generator',   access:['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER']},
+        {label:'Leave',              access:['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER','STAFF']},
         {label:'Recruitment',        access:['SUPER_ADMIN','HR_OFFICER']},
         {label:'Reports',            access:['SUPER_ADMIN','HR_OFFICER']},
         {label:'Activity Logs',      access:['SUPER_ADMIN','HR_OFFICER']},
@@ -2340,20 +2341,25 @@ var AgentManager={
 function renderNav() {
   var role = APP.user ? APP.user.role : 'NONE';
   var rules = {
-    'dashboard':    ['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER','VIEWER'],
-    'masterdata':   ['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER','VIEWER'],
-    'employees':    ['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER','VIEWER'],
-    'resignations': ['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER','VIEWER'],
+    // SUPER_ADMIN — everything
+    // HR_OFFICER  — everything except Setup
+    // ENTITY_MANAGER — operational modules only
+    // STAFF       — view/search only (ticked by admin)
+    // EMPLOYEE    — self-service only
+    'dashboard':    ['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER','STAFF'],
     'onboarding':   ['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER'],
     '20dstracker':  ['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER'],
+    'employees':    ['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER','STAFF'],
+    'resignations': ['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER','STAFF'],
+    'masterdata':   ['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER','STAFF'],
     'letters':      ['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER'],
+    'leave':        ['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER','STAFF'],
+    'recruitment':  ['SUPER_ADMIN','HR_OFFICER'],
     'reports':      ['SUPER_ADMIN','HR_OFFICER'],
     'logs':         ['SUPER_ADMIN','HR_OFFICER'],
-    'setup':        ['SUPER_ADMIN'],
-    'users':        ['SUPER_ADMIN'],
-    'leave':        ['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER','VIEWER'],
-    'recruitment':  ['SUPER_ADMIN','HR_OFFICER'],
-    'self-service': ['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER','VIEWER','EMPLOYEE']
+    'users':        ['SUPER_ADMIN','HR_OFFICER'],
+    'setup':        ['SUPER_ADMIN'],              // HR_OFFICER excluded
+    'self-service': ['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER','STAFF','EMPLOYEE']
   };
   document.querySelectorAll('.sb-item[data-view]').forEach(function(item) {
     var view = item.dataset.view;
@@ -2382,7 +2388,7 @@ function canDo(action) {
     'add_onboarding':  ['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER'],
     'edit_onboarding': ['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER'],
     'issue_letter':    ['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER'],
-    'manage_users':    ['SUPER_ADMIN'],
+    'manage_users':    ['SUPER_ADMIN','HR_OFFICER'],
     'manage_config':   ['SUPER_ADMIN'],
     'view_logs':       ['SUPER_ADMIN','HR_OFFICER'],
     'approve_leave':   ['SUPER_ADMIN','HR_OFFICER','ENTITY_MANAGER'],
@@ -2420,10 +2426,10 @@ function navigate(view){
   var s=document.querySelector('[data-view="'+view+'"]'); if(s) s.classList.add('active');
   var tt=document.getElementById('topbar-title');
   var titles={
-    dashboard:'Dashboard', masterdata:'EMPLOYEE RECORD', employees:'Active Employees',
+    dashboard:'Dashboard', masterdata:'Master Data', employees:'Active Manpower',
     resignations:'Recent Resignations',
-    onboarding:'Onboarding Pipeline', '20dstracker':'20DS Tracker',
-    letters:'HR Letters', reports:'Monthly Report',
+    onboarding:'Onboarding Pipeline', '20dstracker':'Progress Tracker',
+    letters:'Letter Generator', reports:'Monthly Report',
     logs:'Activity Logs', setup:'System Configuration',
     users:'User Management', leave:'Leave Management', recruitment:'Recruitment',
     'self-service':'My Profile'

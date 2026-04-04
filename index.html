@@ -87,13 +87,13 @@
   </div>
   <div class="sb-sec">Overview</div>
   <div class="sb-item active" data-view="dashboard" onclick="navigate('dashboard')"><span class="ic">&#128202;</span>Dashboard</div>
-  <div class="sb-item" data-view="masterdata" onclick="navigate('masterdata')"><span class="ic">&#128196;</span>MANPOWER MASTER DATA<span class="tcnt" id="emp-cnt">Loading...</span></div>
-  <div class="sb-sec">HR Operations</div>
-  <div class="sb-item" data-view="employees" onclick="navigate('employees')"><span class="ic">&#128196;</span>ACTIVE MANPOWER<span class="sb-badge gold" id="nb-emp">0</span></div>
-  <div class="sb-item" data-view="resignations" onclick="navigate('resignations')"><span class="ic">&#128683;</span>Recent Resignations</div>
   <div class="sb-item" data-view="onboarding" onclick="navigate('onboarding')"><span class="ic">&#128260;</span>Onboarding<span class="sb-badge" id="nb-ob">0</span></div>
-  <div class="sb-item" data-view="20dstracker" onclick="navigate('20dstracker')"><span class="ic">&#128203;</span>20 Days Strategy Tracker<span class="sb-badge" id="nb-ds" style="background:rgba(0,229,255,.2);color:#00e5ff">0</span></div>
-  <div class="sb-item" data-view="letters" onclick="navigate('letters')"><span class="ic">&#128196;</span>HR Letters</div>
+  <div class="sb-item" data-view="20dstracker" onclick="navigate('20dstracker')"><span class="ic">&#128203;</span>Progress Tracker<span class="sb-badge" id="nb-ds" style="background:rgba(0,229,255,.2);color:#00e5ff">0</span></div>
+  <div class="sb-item" data-view="employees" onclick="navigate('employees')"><span class="ic">&#128196;</span>Active Manpower<span class="sb-badge gold" id="nb-emp">0</span></div>
+  <div class="sb-sec">HR Operations</div>
+  <div class="sb-item" data-view="resignations" onclick="navigate('resignations')"><span class="ic">&#128683;</span>Recent Resignations</div>
+  <div class="sb-item" data-view="masterdata" onclick="navigate('masterdata')"><span class="ic">&#128196;</span>Master Data<span class="tcnt" id="emp-cnt">Loading...</span></div>
+  <div class="sb-item" data-view="letters" onclick="navigate('letters')"><span class="ic">&#128196;</span>Letter Generator</div>
   <div class="sb-item" data-view="leave" onclick="navigate('leave')"><span class="ic">&#128197;</span>Leave<span class="sb-badge" id="nb-leave">0</span></div>
   <div class="sb-item" data-view="recruitment" onclick="navigate('recruitment')"><span class="ic">&#128188;</span>Recruitment<span class="sb-badge blue hide" id="nb-rec">0</span></div>
   <div class="sb-sec">Intelligence</div>
@@ -894,7 +894,7 @@
           <div class="sw"><span class="si">&#128269;</span><input type="text" id="um-q" placeholder="Search email or name..." oninput="UserMgmtAgent.render()" style="width:200px"/></div>
           <select id="um-filter-role" onchange="UserMgmtAgent.render()" style="height:28px;font-size:11px;padding:0 8px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)">
             <option value="">All Roles</option>
-            <option>SUPER_ADMIN</option><option>HR_OFFICER</option><option>ENTITY_MANAGER</option><option>VIEWER</option><option>EMPLOYEE</option>
+            <option>SUPER_ADMIN</option><option>HR_OFFICER</option><option>ENTITY_MANAGER</option><option>STAFF</option><option>EMPLOYEE</option>
           </select>
           <span class="tcnt" id="users-cnt">0 users</span>
         </div>
@@ -938,7 +938,7 @@
         <select class="fi" id="um-m-role">
           <option value="HR_OFFICER">HR Officer</option>
           <option value="ENTITY_MANAGER">Entity Manager</option>
-          <option value="VIEWER">Viewer</option>
+          <option value="STAFF">Staff</option>
           <option value="EMPLOYEE">Employee</option>
           <option value="SUPER_ADMIN">Super Admin</option>
         </select>
@@ -1090,7 +1090,7 @@
         <div class="fg"><label class="flabel">Role <span class="req">*</span></label>
           <select class="fsel2" id="uf-role">
             <option value="">Select role...</option>
-            <option>SUPER_ADMIN</option><option>HR_OFFICER</option><option>ENTITY_MANAGER</option><option>VIEWER</option><option>EMPLOYEE</option>
+            <option>SUPER_ADMIN</option><option>HR_OFFICER</option><option>ENTITY_MANAGER</option><option>STAFF</option><option>EMPLOYEE</option>
           </select>
         </div>
         <div class="fg"><label class="flabel">Entities <span style="font-size:9px;color:var(--muted)">(ALL or USG,UG)</span></label><input class="fi" type="text" id="uf-entities" placeholder="ALL"/></div>
