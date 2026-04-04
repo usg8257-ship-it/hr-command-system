@@ -544,8 +544,11 @@ var GAS={
         if(r.hrDocs     &&r.hrDocs.success)     APP.hrDocs     =r.hrDocs.data     ||[];
         if(r.summary    &&r.summary.success)    APP.summary    =r.summary.data    ||[];
         if(r.dsTracker  &&r.dsTracker.success)  APP.dsTracker  =r.dsTracker.data  ||[];
+        if(r.stepConfig &&r.stepConfig.success) APP.stepConfig =r.stepConfig.data ||[];
         APP.config=r.config||{}; APP.loaded=true;
         EntityFilter.apply();
+        // Apply dynamic step config to DSAgent — overrides hardcoded defaults if sheet has data
+        if (APP.stepConfig && APP.stepConfig.length) DSAgent.applyStepConfig(APP.stepConfig);
         if(cb) cb();
       })
       .withFailureHandler(function(e){ toast('Load error: '+(e.message||e),'error'); })
@@ -2221,6 +2224,314 @@ var UserMgmtAgent = {
 };
 
 // ============================================================
+// STEP MANAGEMENT AGENT
+// ============================================================
+var StepMgmtAgent = {
+  _steps: [],       // current live array (ordered)
+  _statuses: [],    // being built in modal
+
+  // ── Load & Render list ──────────────────────────────────────
+  reload: function() {
+    var self = this;
+    // Use cached data if available, refresh in background
+    if (APP.stepConfig && APP.stepConfig.length && !self._steps.length) {
+      self._steps = APP.stepConfig.slice();
+      self.renderList();
+    }
+    call('getStepConfig', [], function(r) {
+      if (!r || !r.success) { toast('Could not load steps', 'error'); return; }
+      self._steps = r.data || [];
+      APP.stepConfig = self._steps;
+      self.renderList();
+    });
+  },
+
+  renderList: function() {
+    var el = document.getElementById('step-mgmt-list');
+    if (!el) return;
+    if (!this._steps.length) {
+      el.innerHTML = '<div style="text-align:center;padding:20px;color:var(--muted);font-size:12px">No steps configured yet.</div>';
+      return;
+    }
+    var self = this;
+    var rows = this._steps.map(function(s, idx) {
+      var substepCount = Object.keys(s.substeps || {}).length;
+      var slaColor = s.slaHours > 96 ? 'var(--gold)' : 'var(--teal)';
+      return '<tr>'+
+        '<td style="width:30px;color:var(--muted);font-size:11px;text-align:center">'+
+          '<span style="cursor:grab;font-size:14px" title="Drag to reorder">⠿</span>'+
+        '</td>'+
+        '<td style="width:26px;text-align:center">'+
+          '<span style="background:var(--navy);color:#fff;border-radius:50%;width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:700">'+
+            esc(s.short)+'</span></td>'+
+        '<td><span style="font-weight:600;font-size:13px">'+esc(s.label)+'</span>'+
+            '<div style="font-size:10px;font-family:monospace;color:var(--muted);margin-top:1px">'+esc(s.key)+'</div></td>'+
+        '<td style="font-size:11px;color:'+slaColor+';font-weight:600">'+s.slaHours+'h SLA</td>'+
+        '<td style="font-size:10px">'+
+          s.statuses.map(function(st){ return '<span style="background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:1px 6px;margin:1px 2px;display:inline-block">'+esc(st)+'</span>'; }).join('')+
+        '</td>'+
+        '<td style="font-size:11px;color:var(--muted)">'+substepCount+' substep'+(substepCount!==1?'s':'')+'</td>'+
+        '<td style="white-space:nowrap">'+
+          '<button class="btn btn-secondary btn-sm" style="padding:2px 8px;font-size:11px" onclick="StepMgmtAgent.openEdit('+idx+')">&#9998; Edit</button> '+
+          (idx > 0 ? '<button class="btn btn-secondary btn-sm" style="padding:2px 7px;font-size:11px" onclick="StepMgmtAgent.moveUp('+idx+')" title="Move up">&#8593;</button> ' : '')+
+          (idx < self._steps.length-1 ? '<button class="btn btn-secondary btn-sm" style="padding:2px 7px;font-size:11px" onclick="StepMgmtAgent.moveDown('+idx+')" title="Move down">&#8595;</button> ' : '')+
+          '<button class="btn btn-secondary btn-sm" style="padding:2px 8px;font-size:11px;color:var(--red)" onclick="StepMgmtAgent.removeStep('+idx+')" title="Remove step">&#128465;</button>'+
+        '</td>'+
+      '</tr>';
+    }).join('');
+    el.innerHTML =
+      '<table style="width:100%;border-collapse:collapse;font-size:12px">'+
+      '<thead><tr style="background:var(--surface2)">'+
+        '<th style="padding:6px 8px;width:30px"></th>'+
+        '<th style="padding:6px 8px;width:40px">Pill</th>'+
+        '<th style="padding:6px 8px;text-align:left">Step</th>'+
+        '<th style="padding:6px 8px">SLA</th>'+
+        '<th style="padding:6px 8px;text-align:left">Statuses</th>'+
+        '<th style="padding:6px 8px">Substeps</th>'+
+        '<th style="padding:6px 8px">Actions</th>'+
+      '</tr></thead>'+
+      '<tbody>'+rows+'</tbody>'+
+      '</table>'+
+      '<div style="margin-top:12px;text-align:right">'+
+        '<button class="btn btn-navy" onclick="StepMgmtAgent.saveAll()">&#128190; Save Changes</button>'+
+      '</div>';
+  },
+
+  moveUp: function(idx) {
+    if (idx <= 0) return;
+    var tmp = this._steps[idx-1]; this._steps[idx-1] = this._steps[idx]; this._steps[idx] = tmp;
+    this.renderList();
+  },
+  moveDown: function(idx) {
+    if (idx >= this._steps.length-1) return;
+    var tmp = this._steps[idx+1]; this._steps[idx+1] = this._steps[idx]; this._steps[idx] = tmp;
+    this.renderList();
+  },
+  removeStep: function(idx) {
+    var s = this._steps[idx];
+    if (!s) return;
+    if (!confirm('Remove step "'+s.label+'"?\n\nExisting tracker data for this step will remain in the sheet but the step will no longer appear in new records.')) return;
+    this._steps.splice(idx, 1);
+    this.renderList();
+  },
+
+  saveAll: function() {
+    var self = this;
+    if (!this._steps.length) { toast('No steps to save','error'); return; }
+    call('saveStepConfig', [this._steps], function(r) {
+      if (!r || !r.success) { toast(r&&r.error||'Save failed','error'); return; }
+      DSAgent.applyStepConfig(self._steps);
+      APP.stepConfig = self._steps;
+      toast('Steps saved — Progress Tracker updated', 'success');
+    });
+  },
+
+  // ── Add / Edit modal ────────────────────────────────────────
+  openAdd: function() {
+    document.getElementById('sm-m-mode').value = 'add';
+    document.getElementById('sm-m-orig-key').value = '';
+    document.getElementById('sm-modal-title').textContent = 'Add Step';
+    document.getElementById('sm-m-key').value = '';
+    document.getElementById('sm-m-key').disabled = false;
+    document.getElementById('sm-m-label').value = '';
+    document.getElementById('sm-m-short').value = '';
+    document.getElementById('sm-m-sla').value = '24';
+    this._statuses = ['Pending','Done'];
+    this._renderStatusChips();
+    document.getElementById('sm-m-substeps-list').innerHTML = '';
+    s('sm-modal-backdrop','display:block'); s('sm-modal','display:block');
+    setTimeout(function(){ var e=document.getElementById('sm-m-key'); if(e) e.focus(); }, 80);
+  },
+
+  openEdit: function(idx) {
+    var step = this._steps[idx];
+    if (!step) return;
+    document.getElementById('sm-m-mode').value = 'edit';
+    document.getElementById('sm-m-orig-key').value = step.key;
+    document.getElementById('sm-modal-title').textContent = 'Edit Step';
+    document.getElementById('sm-m-key').value = step.key;
+    document.getElementById('sm-m-key').disabled = true;
+    document.getElementById('sm-m-label').value = step.label;
+    document.getElementById('sm-m-short').value = step.short;
+    document.getElementById('sm-m-sla').value = step.slaHours;
+    this._statuses = step.statuses.slice();
+    this._renderStatusChips();
+    // Substeps
+    var subList = document.getElementById('sm-m-substeps-list');
+    subList.innerHTML = '';
+    Object.keys(step.substeps||{}).forEach(function(sk) {
+      StepMgmtAgent._appendSubstepRow(sk, step.substeps[sk]);
+    });
+    s('sm-modal-backdrop','display:block'); s('sm-modal','display:block');
+  },
+
+  _renderStatusChips: function() {
+    var el = document.getElementById('sm-m-statuses-chips');
+    if (!el) return;
+    el.innerHTML = this._statuses.map(function(st, i) {
+      return '<span style="background:var(--surface2);border:1px solid var(--border);border-radius:5px;padding:2px 8px;font-size:11px;display:inline-flex;align-items:center;gap:4px">'+
+        esc(st)+
+        '<span style="cursor:pointer;color:var(--red);font-weight:700;font-size:12px;line-height:1" onclick="StepMgmtAgent.removeStatus('+i+')">&#10005;</span>'+
+      '</span>';
+    }).join('');
+  },
+
+  onStatusKey: function(e) {
+    if (e.key === 'Enter' || e.key === ',') {
+      e.preventDefault();
+      var val = e.target.value.trim().replace(/,$/,'');
+      if (val && this._statuses.indexOf(val) < 0) {
+        this._statuses.push(val);
+        this._renderStatusChips();
+      }
+      e.target.value = '';
+    }
+  },
+
+  removeStatus: function(idx) {
+    this._statuses.splice(idx, 1);
+    this._renderStatusChips();
+  },
+
+  addSubstepRow: function(key, label) { this._appendSubstepRow(key||'', label||''); },
+
+  _appendSubstepRow: function(key, label) {
+    var row = document.createElement('div');
+    row.style.cssText = 'display:flex;gap:6px;margin-bottom:5px;align-items:center';
+    row.innerHTML =
+      '<input type="text" class="fi" placeholder="substep_key" style="width:160px;margin:0;font-family:monospace;font-size:11px" value="'+esc(key)+'" data-role="ss-key" oninput="this.value=this.value.toLowerCase().replace(/[^a-z0-9_]/g,\'_\')"/>'+
+      '<input type="text" class="fi" placeholder="Label" style="flex:1;margin:0;font-size:12px" value="'+esc(label)+'" data-role="ss-label"/>'+
+      '<button class="btn btn-secondary btn-sm" style="padding:2px 7px;color:var(--red)" type="button" onclick="this.parentNode.remove()">&#10005;</button>';
+    document.getElementById('sm-m-substeps-list').appendChild(row);
+  },
+
+  _collectSubsteps: function() {
+    var rows = document.getElementById('sm-m-substeps-list').querySelectorAll('div');
+    var obj = {};
+    rows.forEach(function(row) {
+      var k = (row.querySelector('[data-role="ss-key"]')||{}).value || '';
+      var v = (row.querySelector('[data-role="ss-label"]')||{}).value || '';
+      k = k.trim(); v = v.trim();
+      if (k && v) obj[k] = v;
+    });
+    return obj;
+  },
+
+  save: function() {
+    var mode  = document.getElementById('sm-m-mode').value;
+    var key   = document.getElementById('sm-m-key').value.trim();
+    var label = document.getElementById('sm-m-label').value.trim();
+    var short = document.getElementById('sm-m-short').value.trim().toUpperCase();
+    var sla   = Number(document.getElementById('sm-m-sla').value) || 24;
+    // Flush any partially-typed status
+    var pendingInput = document.getElementById('sm-m-status-input');
+    if (pendingInput && pendingInput.value.trim()) {
+      var v = pendingInput.value.trim();
+      if (this._statuses.indexOf(v) < 0) this._statuses.push(v);
+      pendingInput.value = '';
+      this._renderStatusChips();
+    }
+    if (!key)   { toast('Step key is required','error'); return; }
+    if (!label) { toast('Label is required','error'); return; }
+    if (!short) { toast('Short code is required','error'); return; }
+    if (!this._statuses.length) { toast('Add at least one status','error'); return; }
+    if (!/^STEP_[A-Z0-9_]+$/.test(key)) { toast('Key must start with STEP_ and use only uppercase letters, numbers, underscores','error'); return; }
+    var substeps = this._collectSubsteps();
+    var stepObj = { key:key, label:label, short:short, slaHours:sla, statuses:this._statuses.slice(), substeps:substeps };
+    if (mode === 'add') {
+      if (this._steps.some(function(s){ return s.key === key; })) { toast('A step with this key already exists','error'); return; }
+      this._steps.push(stepObj);
+    } else {
+      var origKey = document.getElementById('sm-m-orig-key').value;
+      var idx = this._steps.findIndex(function(s){ return s.key === origKey; });
+      if (idx >= 0) this._steps[idx] = stepObj;
+    }
+    this.renderList();
+    this.closeModal();
+    toast('Step '+(mode==='add'?'added':'updated')+' — click "Save Changes" to persist', 'info');
+  },
+
+  closeModal: function() {
+    s('sm-modal-backdrop','display:none'); s('sm-modal','display:none');
+  },
+
+  // ── Merge flow ──────────────────────────────────────────────
+  openMerge: function() {
+    var opts = this._steps.map(function(s){ return '<option value="'+esc(s.key)+'">'+esc(s.label)+' ('+esc(s.key)+')</option>'; }).join('');
+    document.getElementById('sm-mg-keyA').innerHTML = opts;
+    document.getElementById('sm-mg-keyB').innerHTML = opts;
+    if (this._steps.length >= 2) document.getElementById('sm-mg-keyB').selectedIndex = 1;
+    ['sm-mg-key','sm-mg-label','sm-mg-short','sm-mg-sla','sm-mg-statuses'].forEach(function(id){ var el=document.getElementById(id); if(el) el.value=''; });
+    document.getElementById('sm-mg-preview').style.display = 'none';
+    s('sm-merge-backdrop','display:block'); s('sm-merge-modal','display:block');
+    this.onMergeSelChange();
+  },
+
+  onMergeSelChange: function() {
+    var kA = document.getElementById('sm-mg-keyA') ? document.getElementById('sm-mg-keyA').value : '';
+    var kB = document.getElementById('sm-mg-keyB') ? document.getElementById('sm-mg-keyB').value : '';
+    var sA = this._steps.find(function(s){ return s.key===kA; });
+    var sB = this._steps.find(function(s){ return s.key===kB; });
+    var prev = document.getElementById('sm-mg-preview');
+    var prevBody = document.getElementById('sm-mg-substep-preview');
+    if (!sA || !sB || kA === kB) { if(prev) prev.style.display='none'; return; }
+    // Build combined substep preview
+    var combined = {};
+    Object.keys(sA.substeps||{}).forEach(function(k){ combined[k] = sA.substeps[k]+' <span style="color:var(--teal);font-size:10px">(from '+esc(sA.short)+')</span>'; });
+    Object.keys(sB.substeps||{}).forEach(function(k){
+      if (!combined[k]) combined[k] = sB.substeps[k]+' <span style="color:var(--purple);font-size:10px">(from '+esc(sB.short)+')</span>';
+    });
+    if(prevBody) prevBody.innerHTML = Object.keys(combined).length
+      ? Object.keys(combined).map(function(k){ return '<div style="font-size:11px;padding:2px 0">&#10003; <code style="font-size:10px">'+esc(k)+'</code> — '+combined[k]+'</div>'; }).join('')
+      : '<div style="color:var(--muted);font-size:11px">No substeps on either step.</div>';
+    if(prev) prev.style.display = 'block';
+    // Auto-suggest merged SLA
+    var slaEl = document.getElementById('sm-mg-sla');
+    if(slaEl && !slaEl.value) slaEl.value = Math.max(sA.slaHours||24, sB.slaHours||24);
+    // Auto-suggest statuses
+    var stEl = document.getElementById('sm-mg-statuses');
+    if(stEl && !stEl.value) {
+      var merged = sA.statuses.slice();
+      sB.statuses.forEach(function(st){ if(merged.indexOf(st)<0) merged.push(st); });
+      stEl.value = merged.join(',');
+    }
+  },
+
+  confirmMerge: function() {
+    var kA  = document.getElementById('sm-mg-keyA').value;
+    var kB  = document.getElementById('sm-mg-keyB').value;
+    var key = document.getElementById('sm-mg-key').value.trim();
+    var lbl = document.getElementById('sm-mg-label').value.trim();
+    var sht = document.getElementById('sm-mg-short').value.trim().toUpperCase();
+    var sla = Number(document.getElementById('sm-mg-sla').value) || 48;
+    var sts = (document.getElementById('sm-mg-statuses').value||'Pending,Done').split(',').map(function(s){ return s.trim(); }).filter(Boolean);
+    if (!kA || !kB || kA===kB) { toast('Select two different steps to merge','error'); return; }
+    if (!key)  { toast('New step key is required','error'); return; }
+    if (!lbl)  { toast('New step label is required','error'); return; }
+    if (!sht)  { toast('Short code is required','error'); return; }
+    if (!/^STEP_[A-Z0-9_]+$/.test(key)) { toast('Invalid key format','error'); return; }
+    // Build combined substeps
+    var sA = this._steps.find(function(s){ return s.key===kA; });
+    var sB = this._steps.find(function(s){ return s.key===kB; });
+    var combinedSubs = {};
+    if(sA) Object.keys(sA.substeps||{}).forEach(function(k){ combinedSubs[k]=sA.substeps[k]; });
+    if(sB) Object.keys(sB.substeps||{}).forEach(function(k){ if(!combinedSubs[k]) combinedSubs[k]=sB.substeps[k]; });
+    var newStep = { key:key, label:lbl, short:sht, slaHours:sla, statuses:sts, substeps:combinedSubs };
+    if (!confirm('Merge "'+kA+'" + "'+kB+'" → "'+key+'"?\n\nThis is permanent and will migrate all existing tracker records.')) return;
+    call('mergeSteps', [kA, kB, newStep], function(r) {
+      if (!r||!r.success) { toast(r&&r.error||'Merge failed','error'); return; }
+      toast('Merged successfully — '+r.migratedCount+' tracker records updated', 'success');
+      StepMgmtAgent.closeMerge();
+      StepMgmtAgent.reload();
+    });
+  },
+
+  closeMerge: function() {
+    s('sm-merge-backdrop','display:none'); s('sm-merge-modal','display:none');
+  },
+};
+
+// ============================================================
 // DARK MODE
 // ============================================================
 var DarkMode = {
@@ -2491,6 +2802,7 @@ function navigate(view){
   if(view==='recruitment') RecruitmentAgent.loadJobs();
   if(view==='users') UserMgmtAgent.load();
   if(view==='self-service') ProfileAgent.load();
+  if(view==='setup') StepMgmtAgent.reload();
   if(view==='20dstracker') DSAgent.render();
 }
 
@@ -3192,7 +3504,8 @@ var DSAgent = {
   _dsSummaryPage: 1,  // current page — Summary tab tracker
   _dsPageSize: 20,    // rows per page
 
-  // Step definitions: key → {label, sla(hours), statuses, substeps}
+  // Step definitions — rebuilt dynamically from APP.stepConfig after load
+  // Hardcoded values serve as fallback if sheet hasn't been seeded yet
   STEPS: {
     STEP_VISA:      { label: 'Visa/Entry Issued',        short: 'VI', sla: 24,  statuses: ['Pending','Done','Problem'],     substeps: { mol_done: 'MOL Done', entry_permit: 'Entry Permit Submitted' } },
     STEP_LABOR:     { label: 'Tawjeeh & Labor Card',     short: 'LC', sla: 24,  statuses: ['Pending','Done'],               substeps: { tawjeeh: 'Tawjeeh Completed', labor_card: 'Labor Card Received' } },
@@ -3200,6 +3513,22 @@ var DSAgent = {
     STEP_INSURANCE: { label: 'Medical Insurance',        short: 'MI', sla: 72,  statuses: ['Pending','Done','Problem'],     substeps: { app_submitted: 'Application Submitted', card_received: 'Card Received' } },
     STEP_NSI:       { label: 'NSI Training',             short: 'NS', sla: 168, statuses: ['Not Started','Pending','Done'], substeps: { app_submitted: 'Application Submitted', date_scheduled: 'Training Date Scheduled', training_completed: 'Training Completed', cert_received: 'Certificate Received' } },
     STEP_EID:       { label: 'EID & Residency Stamping', short: 'EI', sla: 48,  statuses: ['Pending','Done','Problem'],     substeps: { eid_app_submitted: 'EID Application Submitted', biometrics: 'Biometrics / Stamping Done', card_received: 'Card Received' } }
+  },
+
+  // Called after loadAllData — rebuilds STEPS from the dynamic config sheet
+  applyStepConfig: function(configArr) {
+    if (!configArr || !configArr.length) return;
+    var built = {};
+    configArr.forEach(function(s) {
+      built[s.key] = {
+        label:    s.label,
+        short:    s.short,
+        sla:      s.slaHours,
+        statuses: s.statuses,
+        substeps: s.substeps || {}
+      };
+    });
+    this.STEPS = built;
   },
 
   _statusClass: function(status) {

@@ -585,8 +585,123 @@
             <li><strong style="color:var(--navy)">Summary</strong> — MONTH, TOTAL_EMP, PSBD, SIRA, NIL, ABU_DHABI, DUBAI, NEW_JOINS, EXITS, ONBOARDING, LETTERS_ISSUED, NOTES</li>
           </ul>
         </div>
+
+        <!-- Step Manager -->
+        <div class="setup-step" style="border-left:3px solid var(--teal);max-width:none">
+          <div class="step-num" style="background:var(--teal)">&#128203;</div>
+          <h3>Progress Tracker — Step Configuration</h3>
+          <p style="color:var(--muted);font-size:12px;margin-bottom:14px">Add, edit, reorder or merge the onboarding steps that appear in the Progress Tracker. Changes take effect immediately for all new records.</p>
+          <div style="display:flex;gap:8px;margin-bottom:14px">
+            <button class="btn btn-navy btn-sm" onclick="StepMgmtAgent.openAdd()">&#10133; Add Step</button>
+            <button class="btn btn-secondary btn-sm" onclick="StepMgmtAgent.openMerge()">&#8652; Merge Two Steps</button>
+            <button class="btn btn-secondary btn-sm" onclick="StepMgmtAgent.reload()">&#8635; Reload</button>
+          </div>
+          <div id="step-mgmt-list">
+            <div style="text-align:center;padding:24px;color:var(--muted);font-size:12px">Loading steps…</div>
+          </div>
+        </div>
       </div>
     </div>
+
+<!-- ===== STEP ADD/EDIT MODAL ===== -->
+<div class="modal-backdrop" id="sm-modal-backdrop" style="display:none" onclick="StepMgmtAgent.closeModal()"></div>
+<div class="modal-box" id="sm-modal" style="display:none;max-width:580px">
+  <div class="modal-hdr">
+    <span id="sm-modal-title">Add Step</span>
+    <button class="modal-close" onclick="StepMgmtAgent.closeModal()">&#10005;</button>
+  </div>
+  <div class="modal-body" style="padding:20px 24px">
+    <input type="hidden" id="sm-m-mode" value="add"/>
+    <input type="hidden" id="sm-m-orig-key" value=""/>
+    <div class="fgrid">
+      <div class="fg full">
+        <label class="flabel">Step Key <span class="req">*</span> <span style="font-weight:400;color:var(--muted);font-size:10px">Must start with STEP_ — e.g. STEP_MEDICAL</span></label>
+        <input class="fi" id="sm-m-key" type="text" placeholder="STEP_EXAMPLE" style="font-family:monospace;text-transform:uppercase" oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9_]/g,'')"/>
+      </div>
+      <div class="fg">
+        <label class="flabel">Label <span class="req">*</span></label>
+        <input class="fi" id="sm-m-label" type="text" placeholder="e.g. Visa Medical"/>
+      </div>
+      <div class="fg">
+        <label class="flabel">Short Code <span class="req">*</span> <span style="font-weight:400;color:var(--muted);font-size:10px">2–3 chars shown on pill</span></label>
+        <input class="fi" id="sm-m-short" type="text" maxlength="3" placeholder="MD" style="font-family:monospace;text-transform:uppercase" oninput="this.value=this.value.toUpperCase()"/>
+      </div>
+      <div class="fg">
+        <label class="flabel">SLA (hours) <span class="req">*</span></label>
+        <input class="fi" id="sm-m-sla" type="number" min="1" placeholder="24"/>
+      </div>
+      <div class="fg full">
+        <label class="flabel">Statuses <span class="req">*</span> <span style="font-weight:400;color:var(--muted);font-size:10px">Press Enter or comma to add</span></label>
+        <div id="sm-m-statuses-chips" style="display:flex;flex-wrap:wrap;gap:5px;padding:6px 8px;border:1.5px solid var(--border);border-radius:7px;min-height:36px;cursor:text" onclick="document.getElementById('sm-m-status-input').focus()"></div>
+        <input id="sm-m-status-input" type="text" placeholder="Type status and press Enter…" style="border:none;outline:none;font-size:12px;width:100%;margin-top:4px;background:transparent;color:var(--text)" onkeydown="StepMgmtAgent.onStatusKey(event)"/>
+      </div>
+      <div class="fg full">
+        <label class="flabel">Substeps <span style="font-weight:400;color:var(--muted);font-size:10px">Optional checklist items for this step</span></label>
+        <div id="sm-m-substeps-list" style="margin-bottom:6px"></div>
+        <button class="btn btn-secondary btn-sm" type="button" onclick="StepMgmtAgent.addSubstepRow()">&#10133; Add Substep</button>
+      </div>
+    </div>
+  </div>
+  <div class="modal-footer">
+    <button class="btn btn-secondary" onclick="StepMgmtAgent.closeModal()">Cancel</button>
+    <button class="btn btn-navy" onclick="StepMgmtAgent.save()">&#128190; Save Step</button>
+  </div>
+</div>
+
+<!-- ===== STEP MERGE MODAL ===== -->
+<div class="modal-backdrop" id="sm-merge-backdrop" style="display:none" onclick="StepMgmtAgent.closeMerge()"></div>
+<div class="modal-box" id="sm-merge-modal" style="display:none;max-width:560px">
+  <div class="modal-hdr">
+    <span>&#8652; Merge Two Steps</span>
+    <button class="modal-close" onclick="StepMgmtAgent.closeMerge()">&#10005;</button>
+  </div>
+  <div class="modal-body" style="padding:20px 24px">
+    <div style="background:rgba(184,112,0,.08);border:1px solid rgba(184,112,0,.25);border-radius:8px;padding:10px 14px;font-size:11.5px;color:var(--gold);margin-bottom:16px">
+      &#9888; Merging is permanent. Both source steps will be marked inactive and their tracker data will be combined into the new step.
+    </div>
+    <div class="fgrid">
+      <div class="fg">
+        <label class="flabel">Step A <span class="req">*</span></label>
+        <select class="fi" id="sm-mg-keyA" onchange="StepMgmtAgent.onMergeSelChange()"></select>
+      </div>
+      <div class="fg">
+        <label class="flabel">Step B <span class="req">*</span></label>
+        <select class="fi" id="sm-mg-keyB" onchange="StepMgmtAgent.onMergeSelChange()"></select>
+      </div>
+      <div class="fg full" id="sm-mg-preview" style="display:none">
+        <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px 14px;font-size:12px">
+          <div style="font-weight:700;color:var(--navy);margin-bottom:8px">Combined Substeps Preview</div>
+          <div id="sm-mg-substep-preview"></div>
+        </div>
+      </div>
+      <div class="fg full"><div style="border-top:1px dashed var(--border);margin:4px 0 8px"></div><div style="font-size:11px;font-weight:700;color:var(--navy);margin-bottom:8px">New Merged Step Details</div></div>
+      <div class="fg full">
+        <label class="flabel">New Step Key <span class="req">*</span></label>
+        <input class="fi" id="sm-mg-key" type="text" placeholder="STEP_MERGED_EXAMPLE" style="font-family:monospace;text-transform:uppercase" oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9_]/g,'')"/>
+      </div>
+      <div class="fg">
+        <label class="flabel">Label <span class="req">*</span></label>
+        <input class="fi" id="sm-mg-label" type="text" placeholder="Combined step name"/>
+      </div>
+      <div class="fg">
+        <label class="flabel">Short Code <span class="req">*</span></label>
+        <input class="fi" id="sm-mg-short" type="text" maxlength="3" placeholder="MC" style="font-family:monospace;text-transform:uppercase" oninput="this.value=this.value.toUpperCase()"/>
+      </div>
+      <div class="fg">
+        <label class="flabel">SLA (hours)</label>
+        <input class="fi" id="sm-mg-sla" type="number" min="1" placeholder="48"/>
+      </div>
+      <div class="fg">
+        <label class="flabel">Statuses</label>
+        <input class="fi" id="sm-mg-statuses" type="text" placeholder="Pending,Done,Problem"/>
+      </div>
+    </div>
+  </div>
+  <div class="modal-footer">
+    <button class="btn btn-secondary" onclick="StepMgmtAgent.closeMerge()">Cancel</button>
+    <button class="btn btn-gold" onclick="StepMgmtAgent.confirmMerge()">&#8652; Confirm Merge</button>
+  </div>
+</div>
 
 <!-- ===== MODALS ===== -->
 

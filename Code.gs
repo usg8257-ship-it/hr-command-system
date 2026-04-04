@@ -20,7 +20,8 @@ var TABS = {
   JOBS:         'Jobs',
   APPLICATIONS: 'Applications',
   DS_TRACKER:   '20 Days Strategy Tracker',
-  DS_AUDIT:     'Onboarding Audit Log'
+  DS_AUDIT:     'Onboarding Audit Log',
+  STEPS:        'Steps Config'
 };
 
 // ============================================================
@@ -221,6 +222,10 @@ function runProtected(token, funcName, args) {
       // Config
       saveConfig:                     function(){ return saveConfig(a[0]); },
       getActivityLog:                 function(){ return getActivityLog(); },
+      // Step Config
+      getStepConfig:                  function(){ return getStepConfig(); },
+      saveStepConfig:                 function(){ return saveStepConfig(a[0]); },
+      mergeSteps:                     function(){ return mergeSteps(a[0], a[1], a[2]); },
       // Users
       getUsers:                       function(){ return getUsers(); },
       saveUser:                       function(){ return saveUser(a[0]); },
@@ -296,7 +301,8 @@ function loadAllData(token) {
     hrDocs:     getHRDocs(profile),
     summary:    getSummary(),
     config:     getConfig(),
-    dsTracker:  get20DSTracker(profile)
+    dsTracker:  get20DSTracker(profile),
+    stepConfig: getStepConfig()
   };
 }
 
@@ -317,6 +323,176 @@ function saveConfig(cfg) {
   sh.clearContents(); sh.appendRow(['KEY','VALUE']);
   Object.keys(cfg).forEach(function(k){ sh.appendRow([k, cfg[k]]); });
   return {success:true};
+}
+
+// ============================================================
+// STEP CONFIG
+// ============================================================
+
+// Hardcoded defaults — used as seed when Steps Config sheet is empty
+var _DEFAULT_STEPS = [
+  { STEP_KEY:'STEP_VISA',      LABEL:'Visa/Entry Issued',        SHORT:'VI', SLA_HOURS:24,  STATUSES:'Pending,Done,Problem',        SUBSTEPS:'{"mol_done":"MOL Done","entry_permit":"Entry Permit Submitted"}',                                                                                      ORDER:1, ACTIVE:'TRUE', MERGED_INTO:'' },
+  { STEP_KEY:'STEP_LABOR',     LABEL:'Tawjeeh & Labor Card',     SHORT:'LC', SLA_HOURS:24,  STATUSES:'Pending,Done',                SUBSTEPS:'{"tawjeeh":"Tawjeeh Completed","labor_card":"Labor Card Received"}',                                                                                    ORDER:2, ACTIVE:'TRUE', MERGED_INTO:'' },
+  { STEP_KEY:'STEP_MEDICAL',   LABEL:'Visa Medical',             SHORT:'MD', SLA_HOURS:24,  STATUSES:'Pending,Fit,Unfit',           SUBSTEPS:'{"medical_done":"Medical Done"}',                                                                                                                        ORDER:3, ACTIVE:'TRUE', MERGED_INTO:'' },
+  { STEP_KEY:'STEP_INSURANCE', LABEL:'Medical Insurance',        SHORT:'MI', SLA_HOURS:72,  STATUSES:'Pending,Done,Problem',        SUBSTEPS:'{"app_submitted":"Application Submitted","card_received":"Card Received"}',                                                                              ORDER:4, ACTIVE:'TRUE', MERGED_INTO:'' },
+  { STEP_KEY:'STEP_NSI',       LABEL:'NSI Training',             SHORT:'NS', SLA_HOURS:168, STATUSES:'Not Started,Pending,Done',    SUBSTEPS:'{"app_submitted":"Application Submitted","date_scheduled":"Training Date Scheduled","training_completed":"Training Completed","cert_received":"Certificate Received"}', ORDER:5, ACTIVE:'TRUE', MERGED_INTO:'' },
+  { STEP_KEY:'STEP_EID',       LABEL:'EID & Residency Stamping', SHORT:'EI', SLA_HOURS:48,  STATUSES:'Pending,Done,Problem',        SUBSTEPS:'{"eid_app_submitted":"EID Application Submitted","biometrics":"Biometrics / Stamping Done","card_received":"Card Received"}',                           ORDER:6, ACTIVE:'TRUE', MERGED_INTO:'' }
+];
+
+var _STEPS_HDRS = ['STEP_KEY','LABEL','SHORT','SLA_HOURS','STATUSES','SUBSTEPS','ORDER','ACTIVE','MERGED_INTO'];
+
+function getStepConfig() {
+  try {
+    var sh = getOrCreate(TABS.STEPS, _STEPS_HDRS);
+    var vals = sh.getDataRange().getValues();
+    // If only header row exists, seed with defaults
+    if (vals.length < 2) {
+      _DEFAULT_STEPS.forEach(function(s){
+        sh.appendRow(_STEPS_HDRS.map(function(h){ return s[h] !== undefined ? s[h] : ''; }));
+      });
+      vals = sh.getDataRange().getValues();
+    }
+    var hdrs = vals[0].map(function(h){ return String(h).trim(); });
+    var steps = [];
+    for (var i = 1; i < vals.length; i++) {
+      var row = {};
+      hdrs.forEach(function(h, j){ row[h] = String(vals[i][j]||''); });
+      if (row.ACTIVE === 'FALSE') continue; // skip inactive/merged steps
+      var substepsObj = {};
+      try { substepsObj = JSON.parse(row.SUBSTEPS || '{}'); } catch(e2) {}
+      steps.push({
+        key:       row.STEP_KEY,
+        label:     row.LABEL,
+        short:     row.SHORT,
+        slaHours:  Number(row.SLA_HOURS) || 24,
+        statuses:  (row.STATUSES || 'Pending,Done').split(',').map(function(s){ return s.trim(); }),
+        substeps:  substepsObj,
+        order:     Number(row.ORDER) || 99,
+        mergedInto: row.MERGED_INTO || ''
+      });
+    }
+    steps.sort(function(a,b){ return a.order - b.order; });
+    return {success:true, data:steps};
+  } catch(e) { return {success:false, error:e.message}; }
+}
+
+function saveStepConfig(stepsArray) {
+  try {
+    _requireRole(['SUPER_ADMIN','HR_OFFICER']);
+    if (!Array.isArray(stepsArray) || !stepsArray.length) return {success:false, error:'No steps provided'};
+    // Validate
+    var seenKeys = {};
+    for (var i = 0; i < stepsArray.length; i++) {
+      var s = stepsArray[i];
+      if (!s.key || !s.label || !s.short) return {success:false, error:'Each step requires key, label, and short code'};
+      if (!/^STEP_[A-Z0-9_]+$/.test(s.key)) return {success:false, error:'Invalid step key: '+s.key+'. Must start with STEP_ and use uppercase letters/numbers/underscores'};
+      if (seenKeys[s.key]) return {success:false, error:'Duplicate step key: '+s.key};
+      seenKeys[s.key] = true;
+    }
+    var sh = getOrCreate(TABS.STEPS, _STEPS_HDRS);
+    // Preserve existing inactive/merged rows
+    var existing = sh.getDataRange().getValues();
+    var existHdrs = existing.length > 0 ? existing[0].map(function(h){ return String(h).trim(); }) : _STEPS_HDRS;
+    var activeIdx = existHdrs.indexOf('ACTIVE');
+    var inactiveRows = [];
+    for (var j = 1; j < existing.length; j++) {
+      var active = activeIdx >= 0 ? String(existing[j][activeIdx]).toUpperCase() : 'TRUE';
+      if (active === 'FALSE') inactiveRows.push(existing[j]);
+    }
+    sh.clearContents();
+    sh.appendRow(_STEPS_HDRS);
+    stepsArray.forEach(function(s, idx){
+      var substepsStr = typeof s.substeps === 'object' ? JSON.stringify(s.substeps) : (s.substeps || '{}');
+      var statusesStr = Array.isArray(s.statuses) ? s.statuses.join(',') : (s.statuses || 'Pending,Done');
+      sh.appendRow([s.key, s.label, s.short, Number(s.slaHours)||24, statusesStr, substepsStr, idx+1, 'TRUE', s.mergedInto||'']);
+    });
+    inactiveRows.forEach(function(r){ sh.appendRow(r); });
+    logActivity('StepConfig','SAVE','','SUCCESS - '+stepsArray.length+' steps');
+    return {success:true};
+  } catch(e) { return {success:false, error:e.message}; }
+}
+
+function mergeSteps(keyA, keyB, newStep) {
+  try {
+    _requireRole(['SUPER_ADMIN','HR_OFFICER']);
+    if (!keyA || !keyB || !newStep || !newStep.key) return {success:false, error:'keyA, keyB and newStep.key are required'};
+    if (!/^STEP_[A-Z0-9_]+$/.test(newStep.key)) return {success:false, error:'Invalid new step key format'};
+    if (keyA === keyB) return {success:false, error:'Cannot merge a step with itself'};
+
+    // 1. Update Steps Config sheet
+    var sh = getOrCreate(TABS.STEPS, _STEPS_HDRS);
+    var vals = sh.getDataRange().getValues();
+    var hdrs = vals[0].map(function(h){ return String(h).trim(); });
+    var keyIdx   = hdrs.indexOf('STEP_KEY');
+    var activeIdx= hdrs.indexOf('ACTIVE');
+    var mergedIdx= hdrs.indexOf('MERGED_INTO');
+    var orderIdx = hdrs.indexOf('ORDER');
+    var maxOrder = 0;
+    var rowA = -1, rowB = -1;
+    for (var i = 1; i < vals.length; i++) {
+      var k = String(vals[i][keyIdx]||'');
+      if (k === keyA) rowA = i;
+      if (k === keyB) rowB = i;
+      var ord = Number(vals[i][orderIdx]||0);
+      if (ord > maxOrder) maxOrder = ord;
+    }
+    if (rowA < 0) return {success:false, error:'Step '+keyA+' not found'};
+    if (rowB < 0) return {success:false, error:'Step '+keyB+' not found'};
+
+    // Mark A and B as inactive, merged into new key
+    sh.getRange(rowA+1, activeIdx+1).setValue('FALSE');
+    sh.getRange(rowA+1, mergedIdx+1).setValue(newStep.key);
+    sh.getRange(rowB+1, activeIdx+1).setValue('FALSE');
+    sh.getRange(rowB+1, mergedIdx+1).setValue(newStep.key);
+
+    // Add the new merged step
+    var substepsStr = typeof newStep.substeps === 'object' ? JSON.stringify(newStep.substeps) : (newStep.substeps||'{}');
+    var statusesStr = Array.isArray(newStep.statuses) ? newStep.statuses.join(',') : (newStep.statuses||'Pending,Done');
+    sh.appendRow([newStep.key, newStep.label, newStep.short, Number(newStep.slaHours)||24, statusesStr, substepsStr, maxOrder+1, 'TRUE', '']);
+
+    // 2. Migrate tracker data — combine A+B into new key on each record
+    var tsh = SS.getSheetByName(TABS.DS_TRACKER);
+    var migratedCount = 0;
+    if (tsh) {
+      var tVals = tsh.getDataRange().getValues();
+      var tHdrs = tVals[0].map(function(h){ return String(h).trim(); });
+      var colA   = tHdrs.indexOf(keyA);
+      var colB   = tHdrs.indexOf(keyB);
+      // Add new key column if not present
+      var colNew = tHdrs.indexOf(newStep.key);
+      if (colNew < 0) {
+        tsh.getRange(1, tHdrs.length+1).setValue(newStep.key);
+        colNew = tHdrs.length;
+        tHdrs.push(newStep.key);
+      }
+      for (var r = 1; r < tVals.length; r++) {
+        var dataA = {}; var dataB = {};
+        try { dataA = colA >= 0 ? JSON.parse(String(tVals[r][colA]||'{}')) : {}; } catch(e2) {}
+        try { dataB = colB >= 0 ? JSON.parse(String(tVals[r][colB]||'{}')) : {}; } catch(e2) {}
+        // Skip if both are empty
+        if (!Object.keys(dataA).length && !Object.keys(dataB).length) continue;
+        // Merge: use whichever is more progressed; combine substeps
+        var statusOrder = ['Done','Fit','Pending','Not Started','Problem','Unfit',''];
+        var stA = dataA.status||'', stB = dataB.status||'';
+        var mergedStatus = statusOrder.indexOf(stA) <= statusOrder.indexOf(stB) ? stA : stB;
+        var mergedSubsteps = {};
+        Object.keys(dataA.substeps||{}).forEach(function(sk){ mergedSubsteps[sk] = dataA.substeps[sk]; });
+        Object.keys(dataB.substeps||{}).forEach(function(sk){ mergedSubsteps[sk] = dataB.substeps[sk]; });
+        var mergedData = {
+          status:        mergedStatus || 'Pending',
+          responsible:   dataA.responsible || dataB.responsible || '',
+          start_date:    dataA.start_date  || dataB.start_date  || '',
+          complete_date: dataA.complete_date || dataB.complete_date || '',
+          notes:         [dataA.notes, dataB.notes].filter(Boolean).join(' | '),
+          substeps:      mergedSubsteps
+        };
+        tsh.getRange(r+1, colNew+1).setValue(JSON.stringify(mergedData));
+        migratedCount++;
+      }
+    }
+    logActivity('StepConfig','MERGE', keyA+'+'+keyB+'->'+newStep.key, 'SUCCESS - '+migratedCount+' records');
+    return {success:true, migratedCount:migratedCount};
+  } catch(e) { return {success:false, error:e.message}; }
 }
 
 // ============================================================
