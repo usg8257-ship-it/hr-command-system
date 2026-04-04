@@ -4070,11 +4070,11 @@ var DSAgent = {
         // Employee columns — rendered only on the first step row, spanning all step rows
         if (i === 0) {
           html += '<td rowspan="'+n+'" style="font-weight:700;border-right:1px solid var(--ds-border);vertical-align:top;padding-top:11px">'+esc(emp.emp||'—')+'</td>';
-          html += '<td rowspan="'+n+'" class="mono" style="border-right:1px solid var(--ds-border);vertical-align:top;padding-top:11px">'+esc(emp.empId||'—')+'</td>';
-          html += '<td rowspan="'+n+'" style="font-size:11px;border-right:1px solid var(--ds-border);vertical-align:top;padding-top:11px">'+esc(emp.responsible)+'</td>';
+          html += '<td rowspan="'+n+'" class="mono" style="border-right:1px solid var(--ds-border);vertical-align:top;padding-top:11px;font-size:11px">'+esc(emp.empId||'—')+'</td>';
+          html += '<td rowspan="'+n+'" style="font-size:11px;border-right:1px solid var(--ds-border);vertical-align:top;padding-top:11px;color:var(--ds-muted)">'+esc(emp.responsible)+'</td>';
         }
-        // Step-specific columns
-        html += '<td>'+esc(row.step)+'</td>';
+        // Step-specific columns (Progress Path, Status, Days Elapsed, Action)
+        html += '<td style="font-weight:600;font-size:12px">'+esc(row.step)+'</td>';
         html += '<td><span class="ds-badge '+sc+'">'+esc(row.status)+'</span></td>';
         html += '<td class="mono" style="color:'+dColor+';font-weight:700">'+row.days+'d</td>';
         html += isReadOnly() ? '<td></td>' : '<td><button class="ds-btn cyan sm" onclick="DSAgent.openStepModal(\''+esc(row.dsId)+'\',\''+row.stepKey+'\')">Update</button></td>';
