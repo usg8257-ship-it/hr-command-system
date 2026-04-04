@@ -3931,7 +3931,7 @@ var DSAgent = {
     if (!tbody) return;
 
     if (!total) {
-      tbody.innerHTML = '<tr><td colspan="8"><div class="ds-empty"><div class="ds-empty-icon">&#128203;</div>No records found.</div></td></tr>';
+      tbody.innerHTML = '<tr><td colspan="7"><div class="ds-empty"><div class="ds-empty-icon">&#128203;</div>No records found.</div></td></tr>';
       if (pgEl) pgEl.innerHTML = '';
       return;
     }
@@ -3970,7 +3970,6 @@ var DSAgent = {
         '<td class="mono">'+esc(r.EMP_ID||'—')+'</td>'+
         '<td style="font-weight:700">'+esc(r.EMP_NAME||'—')+'</td>'+
         '<td style="font-size:11px">'+esc(r.DESIGNATION||'—')+'</td>'+
-        '<td style="font-size:11px;color:var(--ds-muted)">'+esc((r.TRANSFER_DATE||'—').substring(0,10))+'</td>'+
         '<td style="font-size:11px">'+esc(r.RESPONSIBLE_HR||'—')+'</td>'+
         '<td class="mono" style="color:'+daysColor+';font-weight:700">'+days+'d</td>'+
         '<td class="ds-steps-cell"><div class="ds-steps-row">'+pills+'</div></td>'+
@@ -4004,7 +4003,7 @@ var DSAgent = {
     if (!tbody) return;
 
     if (!total) {
-      tbody.innerHTML = '<tr><td colspan="8"><div class="ds-empty"><div class="ds-empty-icon">&#128203;</div>No records found.</div></td></tr>';
+      tbody.innerHTML = '<tr><td colspan="7"><div class="ds-empty"><div class="ds-empty-icon">&#128203;</div>No records found.</div></td></tr>';
       if (pgEl) pgEl.innerHTML = '';
       return;
     }

@@ -596,15 +596,14 @@
               <th>Emp ID</th>
               <th>Name</th>
               <th>Designation</th>
-              <th>Transferred</th>
-              <th>Responsible HR</th>
+              <th>Hired By</th>
               <th>Days</th>
-              <th class="ds-steps-col-hdr" style="min-width:240px">&#9654; Steps</th>
+              <th class="ds-steps-col-hdr" style="min-width:360px">&#9654; Steps</th>
               <th>Actions</th>
             </tr>
           </thead>
           <tbody id="ds-summary-tracker-tbody">
-            <tr><td colspan="8"><div class="ds-empty"><div class="ds-empty-icon">&#128203;</div>No records yet.</div></td></tr>
+            <tr><td colspan="7"><div class="ds-empty"><div class="ds-empty-icon">&#128203;</div>No records yet.</div></td></tr>
           </tbody>
         </table>
       </div>
@@ -632,7 +631,7 @@
               <th style="text-align:center;width:70px">Records</th>
               <th style="text-align:center;width:160px">Avg Days to Complete</th>
               <th style="text-align:center;width:120px">Completion Rate</th>
-              <th style="width:140px">Top Responsible HR</th>
+              <th style="width:140px">Top Hired By</th>
               <th style="text-align:center;width:120px">HR Avg Velocity</th>
             </tr>
           </thead>
@@ -651,7 +650,7 @@
         <table class="ds-tbl">
           <thead>
             <tr>
-              <th>Responsible HR</th>
+              <th>Hired By</th>
               <th style="text-align:center;width:80px">Total</th>
               <th style="text-align:center;width:90px">Completed</th>
               <th style="text-align:center;width:110px">Success Rate</th>
@@ -716,15 +715,14 @@
               <th>Emp ID</th>
               <th>Name</th>
               <th>Designation</th>
-              <th>Transferred</th>
-              <th>Responsible HR</th>
+              <th>Hired By</th>
               <th>Days</th>
-              <th class="ds-steps-col-hdr" style="min-width:240px">&#9654; Steps</th>
+              <th class="ds-steps-col-hdr" style="min-width:360px">&#9654; Steps</th>
               <th>Actions</th>
             </tr>
           </thead>
           <tbody id="ds-tracker-tbody">
-            <tr><td colspan="8"><div class="ds-empty"><div class="ds-empty-icon">&#128203;</div>No records yet. Transfer a candidate to master data to begin.</div></td></tr>
+            <tr><td colspan="7"><div class="ds-empty"><div class="ds-empty-icon">&#128203;</div>No records yet. Transfer a candidate to master data to begin.</div></td></tr>
           </tbody>
         </table>
       </div>
@@ -776,7 +774,7 @@
               <th>Designation</th>
               <th>Transfer Date</th>
               <th>Days Elapsed</th>
-              <th>Responsible HR</th>
+              <th>Hired By</th>
               <th>Pending Steps</th>
             </tr>
           </thead>
@@ -881,7 +879,7 @@
           <div style="font-size:12px;color:var(--ds-text);margin-top:3px" id="ds-m-prog-desig">—</div>
         </div>
         <div>
-          <div class="ds-flabel">Responsible HR</div>
+          <div class="ds-flabel">Hired By</div>
           <div style="font-size:12px;color:var(--ds-text);margin-top:3px" id="ds-m-prog-hr">—</div>
         </div>
         <div>
@@ -1016,13 +1014,13 @@
 <div class="ds-modal-overlay" id="ds-m-responsible">
   <div class="ds-modal" style="width:380px">
     <div class="ds-modal-hdr">
-      <span class="ds-modal-title">Set Responsible HR</span>
+      <span class="ds-modal-title">Set Hired By</span>
       <button class="ds-modal-close" onclick="DSAgent.closeResponsibleModal()">&#10005;</button>
     </div>
     <div class="ds-modal-body">
       <input type="hidden" id="ds-m-resp-dsid">
       <div class="ds-fg">
-        <label class="ds-flabel">Responsible HR Officer</label>
+        <label class="ds-flabel">Hired By (HR Officer)</label>
         <input type="text" class="ds-fi" id="ds-m-resp-name" placeholder="Enter HR officer name">
       </div>
     </div>
