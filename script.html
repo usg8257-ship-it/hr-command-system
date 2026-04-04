@@ -2838,7 +2838,7 @@ var DSAgent = {
     if (!tbody) return;
 
     if (!total) {
-      tbody.innerHTML = '<tr><td colspan="10"><div class="ds-empty"><div class="ds-empty-icon">&#128203;</div>No records found.</div></td></tr>';
+      tbody.innerHTML = '<tr><td colspan="8"><div class="ds-empty"><div class="ds-empty-icon">&#128203;</div>No records found.</div></td></tr>';
       if (pgEl) pgEl.innerHTML = '';
       return;
     }
@@ -2928,39 +2928,67 @@ var DSAgent = {
   // ── Pending Tab ──
   renderPending: function() {
     var self = this;
-    var rows = [];
+    var byEmp = {};   // dsId -> { emp, empId, responsible, totalDays, steps:[] }
+    var order = [];   // dsId insertion order
     (APP.dsTracker||[]).forEach(function(r){
       if (r.CANCELLED === 'TRUE' || r.OB_COMPLETE === 'TRUE') return;
+      var pending = [];
       Object.keys(self.STEPS).forEach(function(k){
         var step = r[k] || {status:'Pending'};
         var s = step.status || 'Pending';
         if (s === 'Done' || s === 'Fit') return;
-        var days = self._daysFromDate(r.TRANSFER_DATE);
-        rows.push({ emp: r.EMP_NAME, empId: r.EMP_ID, step: self.STEPS[k].label, status: s, responsible: step.responsible||r.RESPONSIBLE_HR||'—', days: days, dsId: r.DS_ID, stepKey: k });
+        // Step-specific days: time since the step was started (or fall back to transfer date)
+        var stepDateStr = step.start_date || step.start_dt || r.TRANSFER_DATE;
+        var stepDays = self._daysFromDate(stepDateStr);
+        pending.push({ step: self.STEPS[k].label, status: s, days: stepDays, dsId: r.DS_ID, stepKey: k });
       });
+      if (!pending.length) return;
+      order.push(r.DS_ID);
+      byEmp[r.DS_ID] = {
+        emp: r.EMP_NAME, empId: r.EMP_ID,
+        responsible: r.RESPONSIBLE_HR || '—',
+        totalDays: self._daysFromDate(r.TRANSFER_DATE),
+        steps: pending
+      };
     });
+    // Sort employees by total days (most overdue first)
+    order.sort(function(a,b){ return byEmp[b].totalDays - byEmp[a].totalDays; });
+
+    var totalPending = order.reduce(function(n,k){ return n + byEmp[k].steps.length; }, 0);
     var cnt = document.getElementById('ds-pending-cnt');
-    if (cnt) cnt.textContent = rows.length + ' pending steps';
+    if (cnt) cnt.textContent = totalPending + ' pending steps';
     var tbody = document.getElementById('ds-pending-tbody');
     if (!tbody) return;
-    if (!rows.length) {
+    if (!order.length) {
       tbody.innerHTML = '<tr><td colspan="7"><div class="ds-empty"><div class="ds-empty-icon">&#10004;</div>All steps complete.</div></td></tr>';
       return;
     }
-    rows.sort(function(a,b){ return b.days - a.days; });
-    tbody.innerHTML = rows.map(function(row){
-      var sc = self._statusClass(row.status);
-      var dColor = row.days > 20 ? 'var(--ds-red)' : row.days > 10 ? 'var(--ds-amber)' : 'var(--ds-muted)';
-      return '<tr>'+
-        '<td style="font-weight:600">'+esc(row.emp||'—')+'</td>'+
-        '<td class="mono">'+esc(row.empId||'—')+'</td>'+
-        '<td>'+esc(row.step)+'</td>'+
-        '<td><span class="ds-badge '+sc+'">'+esc(row.status)+'</span></td>'+
-        '<td style="font-size:11px">'+esc(row.responsible)+'</td>'+
-        '<td class="mono" style="color:'+dColor+'">'+row.days+'d</td>'+
-        '<td><button class="ds-btn cyan sm" onclick="DSAgent.openStepModal(\''+esc(row.dsId)+'\',\''+row.stepKey+'\')">Update</button></td>'+
-      '</tr>';
-    }).join('');
+
+    var html = '';
+    order.forEach(function(dsId){
+      var emp = byEmp[dsId];
+      var n   = emp.steps.length;
+      emp.steps.forEach(function(row, i){
+        var sc     = self._statusClass(row.status);
+        var dColor = row.days > 20 ? 'var(--ds-red)' : row.days > 10 ? 'var(--ds-amber)' : 'var(--ds-muted)';
+        // Visual separator between employees (except the very first row)
+        var trBorder = (i === 0 && html !== '') ? 'border-top:2px solid var(--ds-border);' : '';
+        html += '<tr style="'+trBorder+'">';
+        // Employee columns — rendered only on the first step row, spanning all step rows
+        if (i === 0) {
+          html += '<td rowspan="'+n+'" style="font-weight:700;border-right:1px solid var(--ds-border);vertical-align:top;padding-top:11px">'+esc(emp.emp||'—')+'</td>';
+          html += '<td rowspan="'+n+'" class="mono" style="border-right:1px solid var(--ds-border);vertical-align:top;padding-top:11px">'+esc(emp.empId||'—')+'</td>';
+          html += '<td rowspan="'+n+'" style="font-size:11px;border-right:1px solid var(--ds-border);vertical-align:top;padding-top:11px">'+esc(emp.responsible)+'</td>';
+        }
+        // Step-specific columns
+        html += '<td>'+esc(row.step)+'</td>';
+        html += '<td><span class="ds-badge '+sc+'">'+esc(row.status)+'</span></td>';
+        html += '<td class="mono" style="color:'+dColor+';font-weight:700">'+row.days+'d</td>';
+        html += '<td><button class="ds-btn cyan sm" onclick="DSAgent.openStepModal(\''+esc(row.dsId)+'\',\''+row.stepKey+'\')">Update</button></td>';
+        html += '</tr>';
+      });
+    });
+    tbody.innerHTML = html;
   },
 
   // ── Delayed Tab ──
