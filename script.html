@@ -1382,9 +1382,18 @@ var DashAgent={
     var pend=0,trans=0,canc=0;
     APP.onboarding.forEach(function(r){ if(r.STATUS==='Pending') pend++; else if(r.STATUS==='Transferred') trans++; else if(r.STATUS==='Cancelled') canc++; });
     s('kOB',pend.toLocaleString());
+    s('kOBpend',pend.toLocaleString());
     var ep=document.getElementById('ob-stat-pending'); if(ep) ep.textContent=pend;
     var et=document.getElementById('ob-stat-trans');   if(et) et.textContent=trans;
     var ec=document.getElementById('ob-stat-cancel');  if(ec) ec.textContent=canc;
+    // ── Trend pills ──
+    var st=function(id,cls,txt){ var el=document.getElementById(id); if(!el) return; el.className='ktrend '+cls; el.textContent=txt; el.style.display=txt?'':'none'; };
+    st('kTtrend',   t>0?'neutral':'neutral',       t>0?'Total: '+t.toLocaleString()+' staff':'—');
+    st('kNtrend',   newJoin>0?'up':'neutral',       newJoin>0?'↑ '+newJoin+' joined this year':'No new joins yet');
+    st('kEXtrend',  exYear>0?'warn':'neutral',      exYear>0?'↑ '+exYear+' resigned this year':'None this year');
+    st('kADVtrend', adVisa>0?'neutral':'neutral',   t>0?(adVisa/t*100).toFixed(1)+'% of workforce':'—');
+    st('kDXBVtrend',dxbVisa>0?'neutral':'neutral',  t>0?(dxbVisa/t*100).toFixed(1)+'% of workforce':'—');
+    st('kOBpendtrend',pend>0?'warn':'up',           pend>0?pend+' awaiting transfer':'All transferred');
     this._charts(active,t,natCnt);
   },
   _cnt:function(arr,k){ var o={}; arr.forEach(function(r){ var v=r[k]||'Unknown'; o[v]=(o[v]||0)+1; }); return o; },
@@ -1448,6 +1457,82 @@ var ReportAgent={
     var co=APP.config.company_name||'United Group Holding', off=APP.config.hr_officer||'—', des=APP.config.designation||'HR Manager';
     el.innerHTML='<div class="report-card"><div class="report-hdr"><div style="font-family:Tahoma,Arial,sans-serif;font-size:19px;font-weight:700;color:var(--navy)">United Group Holding</div><div style="font-size:12px;color:var(--muted);margin-top:3px">Monthly HR Report — <strong>'+esc(month)+'</strong></div><div style="font-size:10.5px;color:var(--muted2);margin-top:3px">Generated: '+new Date().toLocaleString('en-AE',{hour12:false})+'</div></div><div style="font-family:Tahoma,Arial,sans-serif;font-size:13px;color:var(--navy);font-weight:700;margin-bottom:9px;padding-bottom:4px;border-bottom:1px solid var(--border)">1. Active Workforce (Master - Deletion_Log)</div><div class="report-grid"><div class="rg-card"><div class="rg-val">'+t.toLocaleString()+'</div><div class="rg-label">Active Employees</div></div><div class="rg-card"><div class="rg-val">'+psbd.toLocaleString()+'</div><div class="rg-label">PSBD Licensed</div></div><div class="rg-card"><div class="rg-val">'+sira.toLocaleString()+'</div><div class="rg-label">SIRA Licensed</div></div><div class="rg-card"><div class="rg-val">'+exYear+'</div><div class="rg-label">Exits This Year</div></div></div><div style="font-family:Tahoma,Arial,sans-serif;font-size:13px;color:var(--navy);font-weight:700;margin-bottom:9px;margin-top:14px;padding-bottom:4px;border-bottom:1px solid var(--border)">2. Entity Breakdown</div><table class="rtable"><thead><tr><th>Entity</th><th>Headcount</th><th>% of Active</th></tr></thead><tbody>'+entRows+'</tbody></table><div style="font-family:Tahoma,Arial,sans-serif;font-size:13px;color:var(--navy);font-weight:700;margin-bottom:9px;margin-top:14px;padding-bottom:4px;border-bottom:1px solid var(--border)">3. Onboarding Pipeline</div><div class="report-grid" style="grid-template-columns:repeat(3,1fr)"><div class="rg-card"><div class="rg-val">'+APP.onboarding.length+'</div><div class="rg-label">Total</div></div><div class="rg-card"><div class="rg-val">'+OBAgent._pending()+'</div><div class="rg-label">Pending</div></div><div class="rg-card"><div class="rg-val">'+APP.onboarding.filter(function(c){ return c.STATUS==='Transferred'; }).length+'</div><div class="rg-label">Transferred</div></div></div><div style="font-family:Tahoma,Arial,sans-serif;font-size:13px;color:var(--navy);font-weight:700;margin-bottom:9px;margin-top:14px;padding-bottom:4px;border-bottom:1px solid var(--border)">4. HR Letters</div><table class="rtable"><thead><tr><th>Type</th><th>Count</th></tr></thead><tbody>'+ltrRows+'<tr><td><strong>Total</strong></td><td><strong>'+APP.hrDocs.length+'</strong></td></tr></tbody></table><div style="margin-top:18px;padding-top:12px;border-top:1px solid var(--border);font-size:11.5px;color:var(--muted)">Prepared by: <strong style="color:var(--navy)">'+esc(off)+'</strong> | '+esc(des)+' | '+esc(co)+'</div></div>';
     toast('Report generated','success');
+  }
+};
+
+// ============================================================
+// ALERT AGENT — notification bell + panel
+// ============================================================
+var AlertAgent = {
+  _open: false,
+  toggle: function() { this._open ? this.close() : this.open(); },
+  open: function() {
+    this._open = true;
+    this.refresh();
+    var p = document.getElementById('notif-panel'); if(p) p.classList.add('open');
+    var b = document.getElementById('notif-backdrop'); if(b) b.classList.add('open');
+  },
+  close: function() {
+    this._open = false;
+    var p = document.getElementById('notif-panel'); if(p) p.classList.remove('open');
+    var b = document.getElementById('notif-backdrop'); if(b) b.classList.remove('open');
+  },
+  refresh: function() {
+    var alerts = [];
+    var now = new Date();
+
+    // 1. Over-stage 20DS records
+    var overStage = (APP.dsTracker||[]).filter(function(r){ return r.CANCELLED!=='TRUE' && r.OB_COMPLETE!=='TRUE' && parseInt(r.TOTAL_DAYS_ELAPSED||0,10) > 20; });
+    if (overStage.length) alerts.push({ group:'20DS Tracker', icon:'🔴', title: overStage.length + ' Over-Stage Record'+(overStage.length>1?'s':''), sub:'Onboarding past 20-day limit — requires action', nav:'20dstracker' });
+
+    // 2. Pending leaves
+    var pendLeave = (APP.leave||[]).filter(function(r){ return r.STATUS==='Pending'; });
+    if (pendLeave.length) alerts.push({ group:'Leave', icon:'🟡', title: pendLeave.length + ' Leave Request'+(pendLeave.length>1?'s':'')+' Pending', sub:'Awaiting HR approval', nav:'leave' });
+
+    // 3. Expiring documents (EID/Visa in next 30 days)
+    var expiring = (APP.master||[]).filter(function(r){
+      var fields = [r['EID EXPIRY']||r['EID NO'],r['VISA EXPIRY']||r['VISA']];
+      return fields.some(function(f){
+        if(!f) return false;
+        var d = new Date(f); if(isNaN(d)) return false;
+        var diff = (d - now) / 86400000;
+        return diff >= 0 && diff <= 30;
+      });
+    });
+    if (expiring.length) alerts.push({ group:'Documents', icon:'🟠', title: expiring.length + ' Document'+(expiring.length>1?'s':'')+' Expiring Soon', sub:'EID or Visa expiring within 30 days', nav:'employees' });
+
+    // 4. Pending onboarding transfers
+    var pendOB = (APP.onboarding||[]).filter(function(r){ return r.STATUS==='Pending'; });
+    if (pendOB.length) alerts.push({ group:'Onboarding', icon:'🔵', title: pendOB.length + ' Candidate'+(pendOB.length>1?'s':'')+' Pending Transfer', sub:'Ready to transfer to Master Data', nav:'onboarding' });
+
+    // Update bell dot
+    var dot = document.getElementById('notif-dot');
+    if (dot) dot.style.display = alerts.length ? '' : 'none';
+
+    // Render panel
+    var body = document.getElementById('notif-panel-body');
+    if (!body) return;
+    if (!alerts.length) { body.innerHTML = '<div class="notif-empty">&#10003; No alerts right now</div>'; return; }
+    body.innerHTML = alerts.map(function(a) {
+      return '<div class="notif-group">'+
+        '<div class="notif-group-label">'+esc(a.group)+'</div>'+
+        '<div class="notif-item" onclick="AlertAgent.close();navigate(\''+a.nav+'\')">'+
+          '<div class="notif-item-icon">'+a.icon+'</div>'+
+          '<div class="notif-item-text">'+
+            '<div class="notif-item-title">'+esc(a.title)+'</div>'+
+            '<div class="notif-item-sub">'+esc(a.sub)+'</div>'+
+          '</div>'+
+        '</div>'+
+      '</div>';
+    }).join('');
+  },
+  // Call this after any data refresh to update the bell dot
+  updateBell: function() {
+    var overStage = (APP.dsTracker||[]).filter(function(r){ return r.CANCELLED!=='TRUE' && r.OB_COMPLETE!=='TRUE' && parseInt(r.TOTAL_DAYS_ELAPSED||0,10) > 20; }).length;
+    var pendLeave = (APP.leave||[]).filter(function(r){ return r.STATUS==='Pending'; }).length;
+    var pendOB = (APP.onboarding||[]).filter(function(r){ return r.STATUS==='Pending'; }).length;
+    var dot = document.getElementById('notif-dot');
+    if (dot) dot.style.display = (overStage + pendLeave + pendOB > 0) ? '' : 'none';
   }
 };
 
@@ -1668,6 +1753,31 @@ function _fillAndDownload(templateB64, name, pp, dateStr, msg, btn){
 }
 
 // ============================================================
+// DARK MODE
+// ============================================================
+var DarkMode = {
+  _dark: false,
+  init: function() {
+    this._dark = localStorage.getItem('hrcs-dark') === '1';
+    this._apply();
+  },
+  toggle: function() {
+    this._dark = !this._dark;
+    localStorage.setItem('hrcs-dark', this._dark ? '1' : '0');
+    this._apply();
+  },
+  _apply: function() {
+    if (this._dark) {
+      document.body.classList.add('dark');
+    } else {
+      document.body.classList.remove('dark');
+    }
+    var btn = document.getElementById('dark-toggle-btn');
+    if (btn) btn.textContent = this._dark ? '\u2600\uFE0F' : '\uD83C\uDF19';
+  }
+};
+
+// ============================================================
 // AGENT MANAGER — 15 min refresh, no refresh during editing
 // ============================================================
 var AgentManager={
@@ -1702,6 +1812,7 @@ var AgentManager={
       DashAgent.refresh();
       CFG.loadUI();
       DSAgent.renderBadge();
+      AlertAgent.updateBell();
       var sl=document.getElementById('sync-label');
       if(sl) sl.textContent='Data Synced via Google';
       toast('Dashboard loaded - '+getActiveEmployees().length.toLocaleString()+' active employees','success');
@@ -1729,7 +1840,7 @@ var AgentManager={
       if(role !== 'NONE' && role !== 'EMPLOYEE') {
         renderNav();
         EmpAgent.render(true); OBAgent.render(); LtrAgent.render(); DashAgent.refresh();
-        DSAgent.renderBadge();
+        DSAgent.renderBadge(); AlertAgent.updateBell();
       }
       var sl2=document.getElementById('sync-label'); if(sl2) sl2.textContent='Connected to live data via Google';
       var el=document.getElementById('sync-timer'); if(el) el.textContent='just now';
@@ -1783,6 +1894,17 @@ function renderNav() {
     var allowed = rules[view] || [];
     item.style.display = (allowed.indexOf(role) >= 0) ? '' : 'none';
   });
+  // Populate sidebar user avatar
+  if (APP.user) {
+    var uName = APP.user.name || APP.user.email || '?';
+    var initials = uName.trim().split(/\s+/).map(function(w){ return w[0]||''; }).slice(0,2).join('').toUpperCase() || '?';
+    var elName = document.getElementById('sb-user-name');
+    var elRole = document.getElementById('sb-user-role');
+    var elAv   = document.getElementById('sb-avatar-initials');
+    if (elName) elName.textContent = uName;
+    if (elRole) elRole.textContent = APP.user.role || '—';
+    if (elAv)   elAv.textContent   = initials;
+  }
 }
 
 function canDo(action) {
@@ -1945,6 +2067,7 @@ function doLogout() {
 }
 
 window.addEventListener('DOMContentLoaded', function() {
+  DarkMode.init();
   var token = sessionStorage.getItem('ughr_token');
   if (token) {
     APP.token = token;
@@ -2149,6 +2272,10 @@ var LeaveAgent = {
     var tb = document.getElementById('lv-tbody'); if(!tb) return;
     var data = this._filtered();
     var cnt = document.getElementById('lv-cnt'); if(cnt) cnt.textContent = data.length;
+    // Update sidebar badge with pending leave count
+    var pendingLvCount = this._data.filter(function(r){ return r.STATUS === 'Pending'; }).length;
+    var nbLv = document.getElementById('nb-leave');
+    if (nbLv) { nbLv.textContent = pendingLvCount; nbLv.className = pendingLvCount > 0 ? 'sb-badge gold' : 'sb-badge hide'; }
     if(!data.length) { tb.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--muted)">No leave records found.</td></tr>'; return; }
     var stsMap = {Pending:'bo',Approved:'bg2',Rejected:'br'};
     var canApprove = canDo('approve_leave');
@@ -2197,6 +2324,69 @@ var LeaveAgent = {
     var s=document.getElementById('lv-sts'); if(s) s.value='';
     var t=document.getElementById('lv-type'); if(t) t.value='';
     this.render();
+  },
+  _calYear: new Date().getFullYear(),
+  _calMonth: new Date().getMonth(),
+  setView: function(v) {
+    var lv = document.getElementById('lv-list-view');
+    var cv = document.getElementById('lv-calendar-view');
+    var bl = document.getElementById('lv-view-list');
+    var bc = document.getElementById('lv-view-cal');
+    if (v === 'calendar') {
+      if(lv) lv.style.display = 'none'; if(cv) cv.style.display = '';
+      if(bc) { bc.style.background='var(--navy)'; bc.style.color='#fff'; }
+      if(bl) { bl.style.background=''; bl.style.color=''; }
+      this.renderCalendar();
+    } else {
+      if(cv) cv.style.display = 'none'; if(lv) lv.style.display = '';
+      if(bl) { bl.style.background='var(--navy)'; bl.style.color='#fff'; }
+      if(bc) { bc.style.background=''; bc.style.color=''; }
+    }
+  },
+  calPrev: function() { this._calMonth--; if(this._calMonth < 0){ this._calMonth=11; this._calYear--; } this.renderCalendar(); },
+  calNext: function() { this._calMonth++; if(this._calMonth > 11){ this._calMonth=0; this._calYear++; } this.renderCalendar(); },
+  renderCalendar: function() {
+    var self = this;
+    var yr = this._calYear, mo = this._calMonth;
+    var titleEl = document.getElementById('lv-cal-title');
+    var MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    if (titleEl) titleEl.textContent = MONTHS[mo] + ' ' + yr;
+    var grid = document.getElementById('lv-cal-grid'); if(!grid) return;
+    var typeClass = { 'Annual Leave':'annual','Sick Leave':'sick','Emergency':'emergency','Unpaid Leave':'unpaid','Other':'other' };
+    // Build day-indexed map of leaves
+    var leaveMap = {};
+    (this._data || []).forEach(function(r) {
+      if (r.STATUS === 'Rejected') return;
+      var start = new Date(r.START_DATE||''), end = new Date(r.END_DATE||'');
+      if (isNaN(start) || isNaN(end)) return;
+      for (var d = new Date(start); d <= end; d.setDate(d.getDate()+1)) {
+        if (d.getFullYear()===yr && d.getMonth()===mo) {
+          var key = d.getDate();
+          if (!leaveMap[key]) leaveMap[key] = [];
+          leaveMap[key].push(r);
+        }
+      }
+    });
+    var today = new Date(); var todayKey = (today.getFullYear()===yr && today.getMonth()===mo) ? today.getDate() : -1;
+    var firstDay = new Date(yr, mo, 1).getDay(); // 0=Sun
+    firstDay = (firstDay + 6) % 7; // Make Mon=0
+    var daysInMonth = new Date(yr, mo+1, 0).getDate();
+    var DAY_HDRS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+    var html = DAY_HDRS.map(function(d){ return '<div class="leave-cal-day-hdr">'+d+'</div>'; }).join('');
+    // Leading blank cells
+    for (var b = 0; b < firstDay; b++) html += '<div class="cal-day other-month"></div>';
+    for (var dn = 1; dn <= daysInMonth; dn++) {
+      var cls = 'cal-day' + (dn===todayKey?' today':'');
+      var leaves = leaveMap[dn] || [];
+      var chips = leaves.slice(0,3).map(function(r) {
+        var tc = typeClass[r.LEAVE_TYPE||''] || 'other';
+        var isPending = r.STATUS === 'Pending';
+        return '<span class="cal-chip '+tc+(isPending?' pending-dot':'')+'" title="'+esc((r.EMP_NAME||'?')+(isPending?' (Pending)':''))+' — '+esc(r.LEAVE_TYPE||'Leave')+'">'+esc((r.EMP_NAME||'?').split(' ')[0])+'</span>';
+      }).join('');
+      if (leaves.length > 3) chips += '<span style="font-size:9px;color:var(--muted);padding:1px 4px">+' + (leaves.length-3) + ' more</span>';
+      html += '<div class="'+cls+'"><div class="cal-day-num">'+dn+'</div>'+chips+'</div>';
+    }
+    grid.innerHTML = html;
   },
   openAdd: function() {
     var role = APP.user ? APP.user.role : '';
@@ -2266,7 +2456,7 @@ var LeaveAgent = {
 // RECRUITMENT / ATS AGENT
 // ============================================================
 var RecruitmentAgent = {
-  _jobs: [], _apps: [], _currentJobId: '',
+  _jobs: [], _apps: [], _currentJobId: '', _view: 'kanban',
   loadJobs: function() {
     GAS.getJobs(function(r) {
       if(!r || !r.success) { toast('Error loading jobs','error'); return; }
@@ -2311,9 +2501,65 @@ var RecruitmentAgent = {
       '</tr>';
     }).join('');
   },
+  setView: function(v) {
+    this._view = v;
+    var lv = document.getElementById('rec-list-view');
+    var kv = document.getElementById('rec-kanban-view');
+    var bl = document.getElementById('rec-view-list');
+    var bk = document.getElementById('rec-view-kanban');
+    if (v === 'kanban') {
+      if(lv) lv.style.display = 'none';
+      if(kv) kv.style.display = '';
+      if(bk) bk.style.background = 'var(--navy)'; if(bk) bk.style.color = '#fff';
+      if(bl) bl.style.background = ''; if(bl) bl.style.color = '';
+      this.renderKanban();
+    } else {
+      if(kv) kv.style.display = 'none';
+      if(lv) lv.style.display = '';
+      if(bl) bl.style.background = 'var(--navy)'; if(bl) bl.style.color = '#fff';
+      if(bk) bk.style.background = ''; if(bk) bk.style.color = '';
+    }
+  },
+  renderKanban: function() {
+    var self = this;
+    var board = document.getElementById('kanban-board'); if(!board) return;
+    var stages = ['New','Screening','Interview','Offer','Hired'];
+    var stageColors = { New:'#8fa3be', Screening:'#b87000', Interview:'#1e4799', Offer:'#136e42', Hired:'#007a8a' };
+    var groups = {};
+    stages.forEach(function(s){ groups[s] = []; });
+    this._apps.forEach(function(a){ var s = a.STAGE||'New'; if(!groups[s]) groups[s]=[]; groups[s].push(a); });
+    var now = Date.now();
+    board.innerHTML = stages.map(function(stage) {
+      var cards = groups[stage] || [];
+      var cardHtml = cards.length ? cards.map(function(a) {
+        var appliedMs = new Date(a.APPLIED_DATE||'').getTime();
+        var daysIn = isNaN(appliedMs) ? 0 : Math.floor((now - appliedMs) / 86400000);
+        var daysCls = daysIn > 7 ? 'late' : daysIn > 3 ? 'warn' : 'ok';
+        return '<div class="kanban-card" onclick="RecruitmentAgent.openMoveStage(\''+esc(a.APP_ID)+'\',\''+esc(a.FULL_NAME)+'\')">'+
+          '<div class="kanban-card-name">'+esc(a.FULL_NAME||'—')+'</div>'+
+          '<div class="kanban-card-meta">'+esc(a.JOB_TITLE||'—')+'</div>'+
+          (a.CV_DRIVE_LINK ? '<div class="kanban-card-meta"><a href="'+esc(a.CV_DRIVE_LINK)+'" target="_blank" onclick="event.stopPropagation()" style="color:var(--teal);font-size:10px">&#128196; CV</a></div>' : '')+
+          '<div class="kanban-card-days '+daysCls+'">'+daysIn+'d in stage</div>'+
+        '</div>';
+      }).join('') : '<div class="kanban-empty">No applicants</div>';
+      return '<div class="kanban-col">'+
+        '<div class="kanban-col-hdr" style="border-top:3px solid '+stageColors[stage]+'">'+
+          '<span class="kanban-col-title">'+esc(stage)+'</span>'+
+          '<span class="kanban-col-cnt">'+cards.length+'</span>'+
+        '</div>'+
+        '<div class="kanban-col-body">'+cardHtml+'</div>'+
+      '</div>';
+    }).join('');
+  },
   renderApps: function() {
     var tb = document.getElementById('apps-tbody'); if(!tb) return;
     var cnt = document.getElementById('apps-cnt'); if(cnt) cnt.textContent = this._apps.length;
+    // Update sidebar badge with shortlisted application count
+    var shortlisted = this._apps.filter(function(a){ return a.STAGE === 'Screening' || a.STAGE === 'Interview'; }).length;
+    var nbRec = document.getElementById('nb-rec');
+    if (nbRec) { nbRec.textContent = shortlisted; nbRec.className = shortlisted > 0 ? 'sb-badge blue' : 'sb-badge blue hide'; }
+    // Render whichever view is active
+    this.setView(this._view);
     var jobTitle = document.getElementById('apps-job-title');
     if(jobTitle && this._currentJobId) {
       var job = this._jobs.find(function(j){ return j.JOB_ID === RecruitmentAgent._currentJobId; });
@@ -2517,9 +2763,15 @@ var DSAgent = {
   goSummaryTrackerPage: function(p) { this._dsSummaryPage = p; this.renderSummaryTracker(); },
 
   renderBadge: function() {
-    var active = this._activeRecords();
+    var overStage = this._overStageRecords();
     var nb = document.getElementById('nb-ds');
-    if (nb) nb.textContent = active.length;
+    if (nb) {
+      nb.textContent = overStage.length;
+      // Red alert when over-stage records exist, cyan when just tracking
+      nb.className = overStage.length > 0 ? 'sb-badge red' : 'sb-badge';
+      nb.style.background = overStage.length > 0 ? '' : 'rgba(0,229,255,.2)';
+      nb.style.color = overStage.length > 0 ? '' : '#00e5ff';
+    }
   },
 
   switchTab: function(tab) {
@@ -3267,38 +3519,84 @@ var DSAgent = {
   },
 
   _drawAnalytics: function(r, el) {
-    // Work Speed Report table
+    // ── Monthly Completions Sparkline (client-side, last 6 months) ──
+    var now = new Date();
+    var months = [];
+    for (var mi = 5; mi >= 0; mi--) {
+      var md = new Date(now.getFullYear(), now.getMonth() - mi, 1);
+      months.push({ year: md.getFullYear(), month: md.getMonth(),
+        label: md.toLocaleString('default', {month:'short'}) + ' \'' + String(md.getFullYear()).slice(2), count: 0 });
+    }
+    (APP.dsTracker||[]).forEach(function(rec) {
+      if (rec.OB_COMPLETE !== 'TRUE') return;
+      var cdStr = null;
+      ['STEP_EXIT_INTERVIEW','STEP_FINAL_CLEAR','STEP_GATE_PASS','STEP_SYSTEM_ACCESS'].forEach(function(k) {
+        if (!cdStr && rec[k] && rec[k].complete_date) cdStr = rec[k].complete_date;
+      });
+      if (!cdStr && rec.TRANSFER_DATE) cdStr = rec.TRANSFER_DATE;
+      if (!cdStr) return;
+      var cd = new Date(cdStr);
+      if (isNaN(cd.getTime())) return;
+      months.forEach(function(m) {
+        if (cd.getFullYear() === m.year && cd.getMonth() === m.month) m.count++;
+      });
+    });
+    var maxCount = 1;
+    months.forEach(function(m){ if (m.count > maxCount) maxCount = m.count; });
+    var sparkBars = months.map(function(m) {
+      var pct = Math.max(4, Math.round((m.count / maxCount) * 100));
+      var barColor = m.count === 0 ? 'var(--ds-border)' : 'var(--ds-cyan)';
+      return '<div style="display:flex;flex-direction:column;align-items:center;gap:3px;flex:1;min-width:0">'+
+        '<div style="font-size:11px;font-weight:700;color:'+(m.count?'var(--ds-cyan)':'var(--ds-muted)')+';">'+(m.count||'\u2013')+'</div>'+
+        '<div style="width:70%;flex:1;display:flex;align-items:flex-end">'+
+          '<div style="width:100%;height:'+pct+'%;min-height:4px;background:'+barColor+';border-radius:4px 4px 0 0;box-shadow:'+(m.count?'0 0 8px rgba(0,180,200,.35)':'none')+';transition:height .6s ease"></div>'+
+        '</div>'+
+        '<div style="font-size:9px;color:var(--ds-muted);text-align:center;white-space:nowrap">'+m.label+'</div>'+
+      '</div>';
+    }).join('');
+
+    // ── Work Speed Report table ──
     var hrRows = (r.hrReport||[]).map(function(h){
       var total = h.completed + h.overStage;
       var osRate = total > 0 ? Math.round((h.overStage/total)*100) : 0;
       var rateColor = osRate > 30 ? 'var(--ds-red)' : osRate > 10 ? 'var(--ds-amber)' : 'var(--ds-green)';
+      var barW = total > 0 ? Math.round((h.completed/total)*100) : 0;
       return '<tr>'+
         '<td style="font-weight:600">'+esc(h.name)+'</td>'+
         '<td class="mono" style="color:var(--ds-cyan)">'+h.avgHours+'h</td>'+
-        '<td class="mono">'+h.completed+'</td>'+
-        '<td class="mono" style="color:'+rateColor+'">'+osRate+'%</td>'+
+        '<td class="mono">'+h.completed+' <span style="color:var(--ds-muted);font-size:10px">/ '+total+'</span></td>'+
+        '<td><div style="display:flex;align-items:center;gap:6px">'+
+          '<div style="flex:1;height:6px;background:var(--ds-border);border-radius:3px;overflow:hidden">'+
+            '<div style="height:100%;width:'+barW+'%;background:'+rateColor+';border-radius:3px"></div>'+
+          '</div>'+
+          '<span class="mono" style="font-size:10px;color:'+rateColor+'">'+osRate+'%</span>'+
+        '</div></td>'+
       '</tr>';
     }).join('') || '<tr><td colspan="4" class="ds-empty">No HR data yet.</td></tr>';
 
-    // Bottleneck heatmap bars
+    // ── Bottleneck heatmap bars ──
     var maxH = 1;
     (r.bottleneck||[]).forEach(function(b){ if(b.avgHours>maxH) maxH=b.avgHours; });
     var bBars = (r.bottleneck||[]).map(function(b){
       var pct   = maxH > 0 ? Math.round((b.avgHours/maxH)*100) : 0;
       var color = b.avgHours > b.sla ? 'var(--ds-red)' : b.avgHours > b.sla*0.7 ? 'var(--ds-amber)' : 'var(--ds-green)';
+      var slaMarker = maxH > 0 ? Math.round((b.sla/maxH)*100) : 0;
       return '<div style="margin-bottom:14px">'+
-        '<div style="display:flex;justify-content:space-between;margin-bottom:4px">'+
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">'+
           '<span style="font-size:11px;font-weight:600">'+esc(b.label)+'</span>'+
-          '<span class="mono" style="font-size:11px;color:'+color+'">'+b.avgHours+'h <span style="color:var(--ds-muted)">/ SLA '+b.sla+'h</span></span>'+
+          '<span class="mono" style="font-size:11px;color:'+color+'">'+b.avgHours+'h <span style="color:var(--ds-muted)">/ SLA '+b.sla+'h</span> '+
+            '<span style="background:'+(b.overSLA>0?'rgba(220,50,50,.15)':'rgba(0,180,100,.12)')+';color:'+(b.overSLA>0?'var(--ds-red)':'var(--ds-green)')+';border-radius:4px;padding:1px 6px;font-size:10px">'+b.overSLA+' over SLA</span>'+
+          '</span>'+
         '</div>'+
-        '<div style="height:14px;background:var(--ds-border);border-radius:7px;overflow:hidden">'+
+        '<div style="position:relative;height:14px;background:var(--ds-border);border-radius:7px;overflow:hidden">'+
           '<div style="height:100%;width:'+pct+'%;background:'+color+';border-radius:7px;transition:width .5s ease"></div>'+
+          '<div style="position:absolute;top:0;left:'+slaMarker+'%;width:2px;height:100%;background:rgba(255,255,255,.5)"></div>'+
         '</div>'+
-        '<div style="font-size:10px;color:var(--ds-muted);margin-top:3px">'+b.count+' records &nbsp;|&nbsp; '+b.overSLA+' over SLA</div>'+
+        '<div style="font-size:10px;color:var(--ds-muted);margin-top:3px">'+b.count+' records sampled</div>'+
       '</div>';
     }).join('') || '<div class="ds-empty">No step duration data yet.</div>';
 
-    // Idle time table
+    // ── Idle time table ──
     var idleRows = (r.idleTime||[]).map(function(g){
       var color = g.avgIdleHours > 24 ? 'var(--ds-red)' : g.avgIdleHours > 8 ? 'var(--ds-amber)' : 'var(--ds-green)';
       return '<tr>'+
@@ -3310,11 +3608,12 @@ var DSAgent = {
 
     el.innerHTML =
       '<div style="padding:20px 24px">'+
-      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">'+
+      // Top row — 3 cards
+      '<div style="display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:16px;margin-bottom:16px">'+
         '<div class="ds-table-card">'+
-          '<div class="ds-table-hdr"><span class="ds-table-hdr-title">&#128200; Work Speed Report</span></div>'+
+          '<div class="ds-table-hdr"><span class="ds-table-hdr-title">&#128200; HR Performance</span></div>'+
           '<div class="ds-tbl-wrap"><table class="ds-tbl">'+
-            '<thead><tr><th>Responsible HR</th><th>Avg Processing</th><th>Steps Done</th><th>Over-Stage %</th></tr></thead>'+
+            '<thead><tr><th>Responsible HR</th><th>Avg Processing</th><th>Completed</th><th>On-Time Rate</th></tr></thead>'+
             '<tbody>'+hrRows+'</tbody>'+
           '</table></div>'+
         '</div>'+
@@ -3325,7 +3624,14 @@ var DSAgent = {
             '<tbody>'+idleRows+'</tbody>'+
           '</table></div>'+
         '</div>'+
+        '<div class="ds-table-card">'+
+          '<div class="ds-table-hdr"><span class="ds-table-hdr-title">&#128202; Monthly Completions</span></div>'+
+          '<div style="padding:12px 16px 8px;display:flex;align-items:flex-end;gap:6px;height:136px;box-sizing:border-box">'+
+            sparkBars+
+          '</div>'+
+        '</div>'+
       '</div>'+
+      // Bottom — Bottleneck Heatmap full width
       '<div class="ds-table-card">'+
         '<div class="ds-table-hdr"><span class="ds-table-hdr-title">&#128293; Bottleneck Heatmap \u2014 Avg Duration Per Step vs SLA</span></div>'+
         '<div style="padding:16px 20px">'+bBars+'</div>'+

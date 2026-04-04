@@ -95,7 +95,7 @@
   <div class="sb-item" data-view="20dstracker" onclick="navigate('20dstracker')"><span class="ic">&#128203;</span>20 Days Strategy Tracker<span class="sb-badge" id="nb-ds" style="background:rgba(0,229,255,.2);color:#00e5ff">0</span></div>
   <div class="sb-item" data-view="letters" onclick="navigate('letters')"><span class="ic">&#128196;</span>HR Letters</div>
   <div class="sb-item" data-view="leave" onclick="navigate('leave')"><span class="ic">&#128197;</span>Leave<span class="sb-badge" id="nb-leave">0</span></div>
-  <div class="sb-item" data-view="recruitment" onclick="navigate('recruitment')"><span class="ic">&#128188;</span>Recruitment</div>
+  <div class="sb-item" data-view="recruitment" onclick="navigate('recruitment')"><span class="ic">&#128188;</span>Recruitment<span class="sb-badge blue hide" id="nb-rec">0</span></div>
   <div class="sb-sec">Intelligence</div>
   <div class="sb-item" data-view="reports" onclick="navigate('reports')"><span class="ic">&#128200;</span>Monthly Report</div>
   <div class="sb-item" data-view="logs" onclick="navigate('logs')"><span class="ic">&#128221;</span>Activity Logs</div>
@@ -103,6 +103,13 @@
   <div class="sb-item" data-view="users" onclick="navigate('users')"><span class="ic">&#128101;</span>Users</div>
   <div class="sb-item" data-view="setup" onclick="navigate('setup')"><span class="ic">&#9881;</span>Setup</div>
   <div class="sb-item" data-view="self-service" style="display:none" onclick="navigate('self-service')"><span class="ic">&#128100;</span>My Profile</div>
+  <div class="sb-user-block">
+    <div class="sb-avatar" id="sb-avatar-initials">HR</div>
+    <div style="min-width:0">
+      <div class="sb-user-name" id="sb-user-name">Loading...</div>
+      <div class="sb-user-role" id="sb-user-role">—</div>
+    </div>
+  </div>
   <div class="sb-footer">
     <div class="agent-pill"><div class="dot"></div>Live System</div>
     <div class="dev-credit">Concept, Designed &amp; Developed by<br><strong style="color:#00c9b8">Mohammad Sanish</strong></div>
@@ -137,10 +144,27 @@
         <option value="USG-M">USG-M</option>
       </select>
       <button class="btn btn-secondary btn-sm" onclick="AgentManager.refreshAll()">&#8635; Refresh</button>
+      <button class="dark-toggle-btn" id="dark-toggle-btn" onclick="DarkMode.toggle()" title="Toggle dark mode">&#127769;</button>
+      <button class="notif-bell-btn" id="notif-bell-btn" onclick="AlertAgent.toggle()" title="Alerts & Notifications">
+        &#128276;
+        <span class="notif-dot" id="notif-dot" style="display:none"></span>
+      </button>
       <button class="btn btn-navy btn-sm" id="top-cta" onclick="EmpAgent.openAdd()">+ Add Employee</button>
       <button class="btn btn-secondary btn-sm" onclick="doLogout()" title="Sign out" style="color:var(--red,#c53030)">&#9211; Logout</button>
     </div>
   </div>
+
+  <!-- NOTIFICATION PANEL -->
+  <div class="notif-panel" id="notif-panel">
+    <div class="notif-panel-hdr">
+      <span class="notif-panel-title">&#128276; Alerts</span>
+      <button class="notif-panel-close" onclick="AlertAgent.close()">&#10005;</button>
+    </div>
+    <div class="notif-panel-body" id="notif-panel-body">
+      <div class="notif-empty">No alerts right now</div>
+    </div>
+  </div>
+  <div class="notif-backdrop" id="notif-backdrop" onclick="AlertAgent.close()"></div>
 
   <div id="main-loader" class="loader-wrap">
     <div class="spin"></div>
@@ -153,12 +177,13 @@
     <!-- DASHBOARD -->
     <div id="view-dashboard" class="view active">
       <div class="kpi-grid">
-        <div class="kc" style="--cc:#1e4799;--cb:rgba(30,71,153,.1)"><div class="kglow"></div><div class="ki">&#128100;</div><div class="kv" id="kT">0</div><div class="kl">Active Employees</div><div class="ks" id="kTsub">Master - Deletion_Log</div></div>
-        <div class="kc" style="--cc:#007a8a;--cb:rgba(0,122,138,.08)"><div class="kglow"></div><div class="ki">&#127963;</div><div class="kv" id="kADV">0</div><div class="kl">Abu Dhabi Visa Holders</div><div class="ks" id="kADVp">--</div></div>
-        <div class="kc" style="--cc:#2a5bbf;--cb:rgba(42,91,191,.08)"><div class="kglow"></div><div class="ki">&#127964;</div><div class="kv" id="kDXBV">0</div><div class="kl">Dubai Visa Holders</div><div class="ks" id="kDXBVp">--</div></div>
-        <div class="kc" style="--cc:#136e42;--cb:rgba(19,110,66,.08)"><div class="kglow"></div><div class="ki">&#128197;</div><div class="kv" id="kN">0</div><div class="kl">New Employees &ndash; Joined This Year</div><div class="ks">Date of joining current year</div></div>
+        <div class="kc" style="--cc:#1e4799;--cb:rgba(30,71,153,.1)"><div class="kglow"></div><div class="ki">&#128100;</div><div class="kv" id="kT">0</div><div class="kl">Active Employees</div><div class="ks" id="kTsub">Master - Deletion_Log</div><div class="ktrend neutral" id="kTtrend"></div></div>
+        <div class="kc" style="--cc:#007a8a;--cb:rgba(0,122,138,.08)"><div class="kglow"></div><div class="ki">&#127963;</div><div class="kv" id="kADV">0</div><div class="kl">Abu Dhabi Visa Holders</div><div class="ks" id="kADVp">--</div><div class="ktrend neutral" id="kADVtrend"></div></div>
+        <div class="kc" style="--cc:#2a5bbf;--cb:rgba(42,91,191,.08)"><div class="kglow"></div><div class="ki">&#127964;</div><div class="kv" id="kDXBV">0</div><div class="kl">Dubai Visa Holders</div><div class="ks" id="kDXBVp">--</div><div class="ktrend neutral" id="kDXBVtrend"></div></div>
+        <div class="kc" style="--cc:#136e42;--cb:rgba(19,110,66,.08)"><div class="kglow"></div><div class="ki">&#128197;</div><div class="kv" id="kN">0</div><div class="kl">New Employees &ndash; Joined This Year</div><div class="ks">Date of joining current year</div><div class="ktrend up" id="kNtrend"></div></div>
         <div class="kc" style="--cc:#b87000;--cb:rgba(184,112,0,.08)"><div class="kglow"></div><div class="ki">&#127758;</div><div class="kl" style="margin-bottom:4px;margin-top:0;font-size:10px">Highest Number of Nationality</div><div id="kNatHL" class="nat-hl"><span class="nat-flag">&#127758;</span><span><span class="nat-name">Loading...</span><span class="nat-count">--</span></span></div></div>
-        <div class="kc" style="--cc:#c83030;--cb:rgba(200,48,48,.07)"><div class="kglow"></div><div class="ki">&#128683;</div><div class="kv" id="kEX">0</div><div class="kl">Ex-Employees</div><div class="ks" id="kEXsub">0 resigned this year</div></div>
+        <div class="kc" style="--cc:#c83030;--cb:rgba(200,48,48,.07)"><div class="kglow"></div><div class="ki">&#128683;</div><div class="kv" id="kEX">0</div><div class="kl">Ex-Employees</div><div class="ks" id="kEXsub">0 resigned this year</div><div class="ktrend warn" id="kEXtrend"></div></div>
+        <div class="kc" style="--cc:#4e42b8;--cb:rgba(78,66,184,.08)"><div class="kglow"></div><div class="ki">&#128260;</div><div class="kv" id="kOBpend">0</div><div class="kl">In Onboarding Process</div><div class="ks">Pending transfers &mdash; Onboarding Tracker</div><div class="ktrend neutral" id="kOBpendtrend"></div></div>
       </div>
       <div class="sec">Analytics</div>
       <div class="cr1">
@@ -788,7 +813,22 @@
 <div id="view-leave" class="view">
   <div class="sec-hdr">
     <div class="sec-hdr-left"><h2>Leave Management</h2><p>Track and manage employee leave requests</p></div>
+    <div class="sec-hdr-right">
+      <button class="btn btn-secondary btn-sm" id="lv-view-list" onclick="LeaveAgent.setView('list')">&#128203; List</button>
+      <button class="btn btn-secondary btn-sm" id="lv-view-cal" onclick="LeaveAgent.setView('calendar')" style="margin-left:5px">&#128197; Calendar</button>
+    </div>
   </div>
+  <!-- Calendar View -->
+  <div id="lv-calendar-view" style="display:none">
+    <div class="leave-cal-nav">
+      <button class="btn btn-secondary btn-sm" onclick="LeaveAgent.calPrev()">&#8592;</button>
+      <span class="leave-cal-nav-title" id="lv-cal-title"></span>
+      <button class="btn btn-secondary btn-sm" onclick="LeaveAgent.calNext()">&#8594;</button>
+    </div>
+    <div class="leave-cal" id="lv-cal-grid"></div>
+  </div>
+  <!-- List View -->
+  <div id="lv-list-view">
   <div class="controls">
     <div class="sw"><span class="si">&#128269;</span><input type="text" id="lv-q" placeholder="Employee ID or name..." oninput="LeaveAgent.render()"/></div>
     <div class="fgrp"><span class="flbl">Status</span>
@@ -812,6 +852,8 @@
       </table>
     </div>
   </div>
+  </div><!-- /lv-list-view -->
+  <button class="btn btn-gold btn-sm" onclick="LeaveAgent.openAdd()" style="margin-top:12px">+ Apply Leave</button>
 </div>
 
 <!-- ===== RECRUITMENT VIEW ===== -->
@@ -835,11 +877,16 @@
     </div>
   </div>
   <div id="rec-apps-panel" style="display:none">
-    <div style="margin-bottom:10px">
+    <div style="margin-bottom:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
       <button class="btn btn-secondary btn-sm" onclick="RecruitmentAgent.showJobsPanel()">&#8592; Back to Jobs</button>
-      <strong style="margin-left:10px;font-size:13px;color:var(--navy)" id="apps-job-title"></strong>
+      <strong style="font-size:13px;color:var(--navy)" id="apps-job-title"></strong>
+      <div style="margin-left:auto;display:flex;gap:6px">
+        <button class="btn btn-secondary btn-sm" id="rec-view-kanban" onclick="RecruitmentAgent.setView('kanban')" title="Kanban view">&#9776; Kanban</button>
+        <button class="btn btn-secondary btn-sm" id="rec-view-list" onclick="RecruitmentAgent.setView('list')" title="List view">&#128203; List</button>
+      </div>
     </div>
-    <div class="tcard">
+    <!-- LIST VIEW -->
+    <div id="rec-list-view" class="tcard">
       <div class="ttop"><h3>&#128203; Applications</h3><span class="tcnt" id="apps-cnt">0</span></div>
       <div class="twrap lazy">
         <table>
@@ -847,6 +894,10 @@
           <tbody id="apps-tbody"></tbody>
         </table>
       </div>
+    </div>
+    <!-- KANBAN VIEW -->
+    <div id="rec-kanban-view" style="display:none">
+      <div class="kanban-board" id="kanban-board"></div>
     </div>
   </div>
 </div>
