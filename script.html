@@ -2711,6 +2711,11 @@ function renderNav() {
     if (elRole) elRole.textContent = APP.user.role || '—';
     if (elAv)   elAv.textContent   = initials;
   }
+  // Hide write-action buttons for view-only roles
+  var hideActions = isReadOnly();
+  document.querySelectorAll('.hr-action-btn').forEach(function(el){
+    el.style.display = hideActions ? 'none' : '';
+  });
 }
 
 // Returns true if the current user is read-only (STAFF or EMPLOYEE)
@@ -2784,15 +2789,6 @@ function navigate(view){
     'self-service':'My Profile'
   };
   if(tt) tt.textContent=titles[view]||view;
-  var cta=document.getElementById('top-cta');
-  if(cta){
-    if((view==='masterdata'||view==='employees') && canDo('add_employee')){ cta.style.display=''; cta.textContent='+ Add Employee'; cta.onclick=function(){ EmpAgent.openAdd(); }; }
-    else if(view==='onboarding' && canDo('add_onboarding')){ cta.style.display=''; cta.textContent='+ Add Candidate'; cta.onclick=function(){ OBAgent.openAdd(); }; }
-    else if(view==='letters' && canDo('issue_letter')){ cta.style.display=''; cta.textContent='Issue Letter'; cta.onclick=function(){ LtrAgent.openIssue(); }; }
-    else if(view==='leave'){ cta.style.display=''; cta.textContent='+ Apply Leave'; cta.onclick=function(){ LeaveAgent.openAdd(); }; }
-    else if(view==='recruitment' && canDo('manage_jobs')){ cta.style.display=''; cta.textContent='+ Post Job'; cta.onclick=function(){ RecruitmentAgent.openAddJob(); }; }
-    else{ cta.style.display=''; cta.textContent='Offer Letter'; cta.onclick=openOLModal; }
-  }
   if(view==='masterdata'||view==='employees') EmpAgent.render(true);
   if(view==='employees') ExcelAgent.populateFilters();
   if(view==='resignations') ResignationAgent.load();

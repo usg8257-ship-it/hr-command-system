@@ -149,7 +149,6 @@
         &#128276;
         <span class="notif-dot" id="notif-dot" style="display:none"></span>
       </button>
-      <button class="btn btn-navy btn-sm" id="top-cta" onclick="EmpAgent.openAdd()">+ Add Employee</button>
       <button class="btn btn-secondary btn-sm" onclick="doLogout()" title="Sign out" style="color:var(--red,#c53030)">&#9211; Logout</button>
     </div>
   </div>
@@ -211,7 +210,7 @@
     <div id="view-masterdata" class="view">
       <div class="sec-hdr">
         <div class="sec-hdr-left"><h2>ALL EMPLOYEE RECORD</h2> </div>
-        <div class="sec-hdr-right"><button class="abtn gold" onclick="EmpAgent.openAdd()">&#10133; Add Employee</button></div>
+        <div class="sec-hdr-right"><button class="abtn gold hr-action-btn" onclick="EmpAgent.openAdd()">&#10133; Add Employee</button></div>
       </div>
       <!-- ADVANCED FILTERS + SORT -->
       <div class="controls">
@@ -269,7 +268,7 @@
     <div id="view-employees" class="view">
       <div class="sec-hdr">
         <div class="sec-hdr-left"><h2>Active Employees</h2></div>
-        <div class="sec-hdr-right"><button class="abtn gold" onclick="EmpAgent.openAdd()">&#10133; Add Employee</button></div>
+        <div class="sec-hdr-right"><button class="abtn gold hr-action-btn" onclick="EmpAgent.openAdd()">&#10133; Add Employee</button></div>
       </div>
       <div class="controls">
         <div class="sw"><span class="si">&#128269;</span><input type="text" id="emp-q2" placeholder="Search name, ID, passport..." oninput="EmpAgent.render(true)"></div>
@@ -434,8 +433,8 @@
           <p><strong>Workflow:</strong> Step 1: Add Candidate &rarr; Step 2: Save &rarr; Step 3: Issue Offer Letter &rarr; Transfer to Master</p>
         </div>
         <div class="sec-hdr-right">
-          <button class="abtn" onclick="OBAgent.openAdd()">&#10133; Add Candidate</button>
-          <button class="abtn gold" onclick="openOLModal()">&#128196; Offer Letter</button>
+          <button class="abtn hr-action-btn" onclick="OBAgent.openAdd()">&#10133; Add Candidate</button>
+          <button class="abtn gold hr-action-btn" onclick="openOLModal()">&#128196; Offer Letter</button>
         </div>
       </div>
       <div class="controls">
