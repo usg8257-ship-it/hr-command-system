@@ -924,7 +924,9 @@ function completeDSStep(dsId, stepKey, notes, blockerReason) {
         step.complete_date = nowDT.substring(0,10);
         step.status        = (stepKey === 'STEP_MEDICAL') ? 'Fit' : 'Done';
         if (notes) step.notes = notes;
-        sh.getRange(i+1, stepCol+1).setValue(JSON.stringify(step));
+        var newStepJson = JSON.stringify(step);
+        sh.getRange(i+1, stepCol+1).setValue(newStepJson);
+        vals[i][stepCol] = newStepJson; // keep in-memory array in sync so _refreshDSTotals_ sees the new status
         _refreshDSTotals_(sh, vals, hdrs, i);
         _logDSAudit_(vals[i][hdrs.indexOf('EMP_ID')], vals[i][hdrs.indexOf('EMP_NAME')],
           stepKey, _dsStepLabel_(stepKey), 'Pending', step.status,
@@ -954,7 +956,9 @@ function update20DSStep(dsId, stepKey, stepData) {
         var oldStep = {};
         try { oldStep = JSON.parse(String(vals[i][stepCol]||'{}')); } catch(e){}
         var oldStatus = oldStep.status || 'Pending';
-        sh.getRange(i+1, stepCol+1).setValue(JSON.stringify(stepData));
+        var newStepJson2 = JSON.stringify(stepData);
+        sh.getRange(i+1, stepCol+1).setValue(newStepJson2);
+        vals[i][stepCol] = newStepJson2; // keep in-memory array in sync
         _refreshDSTotals_(sh, vals, hdrs, i);
         _logDSAudit_(vals[i][hdrs.indexOf('EMP_ID')], vals[i][hdrs.indexOf('EMP_NAME')],
           stepKey, _dsStepLabel_(stepKey), oldStatus, stepData.status||'',
