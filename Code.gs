@@ -805,12 +805,12 @@ var DS_TRACKER_HEADERS = [
   'DS_ID','EMP_ID','EMP_NAME','DESIGNATION','PHONE','EMAIL',
   'EXP_JOIN_DATE','PIPELINE_ADDED_DATE','TRANSFER_DATE','TRANSFERRED_BY','RESPONSIBLE_HR',
   'STEP_VISA','STEP_LABOR','STEP_MEDICAL','STEP_INSURANCE','STEP_NSI','STEP_EID',
-  'CANCELLED','CANCEL_REASON','CANCELLED_BY','CANCELLED_ON','TOTAL_DAYS_ELAPSED','OB_COMPLETE','BLOCKER_REASON'
+  'CANCELLED','CANCEL_REASON','CANCELLED_BY','CANCELLED_ON','TOTAL_DAYS_ELAPSED','OB_COMPLETE'
 ];
 
 var DS_AUDIT_HEADERS = [
   'TIMESTAMP','EMP_ID','EMP_NAME','STEP_KEY','STEP_LABEL',
-  'OLD_STATUS','NEW_STATUS','START_DT','END_DT','DURATION_HOURS','REASON_NOTES',
+  'OLD_STATUS','NEW_STATUS','DATE_COMPLETED','REASON_NOTES',
   'UPDATED_BY','ROLE','DAYS_SINCE_TRANSFER'
 ];
 
@@ -819,26 +819,15 @@ function _uaeDT_() {
   return Utilities.formatDate(new Date(), 'Asia/Dubai', 'dd/MM/yyyy HH:mm:ss');
 }
 
-// Empty step JSON — includes server timestamp fields
+// Empty step JSON — simple: just status, complete_date, notes, substeps
 function _emptyStep_(status) {
   return JSON.stringify({
     status: status || 'Pending',
     responsible: '', substeps: {},
-    start_date: '', complete_date: '',
-    start_dt: '', end_dt: '', duration_hours: '',
-    notes: '', reason: '', blocker_reason: ''
+    complete_date: '',
+    notes: '', reason: ''
   });
 }
-
-// SLA thresholds in hours
-var DS_SLA = {
-  STEP_VISA:      24,
-  STEP_LABOR:     24,
-  STEP_MEDICAL:   24,
-  STEP_INSURANCE: 72,
-  STEP_NSI:       168,
-  STEP_EID:       48
-};
 
 function create20DSRecord(obId, empData, obRow) {
   try {
@@ -868,7 +857,7 @@ function create20DSRecord(obId, empData, obRow) {
         _emptyStep_('Pending'),   // STEP_INSURANCE
         _emptyStep_('Not Started'), // STEP_NSI
         _emptyStep_('Pending'),   // STEP_EID
-        'FALSE','','','','0','FALSE',''
+        'FALSE','','','','0','FALSE'
       ]);
     } finally { lock.releaseLock(); }
     logActivity('20DSTracker','CREATE',dsId+'->'+empData.ID,'SUCCESS');
@@ -929,22 +918,15 @@ function startDSStep(dsId, stepKey, blockerReason) {
       if (stepCol < 0) return {success:false,error:'Unknown step: '+stepKey};
       for (var i = 1; i < vals.length; i++) {
         if (String(vals[i][idCol]) !== String(dsId)) continue;
-        // Over-stage blocker check
-        var days = parseInt(vals[i][hdrs.indexOf('TOTAL_DAYS_ELAPSED')]||0, 10);
-        if (days > 20 && !blockerReason) return {success:false,error:'BLOCKER_REQUIRED'};
         var step = {};
         try { step = JSON.parse(String(vals[i][stepCol]||'{}')); } catch(e){}
-        var nowDT = _uaeDT_();
-        step.start_dt     = nowDT;
-        step.start_date   = nowDT.substring(0,10).split('/').slice(0,2).join('/') + '/' + nowDT.substring(6,10);
-        step.status       = 'Pending';
-        if (blockerReason) { step.blocker_reason = blockerReason; _setDSBlocker_(sh, vals, hdrs, i, blockerReason); }
+        step.status = 'Pending';
         sh.getRange(i+1, stepCol+1).setValue(JSON.stringify(step));
         _logDSAudit_(vals[i][hdrs.indexOf('EMP_ID')], vals[i][hdrs.indexOf('EMP_NAME')],
           stepKey, _dsStepLabel_(stepKey), step.status||'', 'Started',
-          nowDT, '', '', blockerReason||step.notes||'', profile, sh, vals, hdrs, i);
+          '', step.notes||'', profile, sh, vals, hdrs, i);
         logActivity('20DSTracker','STEP_START',dsId+':'+stepKey,'SUCCESS');
-        return {success:true, start_dt: nowDT};
+        return {success:true};
       }
       return {success:false,error:'Record not found'};
     } finally { lock.releaseLock(); }
@@ -966,38 +948,23 @@ function completeDSStep(dsId, stepKey, notes, blockerReason) {
       if (stepCol < 0) return {success:false,error:'Unknown step: '+stepKey};
       for (var i = 1; i < vals.length; i++) {
         if (String(vals[i][idCol]) !== String(dsId)) continue;
-        var days = parseInt(vals[i][hdrs.indexOf('TOTAL_DAYS_ELAPSED')]||0, 10);
-        if (days > 20 && !blockerReason) return {success:false,error:'BLOCKER_REQUIRED'};
         var step = {};
         try { step = JSON.parse(String(vals[i][stepCol]||'{}')); } catch(e){}
         var nowDT = _uaeDT_();
-        step.end_dt       = nowDT;
         step.complete_date = nowDT.substring(0,10);
-        step.status       = (stepKey === 'STEP_MEDICAL') ? 'Fit' : 'Done';
+        step.status        = (stepKey === 'STEP_MEDICAL') ? 'Fit' : 'Done';
         if (notes) step.notes = notes;
-        if (blockerReason) { step.blocker_reason = blockerReason; _setDSBlocker_(sh, vals, hdrs, i, blockerReason); }
-        // Compute duration in hours
-        if (step.start_dt) {
-          var startD = _parseDT_(step.start_dt);
-          var endD   = _parseDT_(nowDT);
-          if (startD && endD) step.duration_hours = Math.round((endD - startD) / 3600000 * 10) / 10;
-        }
         sh.getRange(i+1, stepCol+1).setValue(JSON.stringify(step));
         _refreshDSTotals_(sh, vals, hdrs, i);
         _logDSAudit_(vals[i][hdrs.indexOf('EMP_ID')], vals[i][hdrs.indexOf('EMP_NAME')],
           stepKey, _dsStepLabel_(stepKey), 'Pending', step.status,
-          step.start_dt||'', nowDT, step.duration_hours||'', notes||blockerReason||'', profile, sh, vals, hdrs, i);
+          nowDT.substring(0,10), notes||'', profile, sh, vals, hdrs, i);
         logActivity('20DSTracker','STEP_COMPLETE',dsId+':'+stepKey,'SUCCESS');
-        return {success:true, end_dt: nowDT, duration_hours: step.duration_hours||''};
+        return {success:true, complete_date: nowDT.substring(0,10)};
       }
       return {success:false,error:'Record not found'};
     } finally { lock.releaseLock(); }
   } catch(e){ return {success:false,error:e.message}; }
-}
-
-function _setDSBlocker_(sh, vals, hdrs, rowIdx, reason) {
-  var col = hdrs.indexOf('BLOCKER_REASON');
-  if (col >= 0) sh.getRange(rowIdx+1, col+1).setValue(reason||'');
 }
 
 function update20DSStep(dsId, stepKey, stepData) {
@@ -1014,22 +981,14 @@ function update20DSStep(dsId, stepKey, stepData) {
       if (stepCol < 0) return {success:false,error:'Unknown step: '+stepKey};
       for (var i = 1; i < vals.length; i++) {
         if (String(vals[i][idCol]) !== String(dsId)) continue;
-        var days = parseInt(vals[i][hdrs.indexOf('TOTAL_DAYS_ELAPSED')]||0, 10);
-        if (days > 20 && !stepData.blocker_reason) return {success:false,error:'BLOCKER_REQUIRED'};
         var oldStep = {};
         try { oldStep = JSON.parse(String(vals[i][stepCol]||'{}')); } catch(e){}
         var oldStatus = oldStep.status || 'Pending';
-        // Preserve server-side timestamps if they exist
-        if (oldStep.start_dt && !stepData.start_dt)   stepData.start_dt   = oldStep.start_dt;
-        if (oldStep.end_dt   && !stepData.end_dt)     stepData.end_dt     = oldStep.end_dt;
-        if (oldStep.duration_hours && !stepData.duration_hours) stepData.duration_hours = oldStep.duration_hours;
         sh.getRange(i+1, stepCol+1).setValue(JSON.stringify(stepData));
-        if (stepData.blocker_reason) _setDSBlocker_(sh, vals, hdrs, i, stepData.blocker_reason);
         _refreshDSTotals_(sh, vals, hdrs, i);
         _logDSAudit_(vals[i][hdrs.indexOf('EMP_ID')], vals[i][hdrs.indexOf('EMP_NAME')],
           stepKey, _dsStepLabel_(stepKey), oldStatus, stepData.status||'',
-          stepData.start_dt||'', stepData.end_dt||'', stepData.duration_hours||'',
-          stepData.reason||stepData.notes||'', profile, sh, vals, hdrs, i);
+          stepData.complete_date||'', stepData.reason||stepData.notes||'', profile, sh, vals, hdrs, i);
         logActivity('20DSTracker','STEP_UPDATE',dsId+':'+stepKey+'->'+stepData.status,'SUCCESS');
         return {success:true};
       }
@@ -1103,83 +1062,45 @@ function get20DSAuditLog() {
   } catch(e){ return {success:false,error:e.message}; }
 }
 
-// Analytics: Work Speed Report + Bottleneck data
+// Analytics: average days to complete onboarding, per HR and overall
 function get20DSAnalytics() {
   try {
     _requireRole(['SUPER_ADMIN','HR_OFFICER']);
     var sh = SS.getSheetByName(TABS.DS_TRACKER);
-    if (!sh) return {success:true, hrReport:[], bottleneck:[], idleTime:[]};
+    if (!sh) return {success:true, hrReport:[], overall:{avgDays:0, totalCompleted:0, totalActive:0}};
     var vals = sh.getDataRange().getValues();
-    if (vals.length < 2) return {success:true, hrReport:[], bottleneck:[], idleTime:[]};
+    if (vals.length < 2) return {success:true, hrReport:[], overall:{avgDays:0, totalCompleted:0, totalActive:0}};
     var hdrs = vals[0].map(function(h){ return String(h).trim(); });
-    var stepOrder = ['STEP_VISA','STEP_LABOR','STEP_MEDICAL','STEP_INSURANCE','STEP_NSI','STEP_EID'];
-    // Per-HR aggregation
     var hrMap = {};
-    // Per-step aggregation
-    var stepTotals = {};
-    stepOrder.forEach(function(k){ stepTotals[k] = {totalHours:0, count:0, overSLA:0}; });
-    // Idle time
-    var idleMap = {};
+    var totalCompleted = 0, totalDays = 0, totalActive = 0;
     for (var i = 1; i < vals.length; i++) {
       var row = {};
       hdrs.forEach(function(h,idx){ row[h] = String(vals[i][idx]||''); });
       if (row.CANCELLED === 'TRUE') continue;
       var hrName = row.RESPONSIBLE_HR || 'Unassigned';
-      if (!hrMap[hrName]) hrMap[hrName] = {completed:0, totalHours:0, overStage:0};
-      var days = parseInt(row.TOTAL_DAYS_ELAPSED||0,10);
-      if (days > 20 && row.OB_COMPLETE !== 'TRUE') hrMap[hrName].overStage++;
-      // Per-step stats
-      for (var si = 0; si < stepOrder.length; si++) {
-        var k = stepOrder[si];
-        var stepCol = hdrs.indexOf(k);
-        if (stepCol < 0) continue;
-        var step = {};
-        try { step = JSON.parse(String(vals[i][stepCol]||'{}')); } catch(e){}
-        if (step.duration_hours && !isNaN(parseFloat(step.duration_hours))) {
-          var dh = parseFloat(step.duration_hours);
-          stepTotals[k].totalHours += dh;
-          stepTotals[k].count++;
-          var sla = DS_SLA[k] || 24;
-          if (dh > sla) stepTotals[k].overSLA++;
-          hrMap[hrName].totalHours += dh;
-          hrMap[hrName].completed++;
-        }
-        // Idle time between step si-1 end and step si start
-        if (si > 0) {
-          var prevKey = stepOrder[si-1];
-          var prevCol = hdrs.indexOf(prevKey);
-          var prevStep = {};
-          try { prevStep = JSON.parse(String(vals[i][prevCol]||'{}')); } catch(e){}
-          if (prevStep.end_dt && step.start_dt) {
-            var prevEnd = _parseDT_(prevStep.end_dt);
-            var curStart = _parseDT_(step.start_dt);
-            if (prevEnd && curStart) {
-              var gapH = Math.round((curStart - prevEnd) / 3600000 * 10) / 10;
-              var gapKey = prevKey + '_to_' + k;
-              if (!idleMap[gapKey]) idleMap[gapKey] = {total:0, count:0, label: _dsStepLabel_(prevKey)+' → '+_dsStepLabel_(k)};
-              idleMap[gapKey].total += gapH;
-              idleMap[gapKey].count++;
-            }
-          }
-        }
+      if (!hrMap[hrName]) hrMap[hrName] = {completed:0, totalDays:0, active:0};
+      if (row.OB_COMPLETE === 'TRUE') {
+        var days = parseInt(row.TOTAL_DAYS_ELAPSED||0, 10);
+        hrMap[hrName].completed++;
+        hrMap[hrName].totalDays += days;
+        totalCompleted++;
+        totalDays += days;
+      } else {
+        hrMap[hrName].active++;
+        totalActive++;
       }
     }
     var hrReport = Object.keys(hrMap).map(function(name){
       var d = hrMap[name];
-      var avg = d.completed > 0 ? Math.round(d.totalHours / d.completed * 10) / 10 : 0;
-      return {name: name, avgHours: avg, completed: d.completed, overStage: d.overStage};
-    }).sort(function(a,b){ return a.avgHours - b.avgHours; });
-    var bottleneck = stepOrder.map(function(k){
-      var d = stepTotals[k];
-      var avg = d.count > 0 ? Math.round(d.totalHours / d.count * 10) / 10 : 0;
-      return {key: k, label: _dsStepLabel_(k), avgHours: avg, count: d.count, overSLA: d.overSLA, sla: DS_SLA[k]||24};
+      var avg = d.completed > 0 ? Math.round(d.totalDays / d.completed * 10) / 10 : null;
+      return {name:name, avgDays:avg, completed:d.completed, active:d.active};
+    }).sort(function(a,b){
+      if (a.avgDays === null) return 1;
+      if (b.avgDays === null) return -1;
+      return a.avgDays - b.avgDays;
     });
-    var idleTime = Object.keys(idleMap).map(function(k){
-      var d = idleMap[k];
-      var avg = d.count > 0 ? Math.round(d.total / d.count * 10) / 10 : 0;
-      return {gap: k, label: d.label, avgIdleHours: avg, count: d.count};
-    });
-    return {success:true, hrReport:hrReport, bottleneck:bottleneck, idleTime:idleTime};
+    var overallAvg = totalCompleted > 0 ? Math.round(totalDays / totalCompleted * 10) / 10 : null;
+    return {success:true, hrReport:hrReport, overall:{avgDays:overallAvg, totalCompleted:totalCompleted, totalActive:totalActive}};
   } catch(e){ return {success:false,error:e.message}; }
 }
 
@@ -1210,21 +1131,21 @@ function _refreshDSTotals_(sh, vals, hdrs, rowIdx) {
       if (d) days = Math.floor((new Date() - d) / 86400000);
     }
     if (totalCol >= 0) sh.getRange(rowIdx+1, totalCol+1).setValue(days);
-    // Check if all 6 steps have end timestamps (Done/Fit)
+    // Check if all 6 steps are Done/Fit
     var stepKeys = ['STEP_VISA','STEP_LABOR','STEP_MEDICAL','STEP_INSURANCE','STEP_NSI','STEP_EID'];
     var allDone = stepKeys.every(function(k){
       var col = hdrs.indexOf(k);
       if (col < 0) return false;
       try {
         var s = JSON.parse(String(vals[rowIdx][col]||'{}'));
-        return (s.status === 'Done' || s.status === 'Fit') && s.end_dt;
+        return s.status === 'Done' || s.status === 'Fit';
       } catch(e){ return false; }
     });
     if (completeCol >= 0) sh.getRange(rowIdx+1, completeCol+1).setValue(allDone ? 'TRUE' : 'FALSE');
   } catch(e){}
 }
 
-function _logDSAudit_(empId, empName, stepKey, stepLabel, oldStatus, newStatus, startDt, endDt, durationHours, reason, profile, sh, vals, hdrs, rowIdx) {
+function _logDSAudit_(empId, empName, stepKey, stepLabel, oldStatus, newStatus, completeDt, reason, profile, sh, vals, hdrs, rowIdx) {
   try {
     var auditSh = getOrCreate(TABS.DS_AUDIT, DS_AUDIT_HEADERS);
     var transferCol = hdrs.indexOf('TRANSFER_DATE');
@@ -1238,7 +1159,7 @@ function _logDSAudit_(empId, empName, stepKey, stepLabel, oldStatus, newStatus, 
     auditSh.appendRow([
       _uaeDT_(),
       empId, empName, stepKey, stepLabel,
-      oldStatus, newStatus, startDt, endDt, durationHours, reason,
+      oldStatus, newStatus, completeDt, reason,
       (profile&&profile.name)||'', (profile&&profile.role)||'',
       daysSince
     ]);

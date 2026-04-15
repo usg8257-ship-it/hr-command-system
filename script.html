@@ -3798,7 +3798,7 @@ var DSAgent = {
         '<td style="text-align:center;font-family:var(--ds-mono);font-weight:600">1</td>'+
         '<td style="text-align:center">'+
           '<span style="font-family:var(--ds-mono);font-size:13px;font-weight:700;color:'+empDaysColor+'">'+(empDays!==null?empDays+'d':'—')+'</span>'+
-          (empDays!==null?'<div style="font-size:9px;color:var(--ds-muted)">'+(empDaysOk?'Within SLA':'Exceeded SLA')+'</div>':'')+
+          (empDays!==null?'<div style="font-size:9px;color:var(--ds-muted)">'+(empDaysOk?'Within 20d':'Exceeded 20d')+'</div>':'')+
         '</td>'+
         '<td style="text-align:center"><span class="ds-badge" style="background:'+empStatusColor+'22;color:'+empStatusColor+';border:1px solid '+empStatusColor+'44">'+empStatus+'</span></td>'+
         '<td style="font-weight:600">'+esc(empHRName)+'</td>'+
@@ -3827,7 +3827,7 @@ var DSAgent = {
         '<td style="text-align:center;font-family:var(--ds-mono);font-weight:600">'+stats.total+'</td>'+
         '<td style="text-align:center">'+
           '<span style="font-family:var(--ds-mono);font-size:13px;font-weight:700;color:'+avgColor+'">'+(stats.avgDays!==null?stats.avgDays+'d':'—')+'</span>'+
-          (stats.avgDays!==null?'<div style="font-size:9px;color:var(--ds-muted)">'+(stats.avgDays<=20?'Within SLA':'Exceeded SLA')+'</div>':'')+
+          (stats.avgDays!==null?'<div style="font-size:9px;color:var(--ds-muted)">'+(stats.avgDays<=20?'Within 20d':'Exceeded 20d')+'</div>':'')+
         '</td>'+
         '<td style="text-align:center">'+
           '<span class="ds-badge" style="background:'+rateColor+'22;color:'+rateColor+';border:1px solid '+rateColor+'44">'+(stats.rate!==null?stats.rate+'%':'—')+'</span>'+
@@ -4237,111 +4237,54 @@ var DSAgent = {
       }
     }
 
-    // Blocker section
-    var bs = document.getElementById('ds-m-prog-blocker-section');
-    if (bs) {
-      bs.style.display = isOver ? 'block' : 'none';
-      var bi = document.getElementById('ds-m-prog-blocker');
-      if (bi) bi.value = rec.BLOCKER_REASON || '';
-    }
-
-    this._renderProgressSteps(rec, isOver);
+    this._renderProgressSteps(rec);
     el.classList.add('open');
   },
 
-  _renderProgressSteps: function(rec, isOver) {
+  _renderProgressSteps: function(rec) {
     var self = this;
     var dsId = rec.DS_ID;
     var stepKeys = Object.keys(this.STEPS);
     var container = document.getElementById('ds-m-prog-steps');
     if (!container) return;
     container.innerHTML = stepKeys.map(function(k, idx){
-      var def   = self.STEPS[k];
-      var step  = rec[k] || {status:'Pending', start_dt:'', end_dt:'', duration_hours:''};
-      var sc    = self._statusClass(step.status||'Pending');
-      var isStarted  = !!step.start_dt;
+      var def        = self.STEPS[k];
+      var step       = rec[k] || {status:'Pending'};
+      var sc         = self._statusClass(step.status||'Pending');
       var isComplete = step.status==='Done' || step.status==='Fit';
-      var slaExceeded = step.duration_hours && parseFloat(step.duration_hours) > def.sla;
-      var slaHtml = isComplete
-        ? (slaExceeded
-            ? '<span style="font-size:10px;color:var(--ds-red)">&#9888; '+step.duration_hours+'h / SLA '+def.sla+'h</span>'
-            : '<span style="font-size:10px;color:var(--ds-green)">&#10003; '+step.duration_hours+'h / SLA '+def.sla+'h</span>')
-        : '<span style="font-size:10px;color:var(--ds-muted)">SLA: '+def.sla+'h</span>';
-      var startInfo = isStarted
-        ? '<span style="font-size:10px;color:var(--ds-muted)">Start: <span class="mono">'+esc((step.start_dt||'').substring(0,10))+'</span></span>'
+      var completedInfo = isComplete && step.complete_date
+        ? '<span style="font-size:10px;color:var(--ds-muted)">Completed: <span class="mono">'+esc(step.complete_date)+'</span></span>'
         : '';
-      var endInfo = isComplete && step.end_dt
-        ? '<span style="font-size:10px;color:var(--ds-muted)">End: <span class="mono">'+esc((step.end_dt||'').substring(0,10))+'</span></span>'
-        : '';
-      var startBtn = (!isStarted && !isComplete)
-        ? '<button class="ds-btn green sm" onclick="DSAgent._progStart(\''+dsId+'\',\''+k+'\')">&#9654; Start</button>'
-        : '';
-      var completeBtn = (isStarted && !isComplete)
-        ? '<button class="ds-btn cyan sm" onclick="DSAgent._progComplete(\''+dsId+'\',\''+k+'\')">&#10003; Complete</button>'
+      var completeBtn = (!isComplete && !isReadOnly())
+        ? '<button class="ds-btn cyan sm" onclick="DSAgent._progComplete(\''+dsId+'\',\''+k+'\')">&#10003; Mark Done</button>'
         : '';
       var editBtn = isReadOnly() ? '' : '<button class="ds-btn ghost sm" onclick="DSAgent.openStepModal(\''+dsId+'\',\''+k+'\')" title="Edit step details">&#9998;</button>';
-      var stateClass = isComplete ? 'done' : (isStarted ? 'active' : '');
+      var stateClass = isComplete ? 'done' : '';
       return '<div class="ds-prog-step '+stateClass+'">'+
         '<div class="ds-prog-step-hdr">'+
           '<div class="ds-prog-step-num">'+(idx+1)+'</div>'+
           '<div style="flex:1;min-width:0">'+
             '<div style="font-size:12px;font-weight:700;color:var(--ds-text)">'+esc(def.label)+'</div>'+
-            '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:2px">'+slaHtml+startInfo+endInfo+'</div>'+
+            '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:2px">'+completedInfo+'</div>'+
           '</div>'+
           '<span class="ds-badge '+sc+'" style="flex-shrink:0">'+esc(step.status||'Pending')+'</span>'+
         '</div>'+
-        '<div class="ds-prog-step-actions">'+startBtn+completeBtn+editBtn+'</div>'+
+        '<div class="ds-prog-step-actions">'+completeBtn+editBtn+'</div>'+
       '</div>';
     }).join('');
   },
 
-  _progStart: function(dsId, stepKey) {
-    var rec = (APP.dsTracker||[]).find(function(r){ return r.DS_ID===dsId; });
-    var days = rec ? parseInt(rec.TOTAL_DAYS_ELAPSED||0,10) : 0;
-    var blocker = '';
-    if (days > 20) {
-      blocker = ((document.getElementById('ds-m-prog-blocker')||{}).value||'').trim();
-      if (!blocker) { toast('Blocker Reason is required for Over-Stage records','error'); var bi=document.getElementById('ds-m-prog-blocker'); if(bi) bi.focus(); return; }
-    }
-    var self = this;
-    toast('Recording start timestamp...','info');
-    GAS.startDSStep(dsId, stepKey, blocker, function(r){
-      if (!r||!r.success) {
-        if (r && r.error === 'BLOCKER_REQUIRED') { toast('Blocker Reason is required for Over-Stage records','error'); return; }
-        toast('Error: '+(r?r.error:'Unknown'),'error'); return;
-      }
-      if (rec) {
-        if (!rec[stepKey]) rec[stepKey] = {status:'Pending'};
-        rec[stepKey].start_dt = r.start_dt || '';
-        rec[stepKey].status   = 'Pending';
-      }
-      toast('Step started \u2014 ' + (r.start_dt||''), 'success');
-      self._renderProgressSteps(rec, days>20);
-    });
-  },
-
   _progComplete: function(dsId, stepKey) {
     var rec = (APP.dsTracker||[]).find(function(r){ return r.DS_ID===dsId; });
-    var days = rec ? parseInt(rec.TOTAL_DAYS_ELAPSED||0,10) : 0;
-    var blocker = '';
-    if (days > 20) {
-      blocker = ((document.getElementById('ds-m-prog-blocker')||{}).value||'').trim();
-      if (!blocker) { toast('Blocker Reason is required for Over-Stage records','error'); var bi=document.getElementById('ds-m-prog-blocker'); if(bi) bi.focus(); return; }
-    }
     var self = this;
     toast('Recording completion...','info');
-    GAS.completeDSStep(dsId, stepKey, '', blocker, function(r){
-      if (!r||!r.success) {
-        if (r && r.error === 'BLOCKER_REQUIRED') { toast('Blocker Reason is required for Over-Stage records','error'); return; }
-        toast('Error: '+(r?r.error:'Unknown'),'error'); return;
-      }
+    GAS.completeDSStep(dsId, stepKey, '', '', function(r){
+      if (!r||!r.success) { toast('Error: '+(r?r.error:'Unknown'),'error'); return; }
       if (rec) {
         if (!rec[stepKey]) rec[stepKey] = {};
-        rec[stepKey].end_dt         = r.end_dt || '';
-        rec[stepKey].duration_hours = r.duration_hours || '';
-        rec[stepKey].status         = (stepKey==='STEP_MEDICAL') ? 'Fit' : 'Done';
+        rec[stepKey].complete_date = r.complete_date || '';
+        rec[stepKey].status        = (stepKey==='STEP_MEDICAL') ? 'Fit' : 'Done';
       }
-      // Auto-check if all done
       var stepKeys = Object.keys(self.STEPS);
       var allDone = stepKeys.every(function(k){
         var s = (rec[k]&&rec[k].status)||'Pending';
@@ -4355,9 +4298,9 @@ var DSAgent = {
         if (bar) { bar.style.width='100%'; bar.style.background='linear-gradient(90deg,#232840 0%,#448aff 40%,#00e676 100%)'; bar.className='ds-prog-bar-fill'; }
         toast('Onboarding COMPLETED!', 'success');
       } else {
-        toast('Step completed \u2014 ' + (r.duration_hours?r.duration_hours+'h':''), 'success');
+        toast('Step marked done', 'success');
       }
-      self._renderProgressSteps(rec, days>20 && !allDone);
+      self._renderProgressSteps(rec);
       self.renderBadge();
     });
   },
@@ -4379,6 +4322,10 @@ var DSAgent = {
   },
 
   _drawAnalytics: function(r, el) {
+    var overall = r.overall || {};
+    var avgDays = overall.avgDays !== null && overall.avgDays !== undefined ? overall.avgDays + 'd' : '—';
+    var avgColor = overall.avgDays === null ? 'var(--ds-muted)' : overall.avgDays <= 20 ? 'var(--ds-green)' : 'var(--ds-amber)';
+
     // ── Monthly Completions Sparkline (client-side, last 6 months) ──
     var now = new Date();
     var months = [];
@@ -4388,14 +4335,8 @@ var DSAgent = {
         label: md.toLocaleString('default', {month:'short'}) + ' \'' + String(md.getFullYear()).slice(2), count: 0 });
     }
     (APP.dsTracker||[]).forEach(function(rec) {
-      if (rec.OB_COMPLETE !== 'TRUE') return;
-      var cdStr = null;
-      ['STEP_EXIT_INTERVIEW','STEP_FINAL_CLEAR','STEP_GATE_PASS','STEP_SYSTEM_ACCESS'].forEach(function(k) {
-        if (!cdStr && rec[k] && rec[k].complete_date) cdStr = rec[k].complete_date;
-      });
-      if (!cdStr && rec.TRANSFER_DATE) cdStr = rec.TRANSFER_DATE;
-      if (!cdStr) return;
-      var cd = new Date(cdStr);
+      if (rec.OB_COMPLETE !== 'TRUE' || !rec.TRANSFER_DATE) return;
+      var cd = new Date(rec.TRANSFER_DATE);
       if (isNaN(cd.getTime())) return;
       months.forEach(function(m) {
         if (cd.getFullYear() === m.year && cd.getMonth() === m.month) m.count++;
@@ -4409,92 +4350,59 @@ var DSAgent = {
       return '<div style="display:flex;flex-direction:column;align-items:center;gap:3px;flex:1;min-width:0">'+
         '<div style="font-size:11px;font-weight:700;color:'+(m.count?'var(--ds-cyan)':'var(--ds-muted)')+';">'+(m.count||'\u2013')+'</div>'+
         '<div style="width:70%;flex:1;display:flex;align-items:flex-end">'+
-          '<div style="width:100%;height:'+pct+'%;min-height:4px;background:'+barColor+';border-radius:4px 4px 0 0;box-shadow:'+(m.count?'0 0 8px rgba(0,180,200,.35)':'none')+';transition:height .6s ease"></div>'+
+          '<div style="width:100%;height:'+pct+'%;min-height:4px;background:'+barColor+';border-radius:4px 4px 0 0;transition:height .6s ease"></div>'+
         '</div>'+
         '<div style="font-size:9px;color:var(--ds-muted);text-align:center;white-space:nowrap">'+m.label+'</div>'+
       '</div>';
     }).join('');
 
-    // ── Work Speed Report table ──
+    // ── HR Performance table ──
     var hrRows = (r.hrReport||[]).map(function(h){
-      var total = h.completed + h.overStage;
-      var osRate = total > 0 ? Math.round((h.overStage/total)*100) : 0;
-      var rateColor = osRate > 30 ? 'var(--ds-red)' : osRate > 10 ? 'var(--ds-amber)' : 'var(--ds-green)';
-      var barW = total > 0 ? Math.round((h.completed/total)*100) : 0;
+      var total = h.completed + h.active;
+      var avgColor2 = h.avgDays === null ? 'var(--ds-muted)' : h.avgDays <= 20 ? 'var(--ds-green)' : 'var(--ds-amber)';
       return '<tr>'+
         '<td style="font-weight:600">'+esc(h.name)+'</td>'+
-        '<td class="mono" style="color:var(--ds-cyan)">'+h.avgHours+'h</td>'+
-        '<td class="mono">'+h.completed+' <span style="color:var(--ds-muted);font-size:10px">/ '+total+'</span></td>'+
-        '<td><div style="display:flex;align-items:center;gap:6px">'+
-          '<div style="flex:1;height:6px;background:var(--ds-border);border-radius:3px;overflow:hidden">'+
-            '<div style="height:100%;width:'+barW+'%;background:'+rateColor+';border-radius:3px"></div>'+
-          '</div>'+
-          '<span class="mono" style="font-size:10px;color:'+rateColor+'">'+osRate+'%</span>'+
-        '</div></td>'+
+        '<td class="mono" style="color:'+avgColor2+';font-weight:700">'+(h.avgDays !== null ? h.avgDays+'d' : '—')+'</td>'+
+        '<td class="mono">'+h.completed+'</td>'+
+        '<td class="mono" style="color:var(--ds-muted)">'+h.active+'</td>'+
       '</tr>';
     }).join('') || '<tr><td colspan="4" class="ds-empty">No HR data yet.</td></tr>';
 
-    // ── Bottleneck heatmap bars ──
-    var maxH = 1;
-    (r.bottleneck||[]).forEach(function(b){ if(b.avgHours>maxH) maxH=b.avgHours; });
-    var bBars = (r.bottleneck||[]).map(function(b){
-      var pct   = maxH > 0 ? Math.round((b.avgHours/maxH)*100) : 0;
-      var color = b.avgHours > b.sla ? 'var(--ds-red)' : b.avgHours > b.sla*0.7 ? 'var(--ds-amber)' : 'var(--ds-green)';
-      var slaMarker = maxH > 0 ? Math.round((b.sla/maxH)*100) : 0;
-      return '<div style="margin-bottom:14px">'+
-        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">'+
-          '<span style="font-size:11px;font-weight:600">'+esc(b.label)+'</span>'+
-          '<span class="mono" style="font-size:11px;color:'+color+'">'+b.avgHours+'h <span style="color:var(--ds-muted)">/ SLA '+b.sla+'h</span> '+
-            '<span style="background:'+(b.overSLA>0?'rgba(220,50,50,.15)':'rgba(0,180,100,.12)')+';color:'+(b.overSLA>0?'var(--ds-red)':'var(--ds-green)')+';border-radius:4px;padding:1px 6px;font-size:10px">'+b.overSLA+' over SLA</span>'+
-          '</span>'+
-        '</div>'+
-        '<div style="position:relative;height:14px;background:var(--ds-border);border-radius:7px;overflow:hidden">'+
-          '<div style="height:100%;width:'+pct+'%;background:'+color+';border-radius:7px;transition:width .5s ease"></div>'+
-          '<div style="position:absolute;top:0;left:'+slaMarker+'%;width:2px;height:100%;background:rgba(255,255,255,.5)"></div>'+
-        '</div>'+
-        '<div style="font-size:10px;color:var(--ds-muted);margin-top:3px">'+b.count+' records sampled</div>'+
-      '</div>';
-    }).join('') || '<div class="ds-empty">No step duration data yet.</div>';
-
-    // ── Idle time table ──
-    var idleRows = (r.idleTime||[]).map(function(g){
-      var color = g.avgIdleHours > 24 ? 'var(--ds-red)' : g.avgIdleHours > 8 ? 'var(--ds-amber)' : 'var(--ds-green)';
-      return '<tr>'+
-        '<td style="font-size:11px;color:var(--ds-muted)">'+esc(g.label)+'</td>'+
-        '<td class="mono" style="color:'+color+'">'+g.avgIdleHours+'h</td>'+
-        '<td class="mono" style="color:var(--ds-muted)">'+g.count+'</td>'+
-      '</tr>';
-    }).join('') || '<tr><td colspan="3" class="ds-empty">No idle time data yet.</td></tr>';
-
     el.innerHTML =
       '<div style="padding:20px 24px">'+
-      // Top row — 3 cards
-      '<div style="display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:16px;margin-bottom:16px">'+
+      // Summary KPI row
+      '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:16px">'+
+        '<div class="ds-kpi cyan" style="min-width:0">'+
+          '<div class="ds-kpi-icon">&#128200;</div>'+
+          '<div class="ds-kpi-val" style="color:'+avgColor+'">'+avgDays+'</div>'+
+          '<div class="ds-kpi-lbl">Avg Days to Complete</div>'+
+        '</div>'+
+        '<div class="ds-kpi green" style="min-width:0">'+
+          '<div class="ds-kpi-icon">&#10003;</div>'+
+          '<div class="ds-kpi-val">'+overall.totalCompleted+'</div>'+
+          '<div class="ds-kpi-lbl">Total Completed</div>'+
+        '</div>'+
+        '<div class="ds-kpi purple" style="min-width:0">'+
+          '<div class="ds-kpi-icon">&#9654;</div>'+
+          '<div class="ds-kpi-val">'+overall.totalActive+'</div>'+
+          '<div class="ds-kpi-lbl">Currently Active</div>'+
+        '</div>'+
+      '</div>'+
+      // Bottom row — HR table + sparkline
+      '<div style="display:grid;grid-template-columns:1.6fr 1fr;gap:16px">'+
         '<div class="ds-table-card">'+
-          '<div class="ds-table-hdr"><span class="ds-table-hdr-title">&#128200; HR Performance</span></div>'+
+          '<div class="ds-table-hdr"><span class="ds-table-hdr-title">&#128101; HR Performance — Avg Days to Complete</span></div>'+
           '<div class="ds-tbl-wrap"><table class="ds-tbl">'+
-            '<thead><tr><th>Responsible HR</th><th>Avg Processing</th><th>Completed</th><th>On-Time Rate</th></tr></thead>'+
+            '<thead><tr><th>Responsible HR</th><th>Avg Days</th><th>Completed</th><th>Active</th></tr></thead>'+
             '<tbody>'+hrRows+'</tbody>'+
           '</table></div>'+
         '</div>'+
         '<div class="ds-table-card">'+
-          '<div class="ds-table-hdr"><span class="ds-table-hdr-title">&#9201; Idle Time Between Steps</span></div>'+
-          '<div class="ds-tbl-wrap"><table class="ds-tbl">'+
-            '<thead><tr><th>Transition</th><th>Avg Idle</th><th>Samples</th></tr></thead>'+
-            '<tbody>'+idleRows+'</tbody>'+
-          '</table></div>'+
-        '</div>'+
-        '<div class="ds-table-card">'+
           '<div class="ds-table-hdr"><span class="ds-table-hdr-title">&#128202; Monthly Completions</span></div>'+
-          '<div style="padding:12px 16px 8px;display:flex;align-items:flex-end;gap:6px;height:136px;box-sizing:border-box">'+
+          '<div style="padding:12px 16px 8px;display:flex;align-items:flex-end;gap:6px;height:160px;box-sizing:border-box">'+
             sparkBars+
           '</div>'+
         '</div>'+
-      '</div>'+
-      // Bottom — Bottleneck Heatmap full width
-      '<div class="ds-table-card">'+
-        '<div class="ds-table-hdr"><span class="ds-table-hdr-title">&#128293; Bottleneck Heatmap \u2014 Avg Duration Per Step vs SLA</span></div>'+
-        '<div style="padding:16px 20px">'+bBars+'</div>'+
       '</div>'+
       '</div>';
   },
@@ -4505,7 +4413,7 @@ var DSAgent = {
     if (!rec) { toast('Record not found','error'); return; }
     var stepDef = this.STEPS[stepKey];
     if (!stepDef) return;
-    var stepData = rec[stepKey] || {status:'Pending',responsible:'',substeps:{},start_date:'',complete_date:'',notes:'',reason:''};
+    var stepData = rec[stepKey] || {status:'Pending',responsible:'',substeps:{},complete_date:'',notes:'',reason:''};
 
     document.getElementById('ds-m-step-dsid').value  = dsId;
     document.getElementById('ds-m-step-key').value   = stepKey;
@@ -4517,10 +4425,9 @@ var DSAgent = {
 
     // Auto-fill responsible with logged-in user if not already set
     document.getElementById('ds-m-step-responsible').value = stepData.responsible || rec.RESPONSIBLE_HR || (APP.user && APP.user.name) || '';
-    // Start date defaults to the record's transfer/add date (the step "clock" begins on transfer)
-    var transferDateShort = rec.TRANSFER_DATE ? String(rec.TRANSFER_DATE).substring(0,10) : '';
-    document.getElementById('ds-m-step-start').value    = stepData.start_date    || transferDateShort || '';
-    document.getElementById('ds-m-step-complete').value = stepData.complete_date || '';
+    // Default complete date to today if not already set
+    var todayStr = new Date().toISOString().substring(0, 10);
+    document.getElementById('ds-m-step-complete').value = stepData.complete_date || todayStr;
     document.getElementById('ds-m-step-notes').value    = stepData.notes         || '';
     document.getElementById('ds-m-step-reason').value   = stepData.reason        || '';
 
@@ -4563,14 +4470,8 @@ var DSAgent = {
     var sel = document.getElementById('ds-m-step-status');
     var status = sel ? sel.value : '';
     var reasonRow = document.getElementById('ds-m-step-reason-row');
-    var needsReason = ['Problem','Unfit','Pending'].indexOf(status) >= 0;
+    var needsReason = ['Problem','Unfit'].indexOf(status) >= 0;
     if (reasonRow) reasonRow.style.display = needsReason ? 'block' : 'none';
-    // Show blocker row if record is over-stage
-    var dsId = (document.getElementById('ds-m-step-dsid')||{}).value || '';
-    var rec  = dsId ? (APP.dsTracker||[]).find(function(r){ return r.DS_ID===dsId; }) : null;
-    var days = rec ? parseInt(rec.TOTAL_DAYS_ELAPSED||0,10) : 0;
-    var br = document.getElementById('ds-m-step-blocker-row');
-    if (br) br.style.display = (days > 20) ? 'block' : 'none';
   },
 
   closeStepModal: function() {
@@ -4593,33 +4494,18 @@ var DSAgent = {
     var nsiDateEl = document.getElementById('ds-m-nsi-training-date');
     if (stepKey === 'STEP_NSI' && nsiDateEl) substeps.training_date = nsiDateEl.value;
 
-    // Over-stage blocker gate
-    var rec2 = (APP.dsTracker||[]).find(function(x){ return x.DS_ID===dsId; });
-    var days2 = rec2 ? parseInt(rec2.TOTAL_DAYS_ELAPSED||0,10) : 0;
-    var blockerVal = ((document.getElementById('ds-m-step-blocker')||{}).value||'').trim();
-    if (days2 > 20 && !blockerVal) {
-      toast('This record is Over-Stage — Blocker Reason is required before saving.','error');
-      var be = document.getElementById('ds-m-step-blocker'); if(be) be.focus();
-      return;
-    }
-
     var stepData = {
       status:        status,
       responsible:   document.getElementById('ds-m-step-responsible').value.trim(),
       substeps:      substeps,
-      start_date:    document.getElementById('ds-m-step-start').value,
       complete_date: document.getElementById('ds-m-step-complete').value,
       notes:         document.getElementById('ds-m-step-notes').value.trim(),
-      reason:        document.getElementById('ds-m-step-reason').value.trim(),
-      blocker_reason: blockerVal
+      reason:        document.getElementById('ds-m-step-reason').value.trim()
     };
 
     var self = this;
     GAS.update20DSStep(dsId, stepKey, stepData, function(r){
-      if (!r||!r.success) {
-        if (r && r.error === 'BLOCKER_REQUIRED') { toast('This record is Over-Stage — a Blocker Reason is required.','error'); return; }
-        toast('Error: '+(r?r.error:'Unknown'),'error'); return;
-      }
+      if (!r||!r.success) { toast('Error: '+(r?r.error:'Unknown'),'error'); return; }
       // Update local state
       var rec = (APP.dsTracker||[]).find(function(x){ return x.DS_ID===dsId; });
       if (rec) {

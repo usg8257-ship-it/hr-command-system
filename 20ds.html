@@ -912,19 +912,6 @@
         <span style="font-size:10px;color:var(--ds-muted)">Day 20</span>
       </div>
 
-      <!-- Over-Stage Blocker Section -->
-      <div id="ds-m-prog-blocker-section" style="display:none">
-        <div class="ds-blocker-banner">
-          <div class="ds-blocker-banner-title">&#9888; Over-Stage — Blocker Reason Required</div>
-          <div class="ds-fg">
-            <label class="ds-flabel">Blocker Reason <span style="color:var(--ds-red)">*</span></label>
-            <input type="text" class="ds-fi" id="ds-m-prog-blocker"
-              placeholder="State why this onboarding has exceeded 20 days…"
-              style="border-color:rgba(255,23,68,.4);background:rgba(255,23,68,.04)">
-          </div>
-        </div>
-      </div>
-
       <!-- Step-by-step list (populated by _renderProgressSteps) -->
       <div id="ds-m-prog-steps"></div>
     </div>
@@ -954,10 +941,6 @@
           <input type="text" class="ds-fi" id="ds-m-step-responsible" placeholder="HR name">
         </div>
         <div class="ds-fg">
-          <label class="ds-flabel">Start Date</label>
-          <input type="date" class="ds-fi" id="ds-m-step-start">
-        </div>
-        <div class="ds-fg">
           <label class="ds-flabel">Complete Date</label>
           <input type="date" class="ds-fi" id="ds-m-step-complete">
         </div>
@@ -966,17 +949,6 @@
         <label class="ds-flabel">Reason</label>
         <input type="text" class="ds-fi" id="ds-m-step-reason" placeholder="Reason / details">
       </div>
-      <!-- Over-Stage Blocker gate — shown when record is >20 days -->
-      <div class="ds-fg" id="ds-m-step-blocker-row" style="margin-bottom:12px;display:none">
-        <label class="ds-flabel" style="color:var(--ds-red)">
-          Blocker Reason <span>*</span>
-          <span style="font-size:9px;font-weight:400;text-transform:none;letter-spacing:0;margin-left:6px">Required — this record is Over-Stage (&gt;20 days)</span>
-        </label>
-        <input type="text" class="ds-fi" id="ds-m-step-blocker"
-          placeholder="State the reason this onboarding has exceeded 20 days…"
-          style="border-color:rgba(255,23,68,.4);background:rgba(255,23,68,.04)">
-      </div>
-
       <div class="ds-fg" style="margin-bottom:14px">
         <label class="ds-flabel">Notes</label>
         <textarea class="ds-fta" id="ds-m-step-notes" placeholder="Additional notes…"></textarea>
