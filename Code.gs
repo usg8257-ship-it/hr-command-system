@@ -253,8 +253,8 @@ function runProtected(token, funcName, args) {
       // 20DS Tracker
       get20DSTracker:                 function(){ return get20DSTracker(); },
       update20DSStep:                 function(){ return update20DSStep(a[0], a[1], a[2]); },
-      startDSStep:                    function(){ return startDSStep(a[0], a[1], a[2]); },
       completeDSStep:                 function(){ return completeDSStep(a[0], a[1], a[2], a[3]); },
+      recalculate20DSTotals:          function(){ return recalculate20DSTotals(); },
       update20DSResponsible:          function(){ return update20DSResponsible(a[0], a[1]); },
       cancel20DSRecord:               function(){ return cancel20DSRecord(a[0], a[1]); },
       get20DSAuditLog:                function(){ return get20DSAuditLog(); },
@@ -903,36 +903,6 @@ function _parseDT_(s) {
   return isNaN(d) ? null : d;
 }
 
-// SERVER-SIDE START: record UAE timestamp as start_dt
-function startDSStep(dsId, stepKey, blockerReason) {
-  try {
-    var profile = _requireRole(['SUPER_ADMIN','HR_OFFICER']);
-    var sh = SS.getSheetByName(TABS.DS_TRACKER);
-    if (!sh) return {success:false,error:'20 Days Strategy Tracker sheet not found'};
-    var lock = LockService.getScriptLock(); lock.waitLock(10000);
-    try {
-      var vals = sh.getDataRange().getValues();
-      var hdrs = vals[0].map(function(h){ return String(h).trim(); });
-      var idCol = hdrs.indexOf('DS_ID');
-      var stepCol = hdrs.indexOf(stepKey);
-      if (stepCol < 0) return {success:false,error:'Unknown step: '+stepKey};
-      for (var i = 1; i < vals.length; i++) {
-        if (String(vals[i][idCol]) !== String(dsId)) continue;
-        var step = {};
-        try { step = JSON.parse(String(vals[i][stepCol]||'{}')); } catch(e){}
-        step.status = 'Pending';
-        sh.getRange(i+1, stepCol+1).setValue(JSON.stringify(step));
-        _logDSAudit_(vals[i][hdrs.indexOf('EMP_ID')], vals[i][hdrs.indexOf('EMP_NAME')],
-          stepKey, _dsStepLabel_(stepKey), step.status||'', 'Started',
-          '', step.notes||'', profile, sh, vals, hdrs, i);
-        logActivity('20DSTracker','STEP_START',dsId+':'+stepKey,'SUCCESS');
-        return {success:true};
-      }
-      return {success:false,error:'Record not found'};
-    } finally { lock.releaseLock(); }
-  } catch(e){ return {success:false,error:e.message}; }
-}
-
 // SERVER-SIDE COMPLETE: record UAE timestamp as end_dt, compute duration_hours
 function completeDSStep(dsId, stepKey, notes, blockerReason) {
   try {
@@ -1043,6 +1013,30 @@ function cancel20DSRecord(dsId, reason) {
       return {success:false,error:'Record not found'};
     } finally { lock.releaseLock(); }
   } catch(e){ return {success:false,error:e.message}; }
+}
+
+// Recompute TOTAL_DAYS_ELAPSED + OB_COMPLETE for every non-cancelled row
+function recalculate20DSTotals() {
+  try {
+    _requireRole(['SUPER_ADMIN','HR_OFFICER']);
+    var sh = SS.getSheetByName(TABS.DS_TRACKER);
+    if (!sh) return {success:false, error:'Sheet not found'};
+    var lock = LockService.getScriptLock(); lock.waitLock(15000);
+    try {
+      var vals = sh.getDataRange().getValues();
+      if (vals.length < 2) return {success:true, updated:0};
+      var hdrs = vals[0].map(function(h){ return String(h).trim(); });
+      var cancelCol = hdrs.indexOf('CANCELLED');
+      var updated = 0;
+      for (var i = 1; i < vals.length; i++) {
+        if (String(vals[i][cancelCol]||'') === 'TRUE') continue;
+        _refreshDSTotals_(sh, vals, hdrs, i);
+        updated++;
+      }
+      logActivity('20DSTracker','RECALCULATE','','SUCCESS - '+updated+' rows');
+      return {success:true, updated:updated};
+    } finally { lock.releaseLock(); }
+  } catch(e){ return {success:false, error:e.message}; }
 }
 
 function get20DSAuditLog() {

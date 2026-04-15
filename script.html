@@ -591,10 +591,10 @@ var GAS={
   update20DSStep:        function(id,k,d,cb)      { GAS.call('update20DSStep',        [id,k,d],       cb); },
   update20DSResponsible: function(id,hr,cb)       { GAS.call('update20DSResponsible', [id,hr],        cb); },
   cancel20DSRecord:      function(id,rsn,cb)      { GAS.call('cancel20DSRecord',      [id,rsn],       cb); },
-  get20DSAuditLog:       function(cb)             { GAS.call('get20DSAuditLog',       [],             cb); },
-  startDSStep:           function(id,k,br,cb)     { GAS.call('startDSStep',           [id,k,br],      cb); },
-  completeDSStep:        function(id,k,n,br,cb)   { GAS.call('completeDSStep',        [id,k,n,br],    cb); },
-  get20DSAnalytics:      function(cb)             { GAS.call('get20DSAnalytics',      [],             cb); }
+  get20DSAuditLog:           function(cb)           { GAS.call('get20DSAuditLog',           [],       cb); },
+  completeDSStep:            function(id,k,n,br,cb) { GAS.call('completeDSStep',            [id,k,n,br], cb); },
+  recalculate20DSTotals:     function(cb)           { GAS.call('recalculate20DSTotals',     [],       cb); },
+  get20DSAnalytics:          function(cb)           { GAS.call('get20DSAnalytics',          [],       cb); }
 };
 
 // ============================================================
@@ -3495,10 +3495,11 @@ var RecruitmentAgent = {
 // ============================================================
 var DSAgent = {
   _tab: 'summary',
-  _kpiFilter: null,   // null | 'active' | 'nsi' | 'overstage'
-  _dsPage: 1,         // current page — Tracker tab
-  _dsSummaryPage: 1,  // current page — Summary tab tracker
-  _dsPageSize: 20,    // rows per page
+  _kpiFilter: null,        // null | 'active' | 'nsi' | 'overstage'
+  _dsPage: 1,              // current page — Tracker tab
+  _dsSummaryPage: 1,       // current page — Summary tab tracker
+  _dsPageSize: 20,         // rows per page
+  _summaryFilterInit: false, // set once on first render to default to Active
 
   // Step definitions — rebuilt dynamically from APP.stepConfig after load
   // Hardcoded values serve as fallback if sheet hasn't been seeded yet
@@ -3629,6 +3630,12 @@ var DSAgent = {
   },
 
   render: function() {
+    // Default the Summary tracker status filter to "Active" on the very first render
+    if (!this._summaryFilterInit) {
+      var sf = document.getElementById('ds-summary-status');
+      if (sf && !sf.value) sf.value = 'active';
+      this._summaryFilterInit = true;
+    }
     this.renderBadge();
     this.switchTab(this._tab || 'summary');
   },
@@ -3638,6 +3645,19 @@ var DSAgent = {
     GAS.get20DSTracker(function(r){
       if (r && r.success) { APP.dsTracker = r.data || []; self.render(); toast('20DS data refreshed','info'); }
       else toast('Error refreshing 20DS data: '+(r?r.error:''),'error');
+    });
+  },
+
+  recalculateTotals: function() {
+    var self = this;
+    toast('Recalculating day totals…', 'info');
+    GAS.recalculate20DSTotals(function(r){
+      if (!r || !r.success) { toast('Recalculate failed: '+(r?r.error:'Unknown'), 'error'); return; }
+      // Reload fresh data from server so TOTAL_DAYS_ELAPSED reflects recalculated values
+      GAS.get20DSTracker(function(r2){
+        if (r2 && r2.success) { APP.dsTracker = r2.data || []; self.render(); }
+        toast('Recalculated ' + r.updated + ' records', 'success');
+      });
     });
   },
 
