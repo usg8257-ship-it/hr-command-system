@@ -3495,11 +3495,14 @@ var RecruitmentAgent = {
 // ============================================================
 var DSAgent = {
   _tab: 'summary',
-  _kpiFilter: null,        // null | 'active' | 'nsi' | 'overstage'
-  _dsPage: 1,              // current page — Tracker tab
-  _dsSummaryPage: 1,       // current page — Summary tab tracker
-  _dsPageSize: 20,         // rows per page
+  _kpiFilter: null,          // null | 'active' | 'nsi' | 'overstage'
+  _dsPage: 1,                // current page — Tracker tab
+  _dsSummaryPage: 1,         // current page — Summary tab tracker
+  _dsPageSize: 20,           // rows per page
   _summaryFilterInit: false, // set once on first render to default to Active
+  _analyticsRaw: null,       // cached server response for analytics
+  _analyticsRange: 'all',    // 'all' | '90' | '30'
+  _analyticsSearch: '',      // search term for individual records table
 
   // Step definitions — rebuilt dynamically from APP.stepConfig after load
   // Hardcoded values serve as fallback if sheet hasn't been seeded yet
@@ -3642,6 +3645,7 @@ var DSAgent = {
 
   refresh: function() {
     var self = this;
+    this._clearAnalyticsCache(); // force re-fetch on next analytics open
     GAS.get20DSTracker(function(r){
       if (r && r.success) { APP.dsTracker = r.data || []; self.render(); toast('20DS data refreshed','info'); }
       else toast('Error refreshing 20DS data: '+(r?r.error:''),'error');
@@ -3969,7 +3973,8 @@ var DSAgent = {
     return list.map(function(r){
       var days = parseInt(r.TOTAL_DAYS_ELAPSED||0,10);
       var isOver = days > 20 && r.OB_COMPLETE !== 'TRUE';
-      var daysColor = isOver ? 'var(--ds-red)' : days > 10 ? 'var(--ds-amber)' : 'var(--ds-green)';
+      var daysColor = r.OB_COMPLETE === 'TRUE' ? 'var(--ds-green)' : isOver ? 'var(--ds-red)' : days > 10 ? 'var(--ds-amber)' : 'var(--ds-green)';
+      var daysLabel = r.OB_COMPLETE === 'TRUE' ? days+'d to complete' : days+'d elapsed';
       var rowStyle  = isOver ? 'background:rgba(200,48,48,.04);' : '';
       var pills = stepKeys.map(function(k){
         var step = r[k] || {status:'Pending'};
@@ -4011,7 +4016,7 @@ var DSAgent = {
         '<td style="font-weight:700">'+esc(r.EMP_NAME||'—')+'</td>'+
         '<td style="font-size:11px">'+esc(r.DESIGNATION||'—')+'</td>'+
         '<td style="font-size:11px">'+esc(r.RESPONSIBLE_HR||'—')+'</td>'+
-        '<td class="mono" style="color:'+daysColor+';font-weight:700">'+days+'d</td>'+
+        '<td class="mono" style="color:'+daysColor+';font-weight:700">'+daysLabel+'</td>'+
         '<td class="ds-steps-cell"><div class="ds-steps-row">'+pills+'</div>'+progBar+'</td>'+
         '<td><div style="display:flex;gap:4px">'+
           '<button class="ds-btn cyan sm" onclick="DSAgent.openProgressCard(\''+esc(r.DS_ID)+'\')" title="Progress Card">&#9654;</button>'+
@@ -4297,6 +4302,8 @@ var DSAgent = {
   _progComplete: function(dsId, stepKey) {
     var rec = (APP.dsTracker||[]).find(function(r){ return r.DS_ID===dsId; });
     var self = this;
+    var stepLabel = (this.STEPS[stepKey]||{}).label || stepKey;
+    if (!confirm('Mark "' + stepLabel + '" as complete?')) return;
     toast('Recording completion...','info');
     GAS.completeDSStep(dsId, stepKey, '', '', function(r){
       if (!r||!r.success) { toast('Error: '+(r?r.error:'Unknown'),'error'); return; }
@@ -4334,33 +4341,107 @@ var DSAgent = {
   renderAnalytics: function() {
     var el = document.getElementById('ds-tab-analytics');
     if (!el) return;
+    // Use cached data if available; only hit the server on first load or after refresh
+    if (this._analyticsRaw) { this._drawAnalytics(this._analyticsRaw, el); return; }
     el.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;padding:60px;color:var(--ds-muted)"><div style="text-align:center"><div style="font-size:28px;margin-bottom:12px;opacity:.4">&#128200;</div>Loading analytics\u2026</div></div>';
     GAS.get20DSAnalytics(function(r){
       if (!r||!r.success) { el.innerHTML = '<div class="ds-empty"><div class="ds-empty-icon">&#9888;</div>Could not load analytics.</div>'; return; }
+      DSAgent._analyticsRaw = r;
       DSAgent._drawAnalytics(r, el);
     });
   },
 
-  _drawAnalytics: function(r, el) {
-    var overall = r.overall || {};
-    var avgDays = overall.avgDays !== null && overall.avgDays !== undefined ? overall.avgDays + 'd' : '—';
-    var avgColor = overall.avgDays === null ? 'var(--ds-muted)' : overall.avgDays <= 20 ? 'var(--ds-green)' : 'var(--ds-amber)';
+  // Called by range buttons rendered inside the analytics tab
+  _setAnalyticsRange: function(range) {
+    this._analyticsRange = range;
+    var el = document.getElementById('ds-tab-analytics');
+    if (el && this._analyticsRaw) this._drawAnalytics(this._analyticsRaw, el);
+  },
 
-    // ── Monthly Completions Sparkline (client-side, last 6 months) ──
+  // Called by the individual-records search input
+  _setAnalyticsSearch: function(val) {
+    this._analyticsSearch = val;
+    var el = document.getElementById('ds-tab-analytics');
+    if (el && this._analyticsRaw) this._drawAnalytics(this._analyticsRaw, el);
+  },
+
+  // Invalidate cache so next tab open re-fetches (called from refresh())
+  _clearAnalyticsCache: function() { this._analyticsRaw = null; },
+
+  _drawAnalytics: function(r, el) {
+    var self = this;
+    var range  = this._analyticsRange || 'all';
+    var searchQ = (this._analyticsSearch || '').toLowerCase().trim();
+
+    // ── Apply date range filter to individuals ──
+    var cutMs = range === '30' ? Date.now() - 30 * 86400000
+              : range === '90' ? Date.now() - 90 * 86400000
+              : null;
+    var allIndiv = r.individuals || [];
+    var filteredIndiv = cutMs
+      ? allIndiv.filter(function(emp) {
+          if (!emp.transferDate) return false;
+          // transferDate format: dd/MM/yyyy or yyyy-MM-dd
+          var s = emp.transferDate;
+          var d;
+          var m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+          if (m) d = new Date(+m[3], +m[2]-1, +m[1]);
+          else d = new Date(s);
+          return !isNaN(d) && d.getTime() >= cutMs;
+        })
+      : allIndiv;
+
+    // ── Re-aggregate stats from filtered individuals ──
+    var filtTotal = 0, filtDays = 0;
+    var filtHrMap = {};
+    filteredIndiv.forEach(function(emp) {
+      filtTotal++; filtDays += emp.days;
+      var hr = emp.hrName || 'Unassigned';
+      if (!filtHrMap[hr]) filtHrMap[hr] = {completed:0, totalDays:0};
+      filtHrMap[hr].completed++;
+      filtHrMap[hr].totalDays += emp.days;
+    });
+    var filtAvgDays = filtTotal > 0 ? Math.round(filtDays / filtTotal * 10) / 10 : null;
+    var avgColor = filtAvgDays === null ? 'var(--ds-muted)' : filtAvgDays <= 20 ? 'var(--ds-green)' : 'var(--ds-amber)';
+    var avgDaysLbl = filtAvgDays !== null ? filtAvgDays + 'd' : '—';
+    var totalActive = (r.overall || {}).totalActive || 0;
+
+    // Build filtered hrReport — active count from full server data
+    var fullHrMap = {};
+    (r.hrReport||[]).forEach(function(h){ fullHrMap[h.name] = h.active || 0; });
+    var filtHrReport = Object.keys(filtHrMap).map(function(name) {
+      var d = filtHrMap[name];
+      var avg = d.completed > 0 ? Math.round(d.totalDays / d.completed * 10) / 10 : null;
+      return {name:name, avgDays:avg, completed:d.completed, active: fullHrMap[name] || 0};
+    }).sort(function(a,b){
+      if (a.avgDays===null) return 1; if (b.avgDays===null) return -1;
+      return a.avgDays - b.avgDays;
+    });
+
+    // ── Range filter buttons ──
+    var rangeBtn = function(val, label) {
+      var active = range === val;
+      return '<button onclick="DSAgent._setAnalyticsRange(\''+val+'\')" style="'+
+        'padding:4px 12px;font-size:11px;font-weight:'+(active?'700':'500')+';border-radius:5px;border:1px solid '+(active?'var(--ds-cyan)':'var(--ds-border)')+
+        ';background:'+(active?'var(--ds-cyan)':'var(--ds-surface)')+';color:'+(active?'#fff':'var(--ds-muted)')+';cursor:pointer">'+label+'</button>';
+    };
+    var rangeBtns = rangeBtn('all','All Time') + rangeBtn('90','Last 90d') + rangeBtn('30','Last 30d');
+
+    // ── Monthly Completions Sparkline ──
     var now = new Date();
     var months = [];
     for (var mi = 5; mi >= 0; mi--) {
       var md = new Date(now.getFullYear(), now.getMonth() - mi, 1);
-      months.push({ year: md.getFullYear(), month: md.getMonth(),
-        label: md.toLocaleString('default', {month:'short'}) + ' \'' + String(md.getFullYear()).slice(2), count: 0 });
+      months.push({year:md.getFullYear(), month:md.getMonth(),
+        label:md.toLocaleString('default',{month:'short'})+' \''+String(md.getFullYear()).slice(2), count:0});
     }
-    (APP.dsTracker||[]).forEach(function(rec) {
-      if (rec.OB_COMPLETE !== 'TRUE' || !rec.TRANSFER_DATE) return;
-      var cd = new Date(rec.TRANSFER_DATE);
-      if (isNaN(cd.getTime())) return;
-      months.forEach(function(m) {
-        if (cd.getFullYear() === m.year && cd.getMonth() === m.month) m.count++;
-      });
+    filteredIndiv.forEach(function(emp) {
+      if (!emp.transferDate) return;
+      var s = emp.transferDate;
+      var d; var mm = s.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+      if (mm) d = new Date(+mm[3],+mm[2]-1,+mm[1]); else d = new Date(s);
+      if (isNaN(d)) return;
+      months.forEach(function(mo){ if (d.getFullYear()===mo.year && d.getMonth()===mo.month) mo.count++; });
     });
     var maxCount = 1;
     months.forEach(function(m){ if (m.count > maxCount) maxCount = m.count; });
@@ -4376,20 +4457,27 @@ var DSAgent = {
       '</div>';
     }).join('');
 
-    // ── HR Performance table ──
-    var hrRows = (r.hrReport||[]).map(function(h){
-      var total = h.completed + h.active;
-      var avgColor2 = h.avgDays === null ? 'var(--ds-muted)' : h.avgDays <= 20 ? 'var(--ds-green)' : 'var(--ds-amber)';
+    // ── HR table ──
+    var hrRows = filtHrReport.map(function(h) {
+      var ac = h.avgDays === null ? 'var(--ds-muted)' : h.avgDays <= 20 ? 'var(--ds-green)' : 'var(--ds-amber)';
       return '<tr>'+
         '<td style="font-weight:600">'+esc(h.name)+'</td>'+
-        '<td class="mono" style="color:'+avgColor2+';font-weight:700">'+(h.avgDays !== null ? h.avgDays+'d' : '—')+'</td>'+
+        '<td class="mono" style="color:'+ac+';font-weight:700">'+(h.avgDays!==null?h.avgDays+'d':'—')+'</td>'+
         '<td class="mono">'+h.completed+'</td>'+
         '<td class="mono" style="color:var(--ds-muted)">'+h.active+'</td>'+
       '</tr>';
-    }).join('') || '<tr><td colspan="4" class="ds-empty">No HR data yet.</td></tr>';
+    }).join('') || '<tr><td colspan="4"><div class="ds-empty" style="padding:10px">No completed data for this period.</div></td></tr>';
 
-    // ── Individual completed employees table ──
-    var indivRows = (r.individuals||[]).map(function(emp, idx){
+    // ── Individual records — apply search ──
+    var displayIndiv = searchQ
+      ? filteredIndiv.filter(function(emp){
+          return (emp.empName||'').toLowerCase().indexOf(searchQ) >= 0 ||
+                 (emp.empId||'').toLowerCase().indexOf(searchQ) >= 0 ||
+                 (emp.hrName||'').toLowerCase().indexOf(searchQ) >= 0;
+        })
+      : filteredIndiv;
+
+    var indivRows = displayIndiv.map(function(emp, idx) {
       var dColor = emp.days <= 20 ? 'var(--ds-green)' : 'var(--ds-amber)';
       return '<tr>'+
         '<td style="color:var(--ds-muted);font-size:10px;font-family:var(--ds-mono)">'+(idx+1)+'</td>'+
@@ -4400,25 +4488,31 @@ var DSAgent = {
         '<td class="mono" style="font-size:11px;color:var(--ds-muted)">'+esc(emp.transferDate||'—')+'</td>'+
         '<td class="mono" style="font-weight:700;color:'+dColor+'">'+emp.days+'d</td>'+
       '</tr>';
-    }).join('') || '<tr><td colspan="7"><div class="ds-empty" style="padding:14px">No completed onboardings yet.</div></td></tr>';
+    }).join('') || '<tr><td colspan="7"><div class="ds-empty" style="padding:14px">'+(searchQ?'No matches for "'+esc(searchQ)+'"':'No completed onboardings yet.')+'</div></td></tr>';
 
     el.innerHTML =
       '<div style="padding:20px 24px">'+
-      // Summary KPI row
+      // Range filter bar
+      '<div style="display:flex;align-items:center;gap:8px;margin-bottom:16px">'+
+        '<span style="font-size:11px;font-weight:600;color:var(--ds-muted);text-transform:uppercase;letter-spacing:.05em">Period:</span>'+
+        rangeBtns+
+        (range!=='all'?'<span style="font-size:10px;color:var(--ds-muted);margin-left:4px">'+filtTotal+' completed in range</span>':'')+
+      '</div>'+
+      // KPI row
       '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:16px">'+
         '<div class="ds-kpi cyan" style="min-width:0">'+
           '<div class="ds-kpi-icon">&#128200;</div>'+
-          '<div class="ds-kpi-val" style="color:'+avgColor+'">'+avgDays+'</div>'+
+          '<div class="ds-kpi-val" style="color:'+avgColor+'">'+avgDaysLbl+'</div>'+
           '<div class="ds-kpi-lbl">Avg Days to Complete</div>'+
         '</div>'+
         '<div class="ds-kpi green" style="min-width:0">'+
           '<div class="ds-kpi-icon">&#10003;</div>'+
-          '<div class="ds-kpi-val">'+overall.totalCompleted+'</div>'+
-          '<div class="ds-kpi-lbl">Total Completed</div>'+
+          '<div class="ds-kpi-val">'+filtTotal+'</div>'+
+          '<div class="ds-kpi-lbl">'+(range==='all'?'Total':'Period')+' Completed</div>'+
         '</div>'+
         '<div class="ds-kpi purple" style="min-width:0">'+
           '<div class="ds-kpi-icon">&#9654;</div>'+
-          '<div class="ds-kpi-val">'+overall.totalActive+'</div>'+
+          '<div class="ds-kpi-val">'+totalActive+'</div>'+
           '<div class="ds-kpi-lbl">Currently Active</div>'+
         '</div>'+
       '</div>'+
@@ -4433,18 +4527,19 @@ var DSAgent = {
         '</div>'+
         '<div class="ds-table-card">'+
           '<div class="ds-table-hdr"><span class="ds-table-hdr-title">&#128202; Monthly Completions</span></div>'+
-          '<div style="padding:12px 16px 8px;display:flex;align-items:flex-end;gap:6px;height:160px;box-sizing:border-box">'+
-            sparkBars+
-          '</div>'+
+          '<div style="padding:12px 16px 8px;display:flex;align-items:flex-end;gap:6px;height:160px;box-sizing:border-box">'+sparkBars+'</div>'+
         '</div>'+
       '</div>'+
-      // Individual completed employees
+      // Individual records
       '<div class="ds-table-card">'+
-        '<div class="ds-table-hdr">'+
+        '<div class="ds-table-hdr" style="flex-wrap:wrap;gap:8px">'+
           '<span class="ds-table-hdr-title">&#9989; Completed Onboardings — Individual Records</span>'+
-          '<span style="font-size:11px;color:var(--ds-muted);margin-left:auto">'+
-            (r.individuals&&r.individuals.length ? r.individuals.length+' records · sorted fastest first' : '')+
-          '</span>'+
+          '<div style="display:flex;align-items:center;gap:8px;margin-left:auto">'+
+            '<input type="text" placeholder="Search name, ID, HR…" value="'+esc(searchQ)+'"'+
+              ' oninput="DSAgent._setAnalyticsSearch(this.value)"'+
+              ' style="padding:4px 10px;font-size:11px;border:1px solid var(--ds-border);border-radius:5px;background:var(--ds-surface);color:var(--ds-text);width:200px">'+
+            '<span style="font-size:10px;color:var(--ds-muted)">'+displayIndiv.length+' record'+(displayIndiv.length!==1?'s':'')+' · fastest first</span>'+
+          '</div>'+
         '</div>'+
         '<div class="ds-tbl-wrap"><table class="ds-tbl">'+
           '<thead><tr><th style="width:32px">#</th><th>Name</th><th>Emp ID</th><th>Designation</th><th>Hired By</th><th>Start Date</th><th>Days Taken</th></tr></thead>'+
