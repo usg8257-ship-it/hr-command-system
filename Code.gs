@@ -1043,6 +1043,66 @@ function recalculate20DSTotals() {
   } catch(e){ return {success:false, error:e.message}; }
 }
 
+/**
+ * Run this directly from the Apps Script editor (no login needed).
+ * It fixes OB_COMPLETE and TOTAL_DAYS_ELAPSED for every non-cancelled
+ * DS tracker row — useful for employees who finished after day 20 but
+ * were never flagged as complete due to the stale-array bug.
+ */
+function adminFixOBComplete() {
+  var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('20DS Tracker');
+  if (!sh) { Logger.log('Sheet "20DS Tracker" not found'); return; }
+  var vals = sh.getDataRange().getValues();
+  if (vals.length < 2) { Logger.log('No data'); return; }
+  var hdrs = vals[0].map(function(h){ return String(h).trim(); });
+  var stepKeys  = ['STEP_VISA','STEP_LABOR','STEP_MEDICAL','STEP_INSURANCE','STEP_NSI','STEP_EID'];
+  var cancelCol = hdrs.indexOf('CANCELLED');
+  var totalCol  = hdrs.indexOf('TOTAL_DAYS_ELAPSED');
+  var obCol     = hdrs.indexOf('OB_COMPLETE');
+  var tCol      = hdrs.indexOf('TRANSFER_DATE');
+  var fixed = 0;
+  for (var i = 1; i < vals.length; i++) {
+    if (String(vals[i][cancelCol]||'') === 'TRUE') continue;
+    var allDone = stepKeys.every(function(k) {
+      var c = hdrs.indexOf(k);
+      if (c < 0) return false;
+      try { var s = JSON.parse(String(vals[i][c]||'{}')); return s.status==='Done'||s.status==='Fit'; }
+      catch(e){ return false; }
+    });
+    var tRaw = String(vals[i][tCol]||'');
+    var tD = null;
+    var m = tRaw.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+    if (m) tD = new Date(+m[3], +m[2]-1, +m[1]);
+    else { var d2 = new Date(tRaw); if (!isNaN(d2)) tD = d2; }
+    var days = 0;
+    if (tD) {
+      if (allDone) {
+        var maxComplete = null;
+        stepKeys.forEach(function(k) {
+          var c = hdrs.indexOf(k);
+          if (c < 0) return;
+          try {
+            var s = JSON.parse(String(vals[i][c]||'{}'));
+            if (s.complete_date) {
+              var cd; var m2 = s.complete_date.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+              if (m2) cd = new Date(+m2[3],+m2[2]-1,+m2[1]);
+              else cd = new Date(s.complete_date);
+              if (!isNaN(cd) && (!maxComplete || cd > maxComplete)) maxComplete = cd;
+            }
+          } catch(e2){}
+        });
+        days = Math.floor(((maxComplete||new Date()) - tD) / 86400000);
+      } else {
+        days = Math.floor((new Date() - tD) / 86400000);
+      }
+    }
+    if (totalCol >= 0) sh.getRange(i+1, totalCol+1).setValue(days);
+    if (obCol    >= 0) sh.getRange(i+1, obCol+1).setValue(allDone ? 'TRUE' : 'FALSE');
+    if (allDone) fixed++;
+  }
+  Logger.log('adminFixOBComplete done. Marked complete: ' + fixed + ' row(s).');
+}
+
 function get20DSAuditLog() {
   try {
     _requireRole(['SUPER_ADMIN','HR_OFFICER']);
