@@ -1073,6 +1073,7 @@ function get20DSAnalytics() {
     var hdrs = vals[0].map(function(h){ return String(h).trim(); });
     var hrMap = {};
     var totalCompleted = 0, totalDays = 0, totalActive = 0;
+    var individuals = [];
     for (var i = 1; i < vals.length; i++) {
       var row = {};
       hdrs.forEach(function(h,idx){ row[h] = String(vals[i][idx]||''); });
@@ -1085,11 +1086,21 @@ function get20DSAnalytics() {
         hrMap[hrName].totalDays += days;
         totalCompleted++;
         totalDays += days;
+        individuals.push({
+          empId:        row.EMP_ID,
+          empName:      row.EMP_NAME,
+          designation:  row.DESIGNATION,
+          hrName:       hrName,
+          transferDate: row.TRANSFER_DATE ? String(row.TRANSFER_DATE).substring(0,10) : '',
+          days:         days
+        });
       } else {
         hrMap[hrName].active++;
         totalActive++;
       }
     }
+    // Sort individuals fastest first
+    individuals.sort(function(a,b){ return a.days - b.days; });
     var hrReport = Object.keys(hrMap).map(function(name){
       var d = hrMap[name];
       var avg = d.completed > 0 ? Math.round(d.totalDays / d.completed * 10) / 10 : null;
@@ -1100,7 +1111,7 @@ function get20DSAnalytics() {
       return a.avgDays - b.avgDays;
     });
     var overallAvg = totalCompleted > 0 ? Math.round(totalDays / totalCompleted * 10) / 10 : null;
-    return {success:true, hrReport:hrReport, overall:{avgDays:overallAvg, totalCompleted:totalCompleted, totalActive:totalActive}};
+    return {success:true, hrReport:hrReport, overall:{avgDays:overallAvg, totalCompleted:totalCompleted, totalActive:totalActive}, individuals:individuals};
   } catch(e){ return {success:false,error:e.message}; }
 }
 
@@ -1122,17 +1133,8 @@ function _refreshDSTotals_(sh, vals, hdrs, rowIdx) {
     var totalCol    = hdrs.indexOf('TOTAL_DAYS_ELAPSED');
     var completeCol = hdrs.indexOf('OB_COMPLETE');
     if (String(vals[rowIdx][cancelCol]||'') === 'TRUE') return;
-    // Recalculate days from TRANSFER_DATE
-    var transferCol = hdrs.indexOf('TRANSFER_DATE');
-    var tDate = vals[rowIdx][transferCol];
-    var days = 0;
-    if (tDate) {
-      var d = _parseDT_(String(tDate));
-      if (d) days = Math.floor((new Date() - d) / 86400000);
-    }
-    if (totalCol >= 0) sh.getRange(rowIdx+1, totalCol+1).setValue(days);
-    // Check if all 6 steps are Done/Fit
     var stepKeys = ['STEP_VISA','STEP_LABOR','STEP_MEDICAL','STEP_INSURANCE','STEP_NSI','STEP_EID'];
+    // Check if all 6 steps are Done/Fit
     var allDone = stepKeys.every(function(k){
       var col = hdrs.indexOf(k);
       if (col < 0) return false;
@@ -1141,6 +1143,30 @@ function _refreshDSTotals_(sh, vals, hdrs, rowIdx) {
         return s.status === 'Done' || s.status === 'Fit';
       } catch(e){ return false; }
     });
+    var transferCol = hdrs.indexOf('TRANSFER_DATE');
+    var tD = _parseDT_(String(vals[rowIdx][transferCol]||''));
+    var days = 0;
+    if (tD) {
+      if (allDone) {
+        // Use the latest complete_date across all steps as the end point
+        var maxComplete = null;
+        stepKeys.forEach(function(k) {
+          var col = hdrs.indexOf(k);
+          if (col < 0) return;
+          try {
+            var s = JSON.parse(String(vals[rowIdx][col]||'{}'));
+            if (s.complete_date) {
+              var cd = _parseDT_(s.complete_date);
+              if (cd && (!maxComplete || cd > maxComplete)) maxComplete = cd;
+            }
+          } catch(e2){}
+        });
+        days = Math.floor(((maxComplete || new Date()) - tD) / 86400000);
+      } else {
+        days = Math.floor((new Date() - tD) / 86400000);
+      }
+    }
+    if (totalCol    >= 0) sh.getRange(rowIdx+1, totalCol+1).setValue(days);
     if (completeCol >= 0) sh.getRange(rowIdx+1, completeCol+1).setValue(allDone ? 'TRUE' : 'FALSE');
   } catch(e){}
 }
