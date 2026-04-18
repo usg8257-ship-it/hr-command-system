@@ -875,7 +875,10 @@ function get20DSTracker(profile) {
     var nowMs = new Date().getTime();
     for (var i = 1; i < vals.length; i++) {
       var row = {};
-      hdrs.forEach(function(h,idx){ row[h] = String(vals[i][idx]||''); });
+      hdrs.forEach(function(h,idx){
+        var v = vals[i][idx];
+        row[h] = (typeof v === 'boolean') ? (v ? 'TRUE' : 'FALSE') : String(v||'');
+      });
       // Parse JSON step fields
       ['STEP_VISA','STEP_LABOR','STEP_MEDICAL','STEP_INSURANCE','STEP_NSI','STEP_EID'].forEach(function(k){
         try { row[k] = JSON.parse(row[k]); }
@@ -1033,7 +1036,8 @@ function recalculate20DSTotals() {
       var cancelCol = hdrs.indexOf('CANCELLED');
       var updated = 0;
       for (var i = 1; i < vals.length; i++) {
-        if (String(vals[i][cancelCol]||'') === 'TRUE') continue;
+        var cv = vals[i][cancelCol];
+        if (cv === true || String(cv||'').toUpperCase() === 'TRUE') continue;
         _refreshDSTotals_(sh, vals, hdrs, i);
         updated++;
       }
@@ -1062,7 +1066,8 @@ function adminFixOBComplete() {
   var tCol      = hdrs.indexOf('TRANSFER_DATE');
   var fixed = 0;
   for (var i = 1; i < vals.length; i++) {
-    if (String(vals[i][cancelCol]||'') === 'TRUE') continue;
+    var cv2 = vals[i][cancelCol];
+    if (cv2 === true || String(cv2||'').toUpperCase() === 'TRUE') continue;
     var allDone = stepKeys.every(function(k) {
       var c = hdrs.indexOf(k);
       if (c < 0) return false;
@@ -1134,7 +1139,10 @@ function get20DSAnalytics() {
     var individuals = [];
     for (var i = 1; i < vals.length; i++) {
       var row = {};
-      hdrs.forEach(function(h,idx){ row[h] = String(vals[i][idx]||''); });
+      hdrs.forEach(function(h,idx){
+        var v = vals[i][idx];
+        row[h] = (typeof v === 'boolean') ? (v ? 'TRUE' : 'FALSE') : String(v||'');
+      });
       if (row.CANCELLED === 'TRUE') continue;
       var hrName = row.RESPONSIBLE_HR || 'Unassigned';
       if (!hrMap[hrName]) hrMap[hrName] = {completed:0, totalDays:0, active:0};
@@ -1190,7 +1198,8 @@ function _refreshDSTotals_(sh, vals, hdrs, rowIdx) {
     var cancelCol   = hdrs.indexOf('CANCELLED');
     var totalCol    = hdrs.indexOf('TOTAL_DAYS_ELAPSED');
     var completeCol = hdrs.indexOf('OB_COMPLETE');
-    if (String(vals[rowIdx][cancelCol]||'') === 'TRUE') return;
+    var cancelRaw = vals[rowIdx][cancelCol];
+    if (cancelRaw === true || String(cancelRaw||'').toUpperCase() === 'TRUE') return;
     var stepKeys = ['STEP_VISA','STEP_LABOR','STEP_MEDICAL','STEP_INSURANCE','STEP_NSI','STEP_EID'];
     // Check if all 6 steps are Done/Fit
     var allDone = stepKeys.every(function(k){
