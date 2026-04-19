@@ -2491,8 +2491,8 @@ var StepMgmtAgent = {
     // Auto-suggest statuses
     var stEl = document.getElementById('sm-mg-statuses');
     if(stEl && !stEl.value) {
-      var merged = sA.statuses.slice();
-      sB.statuses.forEach(function(st){ if(merged.indexOf(st)<0) merged.push(st); });
+      var merged = (sA.statuses || []).slice();
+      (sB.statuses || []).forEach(function(st){ if(merged.indexOf(st)<0) merged.push(st); });
       stEl.value = merged.join(',');
     }
   },
@@ -3968,8 +3968,9 @@ var DSAgent = {
 
   // ── Shared row builder (used by Tracker tab + Summary tab tracker) ──
   _buildTrackerRows: function(list) {
+    if (!list || !list.length) return '';
     var self = this;
-    var stepKeys = Object.keys(this.STEPS);
+    var stepKeys = this.STEPS ? Object.keys(this.STEPS) : [];
     return list.map(function(r){
       var days = parseInt(r.TOTAL_DAYS_ELAPSED||0,10);
       var isOver = days > 20 && r.OB_COMPLETE !== 'TRUE';
@@ -3980,9 +3981,11 @@ var DSAgent = {
       var donePills = [], pendPills = [];
       stepKeys.forEach(function(k, idx){
         var step = r[k] || {status:'Pending'};
+        if (typeof step !== 'object' || step === null) step = {status:'Pending'};
         var sc = self._statusClass(step.status||'Pending');
         var isComplete = step.status==='Done' || step.status==='Fit';
         var def = self.STEPS[k];
+        if (!def) return;
         var tipText, label;
         if (isComplete) {
           tipText = def.label;
