@@ -3976,11 +3976,10 @@ var DSAgent = {
       var daysColor = r.OB_COMPLETE === 'TRUE' ? 'var(--ds-green)' : isOver ? 'var(--ds-red)' : days > 10 ? 'var(--ds-amber)' : 'var(--ds-green)';
       var daysLabel = r.OB_COMPLETE === 'TRUE' ? days+'d to complete' : days+'d elapsed';
       var rowStyle  = isOver ? 'background:rgba(200,48,48,.04);' : '';
-      var pills = stepKeys.map(function(k){
+      var pills = stepKeys.map(function(k, idx){
         var step = r[k] || {status:'Pending'};
         var sc = self._statusClass(step.status||'Pending');
-        var lbl = self.STEPS[k].short;
-        return '<span class="ds-step-pill '+sc+'" title="'+esc(self.STEPS[k].label)+': '+esc(step.status||'Pending')+'"'+(isReadOnly()?'':' onclick="DSAgent.openStepModal(\''+esc(r.DS_ID)+'\',\''+k+'\')"')+'>'+lbl+'</span>';
+        return '<span class="ds-step-pill '+sc+'" title="'+esc(self.STEPS[k].label)+': '+esc(step.status||'Pending')+'"'+(isReadOnly()?'':' onclick="DSAgent.openStepModal(\''+esc(r.DS_ID)+'\',\''+k+'\')"')+'>'+(idx+1)+'</span>';
       }).join('');
       // Progress bar computation
       var totalSteps = stepKeys.length || 1;

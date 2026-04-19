@@ -246,15 +246,16 @@
 }
 .ds-steps-row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 .ds-step-pill {
-  width: 30px; height: 30px;
+  width: 26px; height: 26px;
   border-radius: 50%;
   display: inline-flex; align-items: center; justify-content: center;
-  font-size: 10px; font-weight: 800;
+  font-size: 9px; font-weight: 800;
   font-family: var(--ds-mono);
   cursor: pointer;
   border: 2px solid;
   transition: transform .15s, box-shadow .15s;
   position: relative;
+  flex-shrink: 0;
 }
 .ds-step-pill:hover { transform: scale(1.25); box-shadow: 0 4px 14px rgba(0,122,138,.28); }
 .ds-step-pill.done     { background: rgba(19,110,66,.14);  color: var(--ds-green);  border-color: rgba(19,110,66,.5); }
