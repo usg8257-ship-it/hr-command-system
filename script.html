@@ -3951,7 +3951,7 @@ var DSAgent = {
     if (!tbody) return;
 
     if (!total) {
-      tbody.innerHTML = '<tr><td colspan="7"><div class="ds-empty"><div class="ds-empty-icon">&#128203;</div>No records found.</div></td></tr>';
+      tbody.innerHTML = '<tr><td colspan="8"><div class="ds-empty"><div class="ds-empty-icon">&#128203;</div>No records found.</div></td></tr>';
       if (pgEl) pgEl.innerHTML = '';
       return;
     }
@@ -3977,7 +3977,8 @@ var DSAgent = {
       var daysLabel = r.OB_COMPLETE === 'TRUE' ? days+'d to complete' : days+'d elapsed';
       var rowStyle  = isOver ? 'background:rgba(200,48,48,.04);' : '';
       var STEP_SHORT = {STEP_VISA:'Visa',STEP_LABOR:'Labor',STEP_MEDICAL:'Medical',STEP_INSURANCE:'Insurance',STEP_NSI:'NSI',STEP_EID:'EID'};
-      var pills = stepKeys.map(function(k, idx){
+      var donePills = [], pendPills = [];
+      stepKeys.forEach(function(k, idx){
         var step = r[k] || {status:'Pending'};
         var sc = self._statusClass(step.status||'Pending');
         var isComplete = step.status==='Done' || step.status==='Fit';
@@ -3998,12 +3999,15 @@ var DSAgent = {
             }
           }
           label = STEP_SHORT[k] || def.label;
+          donePills.push('<span class="ds-step-pill '+sc+'" title="'+esc(tipText)+'"'+(isReadOnly()?'':' onclick="DSAgent.openStepModal(\''+esc(r.DS_ID)+'\',\''+k+'\')"')+'>'+label+'</span>');
         } else {
           tipText = def.label + ': ' + (step.status||'Pending');
           label = sc === 'notstart' ? '' : String(idx+1);
+          pendPills.push('<span class="ds-step-pill '+sc+'" title="'+esc(tipText)+'"'+(isReadOnly()?'':' onclick="DSAgent.openStepModal(\''+esc(r.DS_ID)+'\',\''+k+'\')"')+'>'+label+'</span>');
         }
-        return '<span class="ds-step-pill '+sc+'" title="'+esc(tipText)+'"'+(isReadOnly()?'':' onclick="DSAgent.openStepModal(\''+esc(r.DS_ID)+'\',\''+k+'\')"')+'>'+label+'</span>';
-      }).join('');
+      });
+      var doneCell = donePills.length ? donePills.join('<span class="ds-pill-sep">|</span>') : '<span style="color:var(--ds-muted);font-size:10px">—</span>';
+      var pendCell = pendPills.length ? pendPills.join('<span class="ds-pill-sep">|</span>') : '<span style="color:var(--ds-green);font-size:10px">&#10003; All done</span>';
       // Progress bar computation
       var totalSteps = stepKeys.length || 1;
       var doneSteps  = stepKeys.filter(function(k){ return (r[k]||{}).status === 'Done'; }).length;
@@ -4039,7 +4043,8 @@ var DSAgent = {
         '<td style="font-size:11px">'+esc(r.DESIGNATION||'—')+'</td>'+
         '<td style="font-size:11px">'+esc(r.RESPONSIBLE_HR||'—')+'</td>'+
         '<td class="mono" style="color:'+daysColor+';font-weight:700">'+daysLabel+'</td>'+
-        '<td class="ds-steps-cell"><div class="ds-steps-row">'+pills+'</div>'+progBar+'</td>'+
+        '<td class="ds-steps-cell"><div class="ds-steps-row">'+doneCell+'</div></td>'+
+        '<td class="ds-steps-cell"><div class="ds-steps-row">'+pendCell+'</div>'+progBar+'</td>'+
         '<td><div style="display:flex;gap:4px">'+
           '<button class="ds-btn cyan sm" onclick="DSAgent.openProgressCard(\''+esc(r.DS_ID)+'\')" title="Progress Card">&#9654;</button>'+
           '<button class="ds-btn ghost sm" onclick="DSAgent.openResponsibleModal(\''+esc(r.DS_ID)+'\')" title="Set HR">&#128101;</button>'+
@@ -4070,7 +4075,7 @@ var DSAgent = {
     if (!tbody) return;
 
     if (!total) {
-      tbody.innerHTML = '<tr><td colspan="7"><div class="ds-empty"><div class="ds-empty-icon">&#128203;</div>No records found.</div></td></tr>';
+      tbody.innerHTML = '<tr><td colspan="8"><div class="ds-empty"><div class="ds-empty-icon">&#128203;</div>No records found.</div></td></tr>';
       if (pgEl) pgEl.innerHTML = '';
       return;
     }

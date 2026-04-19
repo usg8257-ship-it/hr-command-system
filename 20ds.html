@@ -245,6 +245,7 @@
   50%      { box-shadow: 0 0 0 5px rgba(184,112,0,0); }
 }
 .ds-steps-row { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
+.ds-pill-sep { color: var(--ds-border); font-size: 11px; margin: 0 1px; user-select: none; }
 
 /* ── Completed step: rectangle green label ── */
 .ds-step-pill {
@@ -646,12 +647,13 @@
               <th>Designation</th>
               <th>Hired By</th>
               <th>Days</th>
-              <th class="ds-steps-col-hdr" style="min-width:360px">&#9654; Steps</th>
+              <th class="ds-steps-col-hdr" style="min-width:180px">&#10003; Completed</th>
+              <th class="ds-steps-col-hdr" style="min-width:180px">&#9654; Pending</th>
               <th>Actions</th>
             </tr>
           </thead>
           <tbody id="ds-summary-tracker-tbody">
-            <tr><td colspan="7"><div class="ds-empty"><div class="ds-empty-icon">&#128203;</div>No records yet.</div></td></tr>
+            <tr><td colspan="8"><div class="ds-empty"><div class="ds-empty-icon">&#128203;</div>No records yet.</div></td></tr>
           </tbody>
         </table>
       </div>
@@ -765,12 +767,13 @@
               <th>Designation</th>
               <th>Hired By</th>
               <th>Days</th>
-              <th class="ds-steps-col-hdr" style="min-width:360px">&#9654; Steps</th>
+              <th class="ds-steps-col-hdr" style="min-width:180px">&#10003; Completed</th>
+              <th class="ds-steps-col-hdr" style="min-width:180px">&#9654; Pending</th>
               <th>Actions</th>
             </tr>
           </thead>
           <tbody id="ds-tracker-tbody">
-            <tr><td colspan="7"><div class="ds-empty"><div class="ds-empty-icon">&#128203;</div>No records yet. Transfer a candidate to master data to begin.</div></td></tr>
+            <tr><td colspan="8"><div class="ds-empty"><div class="ds-empty-icon">&#128203;</div>No records yet. Transfer a candidate to master data to begin.</div></td></tr>
           </tbody>
         </table>
       </div>
