@@ -3976,10 +3976,33 @@ var DSAgent = {
       var daysColor = r.OB_COMPLETE === 'TRUE' ? 'var(--ds-green)' : isOver ? 'var(--ds-red)' : days > 10 ? 'var(--ds-amber)' : 'var(--ds-green)';
       var daysLabel = r.OB_COMPLETE === 'TRUE' ? days+'d to complete' : days+'d elapsed';
       var rowStyle  = isOver ? 'background:rgba(200,48,48,.04);' : '';
+      var STEP_SHORT = {STEP_VISA:'Visa',STEP_LABOR:'Labor',STEP_MEDICAL:'Medical',STEP_INSURANCE:'Insurance',STEP_NSI:'NSI',STEP_EID:'EID'};
       var pills = stepKeys.map(function(k, idx){
         var step = r[k] || {status:'Pending'};
         var sc = self._statusClass(step.status||'Pending');
-        return '<span class="ds-step-pill '+sc+'" title="'+esc(self.STEPS[k].label)+': '+esc(step.status||'Pending')+'"'+(isReadOnly()?'':' onclick="DSAgent.openStepModal(\''+esc(r.DS_ID)+'\',\''+k+'\')"')+'>'+(idx+1)+'</span>';
+        var isComplete = step.status==='Done' || step.status==='Fit';
+        var def = self.STEPS[k];
+        var tipText, label;
+        if (isComplete) {
+          tipText = def.label;
+          if (step.complete_date) {
+            tipText += ' — Completed: ' + step.complete_date;
+            var tRaw = r.TRANSFER_DATE || '';
+            var tParts = tRaw.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+            var tDate = tParts ? new Date(+tParts[3],+tParts[2]-1,+tParts[1]) : new Date(tRaw);
+            var cRaw = step.complete_date;
+            var cParts = cRaw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+            var cDate = cParts ? new Date(+cParts[1],+cParts[2]-1,+cParts[3]) : new Date(cRaw);
+            if (!isNaN(tDate) && !isNaN(cDate)) {
+              tipText += ' · Day ' + Math.round((cDate-tDate)/86400000);
+            }
+          }
+          label = STEP_SHORT[k] || def.label;
+        } else {
+          tipText = def.label + ': ' + (step.status||'Pending');
+          label = sc === 'notstart' ? '' : String(idx+1);
+        }
+        return '<span class="ds-step-pill '+sc+'" title="'+esc(tipText)+'"'+(isReadOnly()?'':' onclick="DSAgent.openStepModal(\''+esc(r.DS_ID)+'\',\''+k+'\')"')+'>'+label+'</span>';
       }).join('');
       // Progress bar computation
       var totalSteps = stepKeys.length || 1;
