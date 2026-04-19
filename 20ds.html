@@ -254,49 +254,29 @@
   display: inline-flex; align-items: center; justify-content: center;
   font-size: 10px; font-weight: 700;
   font-family: var(--ds-font);
-  cursor: pointer;
+  cursor: default;
   border: 1.5px solid;
-  transition: transform .15s, box-shadow .15s;
+  transition: opacity .15s;
   white-space: nowrap;
   flex-shrink: 0;
   padding: 0 7px;
 }
-.ds-step-pill:hover { transform: translateY(-1px); box-shadow: 0 3px 10px rgba(0,0,0,.12); }
 
-/* Completed — rectangle green */
+/* Completed — green */
 .ds-step-pill.done { background: rgba(19,110,66,.13); color: var(--ds-green); border-color: rgba(19,110,66,.45); }
 .ds-step-pill.fit  { background: rgba(19,110,66,.13); color: var(--ds-green); border-color: rgba(19,110,66,.45); }
 
-/* Pending / active — amber circle */
-.ds-step-pill.pending {
-  width: 22px; padding: 0;
-  border-radius: 50%;
-  font-size: 9px; font-weight: 800; font-family: var(--ds-mono);
-  background: rgba(184,112,0,.12); color: var(--ds-amber); border-color: rgba(184,112,0,.55);
-  animation: ds-pulse 1.8s ease-in-out infinite;
-}
-/* Problem — red circle */
-.ds-step-pill.problem {
-  width: 22px; padding: 0;
-  border-radius: 50%;
-  font-size: 9px; font-weight: 800; font-family: var(--ds-mono);
-  background: rgba(200,48,48,.1); color: var(--ds-red); border-color: rgba(200,48,48,.5);
-}
-/* Not started — small gray dot */
-.ds-step-pill.notstart {
-  width: 10px; height: 10px; padding: 0;
-  border-radius: 50%;
-  font-size: 0;
-  background: var(--ds-border); color: transparent; border-color: var(--ds-border);
-  opacity: .55;
-}
-.ds-step-pill.notstart:hover { transform: scale(1.4); opacity: 1; }
-.ds-step-pill.unfit {
-  width: 22px; padding: 0;
-  border-radius: 50%;
-  font-size: 9px; font-weight: 800; font-family: var(--ds-mono);
-  background: rgba(200,48,48,.1); color: var(--ds-red); border-color: rgba(200,48,48,.5);
-}
+/* Pending — amber rectangle */
+.ds-step-pill.pending { background: rgba(184,112,0,.1); color: var(--ds-amber); border-color: rgba(184,112,0,.45); }
+
+/* Problem — red rectangle */
+.ds-step-pill.problem { background: rgba(200,48,48,.1); color: var(--ds-red); border-color: rgba(200,48,48,.4); }
+
+/* Unfit — red rectangle */
+.ds-step-pill.unfit { background: rgba(200,48,48,.1); color: var(--ds-red); border-color: rgba(200,48,48,.4); }
+
+/* Not started — dim gray */
+.ds-step-pill.notstart { background: rgba(143,163,190,.1); color: var(--ds-muted); border-color: rgba(143,163,190,.3); font-size: 9px; opacity: .65; }
 
 /* ── Steps Column Header & Cell ── */
 .ds-steps-col-hdr {
@@ -645,7 +625,6 @@
               <th>Emp ID</th>
               <th>Name</th>
               <th>Designation</th>
-              <th>Hired By</th>
               <th>Days</th>
               <th class="ds-steps-col-hdr" style="min-width:180px">&#10003; Completed</th>
               <th class="ds-steps-col-hdr" style="min-width:180px">&#9654; Pending</th>
@@ -653,7 +632,7 @@
             </tr>
           </thead>
           <tbody id="ds-summary-tracker-tbody">
-            <tr><td colspan="8"><div class="ds-empty"><div class="ds-empty-icon">&#128203;</div>No records yet.</div></td></tr>
+            <tr><td colspan="7"><div class="ds-empty"><div class="ds-empty-icon">&#128203;</div>No records yet.</div></td></tr>
           </tbody>
         </table>
       </div>
@@ -765,7 +744,6 @@
               <th>Emp ID</th>
               <th>Name</th>
               <th>Designation</th>
-              <th>Hired By</th>
               <th>Days</th>
               <th class="ds-steps-col-hdr" style="min-width:180px">&#10003; Completed</th>
               <th class="ds-steps-col-hdr" style="min-width:180px">&#9654; Pending</th>
@@ -773,7 +751,7 @@
             </tr>
           </thead>
           <tbody id="ds-tracker-tbody">
-            <tr><td colspan="8"><div class="ds-empty"><div class="ds-empty-icon">&#128203;</div>No records yet. Transfer a candidate to master data to begin.</div></td></tr>
+            <tr><td colspan="7"><div class="ds-empty"><div class="ds-empty-icon">&#128203;</div>No records yet. Transfer a candidate to master data to begin.</div></td></tr>
           </tbody>
         </table>
       </div>
@@ -909,7 +887,7 @@
 <div class="ds-modal-overlay" id="ds-m-progress">
   <div class="ds-modal" style="width:620px">
     <div class="ds-modal-hdr">
-      <span class="ds-modal-title">&#9654; Individual Progress Card</span>
+      <span class="ds-modal-title">&#9998; Update Employee</span>
       <button class="ds-modal-close" onclick="DSAgent.closeProgressCard()">&#10005;</button>
     </div>
     <div class="ds-modal-body">
@@ -953,6 +931,7 @@
       <div id="ds-m-prog-steps"></div>
     </div>
     <div class="ds-modal-ftr">
+      <button class="ds-btn red" id="ds-m-prog-cancel-btn" onclick="DSAgent._progCancel()" style="margin-right:auto">&#10005; Cancel Onboarding</button>
       <button class="ds-btn ghost" onclick="DSAgent.closeProgressCard()">Close</button>
     </div>
   </div>

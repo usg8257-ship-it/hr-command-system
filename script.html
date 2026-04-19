@@ -3951,7 +3951,7 @@ var DSAgent = {
     if (!tbody) return;
 
     if (!total) {
-      tbody.innerHTML = '<tr><td colspan="8"><div class="ds-empty"><div class="ds-empty-icon">&#128203;</div>No records found.</div></td></tr>';
+      tbody.innerHTML = '<tr><td colspan="7"><div class="ds-empty"><div class="ds-empty-icon">&#128203;</div>No records found.</div></td></tr>';
       if (pgEl) pgEl.innerHTML = '';
       return;
     }
@@ -3975,7 +3975,7 @@ var DSAgent = {
       var days = parseInt(r.TOTAL_DAYS_ELAPSED||0,10);
       var isOver = days > 20 && r.OB_COMPLETE !== 'TRUE';
       var daysColor = r.OB_COMPLETE === 'TRUE' ? 'var(--ds-green)' : isOver ? 'var(--ds-red)' : days > 10 ? 'var(--ds-amber)' : 'var(--ds-green)';
-      var daysLabel = r.OB_COMPLETE === 'TRUE' ? days+'d to complete' : days+'d elapsed';
+      var daysLabel = days + ' Days';
       var rowStyle  = isOver ? 'background:rgba(200,48,48,.04);' : '';
       var STEP_SHORT = {STEP_VISA:'Visa',STEP_LABOR:'Labor',STEP_MEDICAL:'Medical',STEP_INSURANCE:'Insurance',STEP_NSI:'NSI',STEP_EID:'EID'};
       var donePills = [], pendPills = [];
@@ -4002,11 +4002,11 @@ var DSAgent = {
             }
           }
           label = STEP_SHORT[k] || def.label;
-          donePills.push('<span class="ds-step-pill '+sc+'" title="'+esc(tipText)+'"'+(isReadOnly()?'':' onclick="DSAgent.openStepModal(\''+esc(r.DS_ID)+'\',\''+k+'\')"')+'>'+label+'</span>');
+          donePills.push('<span class="ds-step-pill '+sc+'" title="'+esc(tipText)+'">'+label+'</span>');
         } else {
           tipText = def.label + ': ' + (step.status||'Pending');
-          label = sc === 'notstart' ? '' : String(idx+1);
-          pendPills.push('<span class="ds-step-pill '+sc+'" title="'+esc(tipText)+'"'+(isReadOnly()?'':' onclick="DSAgent.openStepModal(\''+esc(r.DS_ID)+'\',\''+k+'\')"')+'>'+label+'</span>');
+          label = STEP_SHORT[k] || def.label;
+          pendPills.push('<span class="ds-step-pill '+sc+'" title="'+esc(tipText)+'">'+label+'</span>');
         }
       });
       var doneCell = donePills.length ? donePills.join('<span class="ds-pill-sep">|</span>') : '<span style="color:var(--ds-muted);font-size:10px">—</span>';
@@ -4044,15 +4044,12 @@ var DSAgent = {
         '<td class="mono">'+esc(r.EMP_ID||'—')+'</td>'+
         '<td style="font-weight:700">'+esc(r.EMP_NAME||'—')+'</td>'+
         '<td style="font-size:11px">'+esc(r.DESIGNATION||'—')+'</td>'+
-        '<td style="font-size:11px">'+esc(r.RESPONSIBLE_HR||'—')+'</td>'+
         '<td class="mono" style="color:'+daysColor+';font-weight:700">'+daysLabel+'</td>'+
         '<td class="ds-steps-cell"><div class="ds-steps-row">'+doneCell+'</div></td>'+
         '<td class="ds-steps-cell"><div class="ds-steps-row">'+pendCell+'</div>'+progBar+'</td>'+
-        '<td><div style="display:flex;gap:4px">'+
-          '<button class="ds-btn cyan sm" onclick="DSAgent.openProgressCard(\''+esc(r.DS_ID)+'\')" title="Progress Card">&#9654;</button>'+
-          '<button class="ds-btn ghost sm" onclick="DSAgent.openResponsibleModal(\''+esc(r.DS_ID)+'\')" title="Set HR">&#128101;</button>'+
-          '<button class="ds-btn red sm" onclick="DSAgent.openCancelModal(\''+esc(r.DS_ID)+'\')" title="Cancel">&#10005;</button>'+
-        '</div></td>'+
+        '<td>'+
+          '<button class="ds-btn cyan sm" onclick="DSAgent.openProgressCard(\''+esc(r.DS_ID)+'\')" title="Update">&#9998; Update</button>'+
+        '</td>'+
       '</tr>';
     }).join('');
   },
@@ -4078,7 +4075,7 @@ var DSAgent = {
     if (!tbody) return;
 
     if (!total) {
-      tbody.innerHTML = '<tr><td colspan="8"><div class="ds-empty"><div class="ds-empty-icon">&#128203;</div>No records found.</div></td></tr>';
+      tbody.innerHTML = '<tr><td colspan="7"><div class="ds-empty"><div class="ds-empty-icon">&#128203;</div>No records found.</div></td></tr>';
       if (pgEl) pgEl.innerHTML = '';
       return;
     }
@@ -4292,8 +4289,19 @@ var DSAgent = {
       }
     }
 
+    // Show/hide cancel button — hide if already complete or cancelled
+    var cancelBtn = document.getElementById('ds-m-prog-cancel-btn');
+    if (cancelBtn) cancelBtn.style.display = (rec.OB_COMPLETE === 'TRUE' || rec.CANCELLED === 'TRUE') ? 'none' : '';
+
     this._renderProgressSteps(rec);
     el.classList.add('open');
+  },
+
+  _progCancel: function() {
+    var dsId = (document.getElementById('ds-m-prog-dsid')||{}).value;
+    if (!dsId) return;
+    this.closeProgressCard();
+    this.openCancelModal(dsId);
   },
 
   _renderProgressSteps: function(rec) {
