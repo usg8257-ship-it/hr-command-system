@@ -167,6 +167,20 @@
   font-style: italic;
 }
 .ds-kpi-clickable:hover .ds-kpi-hint { opacity: 1; }
+.ds-kpi-trend {
+  font-size: 9.5px;
+  font-weight: 600;
+  margin-top: 5px;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  letter-spacing: 0.01em;
+}
+.ds-kpi-trend.up-good   { color: var(--ds-green); }
+.ds-kpi-trend.up-bad    { color: var(--ds-red); }
+.ds-kpi-trend.down-good { color: var(--ds-green); }
+.ds-kpi-trend.down-bad  { color: var(--ds-red); }
+.ds-kpi-trend.neutral   { color: var(--ds-muted); }
 
 /* ── DS Table Card ── */
 .ds-table-card {
@@ -573,24 +587,28 @@
         <div class="ds-kpi-icon">&#128203;</div>
         <div class="ds-kpi-val" id="ds-kpi-active20ds">—</div>
         <div class="ds-kpi-lbl">Active 20DS</div>
+        <div class="ds-kpi-trend neutral" id="ds-kpi-trend-active">—</div>
         <div class="ds-kpi-hint">&#8599; Filter tracker</div>
       </div>
       <div class="ds-kpi green ds-kpi-clickable" data-kpi="nsi" onclick="DSAgent.filterByKPI('nsi')" title="Click to filter employees currently in NSI Training">
         <div class="ds-kpi-icon">&#127979;</div>
         <div class="ds-kpi-val" id="ds-kpi-nsi">—</div>
         <div class="ds-kpi-lbl">NSI Currently</div>
+        <div class="ds-kpi-trend neutral" id="ds-kpi-trend-nsi">—</div>
         <div class="ds-kpi-hint">&#8599; Filter tracker</div>
       </div>
       <div class="ds-kpi red ds-kpi-clickable" data-kpi="overstage" onclick="DSAgent.filterByKPI('overstage')" title="Click to filter Over-Stage employees (&gt;20 days)">
         <div class="ds-kpi-icon">&#9888;</div>
         <div class="ds-kpi-val" id="ds-kpi-overstage">—</div>
         <div class="ds-kpi-lbl">Over-Stage Alerts</div>
+        <div class="ds-kpi-trend neutral" id="ds-kpi-trend-overstage">—</div>
         <div class="ds-kpi-hint">&#8599; Filter tracker</div>
       </div>
       <div class="ds-kpi purple ds-kpi-clickable" data-kpi="analytics" onclick="DSAgent.filterByKPI('analytics')" title="Click to open Analytics &amp; Performance Report">
         <div class="ds-kpi-icon">&#9889;</div>
         <div class="ds-kpi-val" id="ds-kpi-avgspeed">—</div>
         <div class="ds-kpi-lbl">Avg Completion</div>
+        <div class="ds-kpi-trend neutral" id="ds-kpi-trend-avgspeed">—</div>
         <div class="ds-kpi-hint">&#8599; Open analytics</div>
       </div>
     </div>

@@ -3569,14 +3569,79 @@ var DSAgent = {
   },
 
   _avgCompletionDays: function() {
+    var n = this._avgCompletionDaysNum();
+    return n !== null ? n + 'd' : '—';
+  },
+
+  _avgCompletionDaysNum: function() {
     var completed = this._activeRecords().filter(function(r){ return r.OB_COMPLETE === 'TRUE'; });
-    if (!completed.length) return '—';
+    if (!completed.length) return null;
     var total = 0, count = 0;
     completed.forEach(function(r){
       var d = parseInt(r.TOTAL_DAYS_ELAPSED||0, 10);
       if (d > 0) { total += d; count++; }
     });
-    return count ? Math.round(total/count) + 'd' : '—';
+    return count ? Math.round(total/count) : null;
+  },
+
+  // Returns the latest step complete_date as ms timestamp for a record
+  _completionMs: function(rec) {
+    var maxMs = 0;
+    Object.keys(this.STEPS).forEach(function(k){
+      var cd = rec[k] && rec[k].complete_date;
+      if (cd) { var t = new Date(cd).getTime(); if (!isNaN(t) && t > maxMs) maxMs = t; }
+    });
+    return maxMs;
+  },
+
+  // Compute what each KPI value was ~7 days ago using current data
+  _computeLastWeekKPIs: function() {
+    var self = this;
+    var cutMs = Date.now() - 7 * 86400000;
+    var active = 0, nsi = 0, overstage = 0;
+    var completedDays = [], completedCount = 0, completedTotal = 0;
+
+    (APP.dsTracker || []).forEach(function(r) {
+      if (r.CANCELLED === 'TRUE') return;
+      var days = parseInt(r.TOTAL_DAYS_ELAPSED || 0, 10);
+      if (days < 7) return; // not yet transferred last week
+      var daysLW = days - 7;
+
+      // Was this record already complete last week?
+      var compMs = r.OB_COMPLETE === 'TRUE' ? self._completionMs(r) : 0;
+      var wasCompleteLW = compMs > 0 && compMs <= cutMs;
+
+      if (wasCompleteLW) {
+        // Compute days-to-complete at that time
+        var tRaw = r.TRANSFER_DATE || '';
+        var tm = tRaw.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+        var tMs = tm ? new Date(+tm[3],+tm[2]-1,+tm[1]).getTime() : new Date(tRaw).getTime();
+        if (!isNaN(tMs) && compMs > tMs) {
+          completedTotal += Math.round((compMs - tMs) / 86400000);
+          completedCount++;
+        }
+        return; // completed before last week — skip active/nsi/overstage
+      }
+
+      // Still in progress last week
+      if (daysLW <= 20) active++;
+      else overstage++;
+
+      // NSI last week
+      var nd = r.STEP_NSI || {};
+      var nsiStatus = nd.status || 'Not Started';
+      var nsiCompMs = nd.complete_date ? new Date(nd.complete_date).getTime() : 0;
+      var nsiDoneLW = nsiCompMs > 0 && nsiCompMs <= cutMs;
+      var tdMs = nd.substeps && nd.substeps.training_date ? new Date(nd.substeps.training_date).getTime() : 0;
+      if (!nsiDoneLW && (nsiStatus === 'Scheduled' || (tdMs > 0 && tdMs <= cutMs))) nsi++;
+    });
+
+    return {
+      active:    active,
+      nsi:       nsi,
+      overstage: overstage,
+      avgDays:   completedCount > 0 ? Math.round(completedTotal / completedCount) : null
+    };
   },
 
   // ── Pagination helper ──
@@ -3695,6 +3760,45 @@ var DSAgent = {
     set('ds-kpi-nsi',         nsiNow.length);
     set('ds-kpi-overstage',   delayed.length);
     set('ds-kpi-avgspeed',    this._avgCompletionDays());
+
+    // ── Week-over-week trend badges ──
+    var lw = this._computeLastWeekKPIs();
+    var avgNow = this._avgCompletionDaysNum();
+    var trendEl = function(id, current, prev, higherIsBad) {
+      var el = document.getElementById(id);
+      if (!el) return;
+      if (prev === null || prev === undefined) {
+        el.className = 'ds-kpi-trend neutral';
+        el.textContent = 'No prev data';
+        return;
+      }
+      if (prev === 0 && current === 0) {
+        el.className = 'ds-kpi-trend neutral';
+        el.textContent = '= Same as last wk';
+        return;
+      }
+      if (prev === 0) {
+        el.className = 'ds-kpi-trend up-good';
+        el.textContent = '\u2191 New this week';
+        return;
+      }
+      var diff = current - prev;
+      var pct  = Math.round(Math.abs(diff) / prev * 100);
+      if (diff === 0) {
+        el.className = 'ds-kpi-trend neutral';
+        el.textContent = '= Same as last wk';
+        return;
+      }
+      var goingUp = diff > 0;
+      var isGood  = goingUp ? !higherIsBad : higherIsBad;
+      el.className = 'ds-kpi-trend ' + (goingUp ? (isGood ? 'up-good' : 'up-bad') : (isGood ? 'down-good' : 'down-bad'));
+      el.textContent = (goingUp ? '\u2191' : '\u2193') + ' ' + pct + '% vs last wk';
+    };
+    trendEl('ds-kpi-trend-active',   inprog.length,   lw.active,   false);
+    trendEl('ds-kpi-trend-nsi',      nsiNow.length,   lw.nsi,      false);
+    trendEl('ds-kpi-trend-overstage',delayed.length,  lw.overstage,true);
+    trendEl('ds-kpi-trend-avgspeed', avgNow,          lw.avgDays,  true);
+
     // legacy ids (kept for backward compat)
     set('ds-kpi-total',       active.length);
     set('ds-kpi-complete',    complete.length);
