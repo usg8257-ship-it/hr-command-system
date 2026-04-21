@@ -3512,7 +3512,8 @@ var DSAgent = {
     STEP_MEDICAL:   { label: 'Visa Medical',             short: 'MD', sla: 24,  statuses: ['Pending','Fit','Unfit'],        substeps: { medical_done: 'Medical Done' } },
     STEP_INSURANCE: { label: 'Medical Insurance',        short: 'MI', sla: 72,  statuses: ['Pending','Done','Problem'],     substeps: { app_submitted: 'Application Submitted', card_received: 'Card Received' } },
     STEP_NSI:       { label: 'NSI Training',             short: 'NS', sla: 168, statuses: ['Not Started','Pending','Done'], substeps: { app_submitted: 'Application Submitted', date_scheduled: 'Training Date Scheduled', training_completed: 'Training Completed', cert_received: 'Certificate Received' } },
-    STEP_EID:       { label: 'EID & Residency Stamping', short: 'EI', sla: 48,  statuses: ['Pending','Done','Problem'],     substeps: { eid_app_submitted: 'EID Application Submitted', biometrics: 'Biometrics / Stamping Done', card_received: 'Card Received' } }
+    STEP_EID:       { label: 'EID & Residency Stamping', short: 'EI', sla: 48,  statuses: ['Pending','Done','Problem'],     substeps: { eid_app_submitted: 'EID Application Submitted', biometrics: 'Biometrics / Stamping Done', card_received: 'Card Received' } },
+    STEP_ASSD:      { label: 'ASSD',                     short: 'AS', sla: 48,  statuses: ['Locked','Pending','Done','Problem'], substeps: {}, requiresStep: 'STEP_EID' }
   },
 
   // Called after loadAllData — rebuilds STEPS from the dynamic config sheet
@@ -3521,11 +3522,12 @@ var DSAgent = {
     var built = {};
     configArr.forEach(function(s) {
       built[s.key] = {
-        label:    s.label,
-        short:    s.short,
-        sla:      s.slaHours,
-        statuses: s.statuses,
-        substeps: s.substeps || {}
+        label:       s.label,
+        short:       s.short,
+        sla:         s.slaHours,
+        statuses:    s.statuses,
+        substeps:    s.substeps || {},
+        requiresStep: s.requiresStep || null
       };
     });
     this.STEPS = built;
@@ -3533,7 +3535,7 @@ var DSAgent = {
 
   _statusClass: function(status) {
     var map = { 'Done':'done','Pending':'pending','Problem':'problem',
-                'Not Started':'notstart','Fit':'fit','Unfit':'unfit','Started':'pending' };
+                'Not Started':'notstart','Fit':'fit','Unfit':'unfit','Started':'pending','Locked':'locked' };
     return map[status] || 'pending';
   },
 
@@ -4089,15 +4091,20 @@ var DSAgent = {
       var daysColor = r.OB_COMPLETE === 'TRUE' ? 'var(--ds-green)' : isOver ? 'var(--ds-red)' : days > 10 ? 'var(--ds-amber)' : 'var(--ds-green)';
       var daysLabel = days + ' Days';
       var rowStyle  = isOver ? 'background:rgba(200,48,48,.04);' : '';
-      var STEP_SHORT = {STEP_VISA:'Visa',STEP_LABOR:'Labor',STEP_MEDICAL:'Medical',STEP_INSURANCE:'Insurance',STEP_NSI:'NSI',STEP_EID:'EID'};
+      var STEP_SHORT = {STEP_VISA:'Visa',STEP_LABOR:'Labor',STEP_MEDICAL:'Medical',STEP_INSURANCE:'Insurance',STEP_NSI:'NSI',STEP_EID:'EID',STEP_ASSD:'ASSD'};
       var donePills = [], pendPills = [];
       stepKeys.forEach(function(k, idx){
         var step = r[k] || {status:'Pending'};
         if (typeof step !== 'object' || step === null) step = {status:'Pending'};
-        var sc = self._statusClass(step.status||'Pending');
-        var isComplete = step.status==='Done' || step.status==='Fit';
+        // Auto-lock ASSD if its prerequisite (EID) is not yet done
         var def = self.STEPS[k];
         if (!def) return;
+        if (def.requiresStep) {
+          var prereq = r[def.requiresStep] || {};
+          if (prereq.status !== 'Done' && prereq.status !== 'Fit') step = {status:'Locked'};
+        }
+        var sc = self._statusClass(step.status||'Pending');
+        var isComplete = step.status==='Done' || step.status==='Fit';
         var tipText, label;
         if (isComplete) {
           tipText = def.label;
@@ -4425,22 +4432,36 @@ var DSAgent = {
     container.innerHTML = stepKeys.map(function(k, idx){
       var def        = self.STEPS[k];
       var step       = rec[k] || {status:'Pending'};
+      // Enforce prereq lock display
+      var isLocked   = false;
+      if (def.requiresStep) {
+        var prereq = rec[def.requiresStep] || {};
+        if (prereq.status !== 'Done' && prereq.status !== 'Fit') {
+          isLocked = true;
+          step = {status: 'Locked'};
+        }
+      }
       var sc         = self._statusClass(step.status||'Pending');
       var isComplete = step.status==='Done' || step.status==='Fit';
       var completedInfo = isComplete && step.complete_date
         ? '<span style="font-size:10px;color:var(--ds-muted)">Completed: <span class="mono">'+esc(step.complete_date)+'</span></span>'
         : '';
-      var completeBtn = (!isComplete && !isReadOnly())
+      var lockedHint = isLocked
+        ? '<span style="font-size:10px;color:var(--ds-muted);font-style:italic">&#128274; Requires EID &amp; Residency Stamping</span>'
+        : '';
+      var completeBtn = (!isComplete && !isLocked && !isReadOnly())
         ? '<button class="ds-btn cyan sm" onclick="DSAgent._progComplete(\''+dsId+'\',\''+k+'\')">&#10003; Mark Done</button>'
         : '';
-      var editBtn = isReadOnly() ? '' : '<button class="ds-btn ghost sm" onclick="DSAgent.openStepModal(\''+dsId+'\',\''+k+'\')" title="Edit step details">&#9998;</button>';
-      var stateClass = isComplete ? 'done' : '';
-      return '<div class="ds-prog-step '+stateClass+'">'+
+      var editBtn = (!isLocked && !isReadOnly())
+        ? '<button class="ds-btn ghost sm" onclick="DSAgent.openStepModal(\''+dsId+'\',\''+k+'\')" title="Edit step details">&#9998;</button>'
+        : '';
+      var stateClass = isComplete ? 'done' : (isLocked ? 'locked' : '');
+      return '<div class="ds-prog-step '+stateClass+'" style="'+(isLocked?'opacity:.6':'')+'">'+
         '<div class="ds-prog-step-hdr">'+
           '<div class="ds-prog-step-num">'+(idx+1)+'</div>'+
           '<div style="flex:1;min-width:0">'+
             '<div style="font-size:12px;font-weight:700;color:var(--ds-text)">'+esc(def.label)+'</div>'+
-            '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:2px">'+completedInfo+'</div>'+
+            '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:2px">'+completedInfo+lockedHint+'</div>'+
           '</div>'+
           '<span class="ds-badge '+sc+'" style="flex-shrink:0">'+esc(step.status||'Pending')+'</span>'+
         '</div>'+
@@ -4705,6 +4726,14 @@ var DSAgent = {
     if (!rec) { toast('Record not found','error'); return; }
     var stepDef = this.STEPS[stepKey];
     if (!stepDef) return;
+    // Block editing ASSD until EID is complete
+    if (stepDef.requiresStep) {
+      var prereq = rec[stepDef.requiresStep] || {};
+      if (prereq.status !== 'Done' && prereq.status !== 'Fit') {
+        toast('ASSD is locked until EID & Residency Stamping is completed.', 'error');
+        return;
+      }
+    }
     var stepData = rec[stepKey] || {status:'Pending',responsible:'',substeps:{},complete_date:'',notes:'',reason:''};
 
     document.getElementById('ds-m-step-dsid').value  = dsId;

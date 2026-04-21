@@ -292,6 +292,9 @@
 /* Not started — dim gray */
 .ds-step-pill.notstart { background: rgba(143,163,190,.1); color: var(--ds-muted); border-color: rgba(143,163,190,.3); font-size: 9px; opacity: .65; }
 
+/* Locked — slate, padlock icon prefix */
+.ds-step-pill.locked { background: rgba(82,98,120,.07); color: var(--ds-muted); border-color: rgba(82,98,120,.2); font-size: 9px; opacity: .55; cursor: not-allowed; }
+
 /* ── Steps Column Header & Cell ── */
 .ds-steps-col-hdr {
   background: rgba(0,122,138,.1) !important;
@@ -504,8 +507,9 @@
   border: 1px solid var(--ds-border); border-radius: 8px;
   margin-bottom: 8px; transition: border-color .14s, background .14s;
 }
-.ds-prog-step.active { border-color: rgba(184,112,0,.45);  background: rgba(184,112,0,.05); }
-.ds-prog-step.done   { border-color: rgba(19,110,66,.35);  background: rgba(19,110,66,.05); }
+.ds-prog-step.active  { border-color: rgba(184,112,0,.45);  background: rgba(184,112,0,.05); }
+.ds-prog-step.done    { border-color: rgba(19,110,66,.35);  background: rgba(19,110,66,.05); }
+.ds-prog-step.locked  { border-color: rgba(82,98,120,.2);   background: rgba(82,98,120,.03); }
 .ds-prog-step-hdr { display: flex; align-items: center; gap: 10px; }
 .ds-prog-step-num {
   width: 26px; height: 26px; border-radius: 50%;

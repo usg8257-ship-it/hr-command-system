@@ -336,7 +336,8 @@ var _DEFAULT_STEPS = [
   { STEP_KEY:'STEP_MEDICAL',   LABEL:'Visa Medical',             SHORT:'MD', SLA_HOURS:24,  STATUSES:'Pending,Fit,Unfit',           SUBSTEPS:'{"medical_done":"Medical Done"}',                                                                                                                        ORDER:3, ACTIVE:'TRUE', MERGED_INTO:'' },
   { STEP_KEY:'STEP_INSURANCE', LABEL:'Medical Insurance',        SHORT:'MI', SLA_HOURS:72,  STATUSES:'Pending,Done,Problem',        SUBSTEPS:'{"app_submitted":"Application Submitted","card_received":"Card Received"}',                                                                              ORDER:4, ACTIVE:'TRUE', MERGED_INTO:'' },
   { STEP_KEY:'STEP_NSI',       LABEL:'NSI Training',             SHORT:'NS', SLA_HOURS:168, STATUSES:'Not Started,Pending,Done',    SUBSTEPS:'{"app_submitted":"Application Submitted","date_scheduled":"Training Date Scheduled","training_completed":"Training Completed","cert_received":"Certificate Received"}', ORDER:5, ACTIVE:'TRUE', MERGED_INTO:'' },
-  { STEP_KEY:'STEP_EID',       LABEL:'EID & Residency Stamping', SHORT:'EI', SLA_HOURS:48,  STATUSES:'Pending,Done,Problem',        SUBSTEPS:'{"eid_app_submitted":"EID Application Submitted","biometrics":"Biometrics / Stamping Done","card_received":"Card Received"}',                           ORDER:6, ACTIVE:'TRUE', MERGED_INTO:'' }
+  { STEP_KEY:'STEP_EID',       LABEL:'EID & Residency Stamping', SHORT:'EI', SLA_HOURS:48,  STATUSES:'Pending,Done,Problem',        SUBSTEPS:'{"eid_app_submitted":"EID Application Submitted","biometrics":"Biometrics / Stamping Done","card_received":"Card Received"}',                           ORDER:6, ACTIVE:'TRUE', MERGED_INTO:'' },
+  { STEP_KEY:'STEP_ASSD',      LABEL:'ASSD',                     SHORT:'AS', SLA_HOURS:48,  STATUSES:'Locked,Pending,Done,Problem',  SUBSTEPS:'{}',                                                                                                                                                    ORDER:7, ACTIVE:'TRUE', MERGED_INTO:'' }
 ];
 
 var _STEPS_HDRS = ['STEP_KEY','LABEL','SHORT','SLA_HOURS','STATUSES','SUBSTEPS','ORDER','ACTIVE','MERGED_INTO'];
@@ -804,7 +805,7 @@ function transferToMaster(obId, empData) {
 var DS_TRACKER_HEADERS = [
   'DS_ID','EMP_ID','EMP_NAME','DESIGNATION','PHONE','EMAIL',
   'EXP_JOIN_DATE','PIPELINE_ADDED_DATE','TRANSFER_DATE','TRANSFERRED_BY','RESPONSIBLE_HR',
-  'STEP_VISA','STEP_LABOR','STEP_MEDICAL','STEP_INSURANCE','STEP_NSI','STEP_EID',
+  'STEP_VISA','STEP_LABOR','STEP_MEDICAL','STEP_INSURANCE','STEP_NSI','STEP_EID','STEP_ASSD',
   'CANCELLED','CANCEL_REASON','CANCELLED_BY','CANCELLED_ON','TOTAL_DAYS_ELAPSED','OB_COMPLETE'
 ];
 
@@ -857,6 +858,7 @@ function create20DSRecord(obId, empData, obRow) {
         _emptyStep_('Pending'),   // STEP_INSURANCE
         _emptyStep_('Not Started'), // STEP_NSI
         _emptyStep_('Pending'),   // STEP_EID
+        _emptyStep_('Locked'),    // STEP_ASSD
         'FALSE','','','','0','FALSE'
       ]);
     } finally { lock.releaseLock(); }
@@ -880,7 +882,7 @@ function get20DSTracker(profile) {
         row[h] = (typeof v === 'boolean') ? (v ? 'TRUE' : 'FALSE') : String(v||'');
       });
       // Parse JSON step fields
-      ['STEP_VISA','STEP_LABOR','STEP_MEDICAL','STEP_INSURANCE','STEP_NSI','STEP_EID'].forEach(function(k){
+      ['STEP_VISA','STEP_LABOR','STEP_MEDICAL','STEP_INSURANCE','STEP_NSI','STEP_EID','STEP_ASSD'].forEach(function(k){
         try { row[k] = JSON.parse(row[k]); }
         catch(e){ row[k] = {status:'Pending',responsible:'',substeps:{},start_date:'',complete_date:'',start_dt:'',end_dt:'',duration_hours:'',notes:'',reason:'',blocker_reason:''}; }
       });
@@ -921,6 +923,14 @@ function completeDSStep(dsId, stepKey, notes, blockerReason) {
       if (stepCol < 0) return {success:false,error:'Unknown step: '+stepKey};
       for (var i = 1; i < vals.length; i++) {
         if (String(vals[i][idCol]) !== String(dsId)) continue;
+        // ASSD can only be updated after EID is complete
+        if (stepKey === 'STEP_ASSD') {
+          var eidCol = hdrs.indexOf('STEP_EID');
+          if (eidCol >= 0) {
+            try { var eid = JSON.parse(String(vals[i][eidCol]||'{}')); if (eid.status !== 'Done' && eid.status !== 'Fit') return {success:false,error:'ASSD can only be updated after EID step is completed.'}; }
+            catch(e2){ return {success:false,error:'Cannot verify EID status.'}; }
+          }
+        }
         var step = {};
         try { step = JSON.parse(String(vals[i][stepCol]||'{}')); } catch(e){}
         var nowDT = _uaeDT_();
@@ -956,6 +966,14 @@ function update20DSStep(dsId, stepKey, stepData) {
       if (stepCol < 0) return {success:false,error:'Unknown step: '+stepKey};
       for (var i = 1; i < vals.length; i++) {
         if (String(vals[i][idCol]) !== String(dsId)) continue;
+        // ASSD requires EID to be done first
+        if (stepKey === 'STEP_ASSD' && stepData.status !== 'Locked') {
+          var eidCol2 = hdrs.indexOf('STEP_EID');
+          if (eidCol2 >= 0) {
+            try { var eid2 = JSON.parse(String(vals[i][eidCol2]||'{}')); if (eid2.status !== 'Done' && eid2.status !== 'Fit') return {success:false,error:'ASSD can only be updated after EID step is completed.'}; }
+            catch(e3){ return {success:false,error:'Cannot verify EID status.'}; }
+          }
+        }
         var oldStep = {};
         try { oldStep = JSON.parse(String(vals[i][stepCol]||'{}')); } catch(e){}
         var oldStatus = oldStep.status || 'Pending';
@@ -1188,7 +1206,8 @@ function _dsStepLabel_(key) {
     STEP_MEDICAL:   'Visa Medical',
     STEP_INSURANCE: 'Medical Insurance',
     STEP_NSI:       'NSI Training',
-    STEP_EID:       'EID & Residency Stamping'
+    STEP_EID:       'EID & Residency Stamping',
+    STEP_ASSD:      'ASSD'
   };
   return labels[key] || key;
 }
