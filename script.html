@@ -3554,13 +3554,19 @@ var DSAgent = {
   },
 
   _nsiRecords: function() {
+    var today = new Date(); today.setHours(0,0,0,0);
     return this._activeRecords().filter(function(r){
       if (r.OB_COMPLETE === 'TRUE') return false;
       var nsi = r.STEP_NSI || {};
-      var status = nsi.status || 'Not Started';
-      // "Currently in NSI" = training has been scheduled (status=Scheduled, or training_date is set)
-      var hasTrainingDate = !!(nsi.substeps && nsi.substeps.training_date);
-      return status === 'Scheduled' || hasTrainingDate;
+      // Must be actively scheduled
+      if ((nsi.status || 'Not Started') !== 'Scheduled') return false;
+      // If complete_date is set and already passed, training has ended — exclude
+      var cdStr = nsi.complete_date || '';
+      if (cdStr) {
+        var cd = new Date(cdStr);
+        if (!isNaN(cd) && cd < today) return false;
+      }
+      return true;
     });
   },
 
@@ -3625,17 +3631,15 @@ var DSAgent = {
         return; // completed before last week — skip active/nsi/overstage
       }
 
-      // Still in progress last week
-      if (daysLW <= 20) active++;
-      else overstage++;
+      // Still in progress last week — count ALL as active; overstage if >20d
+      active++;
+      if (daysLW > 20) overstage++;
 
-      // NSI last week
+      // NSI last week: Scheduled AND complete_date was not yet passed as of last week
       var nd = r.STEP_NSI || {};
       var nsiStatus = nd.status || 'Not Started';
       var nsiCompMs = nd.complete_date ? new Date(nd.complete_date).getTime() : 0;
-      var nsiDoneLW = nsiCompMs > 0 && nsiCompMs <= cutMs;
-      var tdMs = nd.substeps && nd.substeps.training_date ? new Date(nd.substeps.training_date).getTime() : 0;
-      if (!nsiDoneLW && (nsiStatus === 'Scheduled' || (tdMs > 0 && tdMs <= cutMs))) nsi++;
+      if (nsiStatus === 'Scheduled' && (nsiCompMs === 0 || nsiCompMs > cutMs)) nsi++;
     });
 
     return {
@@ -3753,7 +3757,7 @@ var DSAgent = {
     var cancelled = (APP.dsTracker||[]).filter(function(r){ return r.CANCELLED==='TRUE'; });
     var complete  = active.filter(function(r){ return r.OB_COMPLETE==='TRUE'; });
     var delayed   = this._overStageRecords();
-    var inprog    = active.filter(function(r){ return r.OB_COMPLETE!=='TRUE' && parseInt(r.TOTAL_DAYS_ELAPSED||0,10) <= 20; });
+    var inprog    = active.filter(function(r){ return r.OB_COMPLETE!=='TRUE'; });
     var nsiNow    = this._nsiRecords();
 
     var set = function(id,v){ var el=document.getElementById(id); if(el) el.textContent=v; };
@@ -4050,7 +4054,7 @@ var DSAgent = {
     // Filter badge
     var fb = document.getElementById('ds-kpi-filter-badge');
     if (fb) {
-      var lmap = { active:'Active 20DS', nsi:'NSI Currently', overstage:'Over-Stage Alerts' };
+      var lmap = { active:'Onboarding Process - Active', nsi:'NSI Currently', overstage:'Over-Stage Alerts' };
       fb.textContent = kf ? ('Filter: ' + (lmap[kf]||kf) + ' ×') : '';
       fb.style.display = kf ? 'inline-block' : 'none';
       fb.onclick = function(){ DSAgent._kpiFilter=null; document.querySelectorAll('.ds-kpi-clickable').forEach(function(el){ el.classList.remove('kpi-active'); }); if(fb) fb.style.display='none'; DSAgent.renderTracker(); };
