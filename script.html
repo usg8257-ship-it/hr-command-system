@@ -5044,6 +5044,142 @@ var DSAgent = {
       self.closeResponsibleModal();
       self.render();
     });
+  },
+
+  // ── PDF Export ──
+  exportPDF: function() {
+    var tab = this._tab || 'summary';
+    if (tab === 'analytics') {
+      toast('Switch to a data tab (Tracker, Pending, etc.) to export as PDF.', 'info');
+      return;
+    }
+    var tabId    = 'ds-tab-' + tab;
+    var contentEl = document.getElementById(tabId);
+    if (!contentEl) { toast('Nothing to export.', 'error'); return; }
+
+    var tabTitles = {
+      summary:   'Summary',
+      tracker:   'Employee Onboarding Tracker',
+      pending:   'Pending Steps',
+      delayed:   'Delayed Employees (>20 Days)',
+      cancelled: 'Cancelled Records',
+      audit:     'Audit Log'
+    };
+    var title = tabTitles[tab] || tab;
+
+    var now = new Date();
+    var ds  = now.toLocaleDateString('en-GB', {day:'2-digit', month:'short', year:'numeric'});
+    var ts  = now.toLocaleTimeString('en-GB', {hour:'2-digit', minute:'2-digit'});
+
+    // Clone content, strip interactive elements
+    var clone = contentEl.cloneNode(true);
+    ['button','input','select'].forEach(function(tag){
+      clone.querySelectorAll(tag).forEach(function(el){ el.remove(); });
+    });
+    ['.ds-kpi-filter-badge','.ds-pgn','#ds-tracker-pgn','#ds-summary-tracker-pgn',
+     '.ds-filter-bar','.ds-kpi-hint','.ds-kpi-trend'].forEach(function(sel){
+      clone.querySelectorAll(sel).forEach(function(el){ el.remove(); });
+    });
+
+    var css = [
+      '* { box-sizing:border-box; margin:0; padding:0; }',
+      'body { font-family:Tahoma,"Segoe UI",Arial,sans-serif; background:#fff; color:#18243c; padding:16px 18px; font-size:12px; }',
+      '.pdf-hdr { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:16px; padding-bottom:12px; border-bottom:2px solid #1e4799; }',
+      '.pdf-title { font-size:16px; font-weight:800; color:#1e4799; letter-spacing:.01em; }',
+      '.pdf-sub   { font-size:10px; color:#526278; margin-top:3px; }',
+      '.pdf-meta  { text-align:right; font-size:10px; color:#526278; }',
+      '.pdf-meta strong { display:block; font-size:12px; color:#18243c; }',
+      /* KPI bar */
+      '.ds-kpi-bar { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px; }',
+      '.ds-kpi { flex:1; min-width:90px; border:1px solid #d6dbe8; border-radius:7px; padding:9px 10px 7px 13px; position:relative; overflow:hidden; }',
+      '.ds-kpi::before { content:""; position:absolute; top:0; left:0; bottom:0; width:4px; border-radius:7px 0 0 7px; }',
+      '.ds-kpi.cyan::before { background:#007a8a; } .ds-kpi.green::before { background:#136e42; }',
+      '.ds-kpi.red::before  { background:#c83030; } .ds-kpi.purple::before{ background:#4e42b8; }',
+      '.ds-kpi.blue::before { background:#1e4799; } .ds-kpi.amber::before { background:#b87000; }',
+      '.ds-kpi.teal::before { background:#008c6a; }',
+      '.ds-kpi-val { font-size:20px; font-weight:800; line-height:1; margin-bottom:2px; }',
+      '.ds-kpi.cyan .ds-kpi-val   { color:#007a8a; } .ds-kpi.green .ds-kpi-val  { color:#136e42; }',
+      '.ds-kpi.red .ds-kpi-val    { color:#c83030; } .ds-kpi.purple .ds-kpi-val { color:#4e42b8; }',
+      '.ds-kpi.blue .ds-kpi-val   { color:#1e4799; } .ds-kpi.amber .ds-kpi-val  { color:#b87000; }',
+      '.ds-kpi.teal .ds-kpi-val   { color:#008c6a; }',
+      '.ds-kpi-lbl { font-size:8.5px; font-weight:700; letter-spacing:.07em; text-transform:uppercase; color:#526278; }',
+      '.ds-kpi-icon { font-size:14px; margin-bottom:5px; opacity:.7; }',
+      /* Tables */
+      '.ds-table-card { border:1px solid #d6dbe8; border-radius:7px; overflow:hidden; margin-bottom:14px; page-break-inside:avoid; }',
+      '.ds-table-hdr  { padding:7px 13px; background:#f4f6fb; border-bottom:1px solid #d6dbe8; display:flex; align-items:center; justify-content:space-between; }',
+      '.ds-table-hdr-title { font-size:10.5px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:#1e4799; }',
+      '.ds-tbl-wrap { overflow:visible; }',
+      '.ds-tbl { width:100%; border-collapse:collapse; font-size:11px; page-break-inside:auto; }',
+      '.ds-tbl th { padding:5px 9px; font-size:8.5px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:#526278; background:#eaecf4; border-bottom:1px solid #d6dbe8; text-align:left; white-space:nowrap; }',
+      '.ds-tbl td { padding:6px 9px; border-bottom:1px solid #d6dbe8; vertical-align:middle; }',
+      '.ds-tbl tr:last-child td { border-bottom:none; }',
+      '.ds-tbl tr:nth-child(even) td { background:#fafbfd; }',
+      '.ds-tbl .mono { font-family:"Courier New",monospace; font-size:10px; }',
+      '.ds-steps-col-hdr { background:rgba(0,122,138,.1) !important; color:#007a8a !important; border-bottom:2px solid #007a8a !important; }',
+      '.ds-steps-cell { border-left:2px solid rgba(0,122,138,.2); background:rgba(0,122,138,.025); }',
+      /* Badges */
+      '.ds-badge { display:inline-block; padding:1px 5px; border-radius:3px; font-size:8.5px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; }',
+      '.ds-badge.done     { background:rgba(19,110,66,.1);  color:#136e42; border:1px solid rgba(19,110,66,.25); }',
+      '.ds-badge.pending  { background:rgba(184,112,0,.1);  color:#b87000; border:1px solid rgba(184,112,0,.25); }',
+      '.ds-badge.problem  { background:rgba(200,48,48,.08); color:#c83030; border:1px solid rgba(200,48,48,.22); }',
+      '.ds-badge.notstart { background:rgba(82,98,120,.08); color:#526278; border:1px solid rgba(82,98,120,.2); }',
+      '.ds-badge.fit      { background:rgba(19,110,66,.1);  color:#136e42; border:1px solid rgba(19,110,66,.25); }',
+      '.ds-badge.complete { background:rgba(0,122,138,.1);  color:#007a8a; border:1px solid rgba(0,122,138,.25); }',
+      '.ds-badge.cancelled{ background:rgba(82,98,120,.08); color:#526278; border:1px solid rgba(82,98,120,.2); }',
+      /* Step pills */
+      '.ds-steps-row { display:flex; gap:3px; flex-wrap:wrap; align-items:center; }',
+      '.ds-step-pill { height:17px; border-radius:3px; display:inline-flex; align-items:center; justify-content:center; font-size:8.5px; font-weight:700; border:1px solid; padding:0 5px; white-space:nowrap; }',
+      '.ds-step-pill.done    { background:rgba(19,110,66,.13); color:#136e42; border-color:rgba(19,110,66,.45); }',
+      '.ds-step-pill.fit     { background:rgba(19,110,66,.13); color:#136e42; border-color:rgba(19,110,66,.45); }',
+      '.ds-step-pill.pending { background:rgba(184,112,0,.1);  color:#b87000; border-color:rgba(184,112,0,.45); }',
+      '.ds-step-pill.problem { background:rgba(200,48,48,.1);  color:#c83030; border-color:rgba(200,48,48,.4); }',
+      '.ds-step-pill.unfit   { background:rgba(200,48,48,.1);  color:#c83030; border-color:rgba(200,48,48,.4); }',
+      '.ds-step-pill.notstart{ background:rgba(143,163,190,.1);color:#526278; border-color:rgba(143,163,190,.3); opacity:.7; }',
+      '.ds-step-pill.locked  { background:rgba(82,98,120,.07); color:#526278; border-color:rgba(82,98,120,.2); opacity:.5; }',
+      '.ds-pill-sep { color:#d6dbe8; font-size:10px; margin:0 1px; }',
+      /* Inline progress bar */
+      '.ds-inline-bar-wrap { height:5px; background:#d6dbe8; border-radius:2px; overflow:hidden; margin:4px 0 2px; }',
+      '.ds-inline-bar-fill { height:100%; border-radius:2px; background:linear-gradient(90deg,#007a8a,#136e42); }',
+      '.ds-inline-bar-label { font-size:8.5px; color:#526278; }',
+      /* Summary step progress bars */
+      '.ds-prog-bar-wrap { height:7px; background:#d6dbe8; border-radius:3px; overflow:hidden; margin:5px 0 2px; }',
+      '.ds-prog-bar-fill { height:100%; border-radius:3px; background:linear-gradient(90deg,#007a8a,#136e42); }',
+      /* Misc */
+      '.ds-empty { text-align:center; padding:16px; color:#526278; font-style:italic; }',
+      '.ds-search-wrap, .ds-filter-bar, .ds-kpi-filter-badge, .ds-pgn { display:none !important; }',
+      '[id$="-pgn"] { display:none !important; }',
+      /* Print page */
+      '@page { size:A4 landscape; margin:10mm 12mm; }',
+      '@media print { body { padding:0; } .ds-table-card { page-break-inside:avoid; } .ds-tbl tr { page-break-inside:avoid; } }'
+    ].join('\n');
+
+    var headerHTML = '<div class="pdf-hdr">' +
+      '<div>' +
+        '<div class="pdf-title">20 Days Strategy &#8212; ' + title + '</div>' +
+        '<div class="pdf-sub">United Group Holding &bull; HR Management System &bull; Onboarding Intelligence</div>' +
+      '</div>' +
+      '<div class="pdf-meta"><strong>Generated: ' + ds + ' ' + ts + '</strong>20DS Tracker Export</div>' +
+    '</div>';
+
+    var printWin = window.open('', '_blank', 'width=1200,height=850');
+    if (!printWin) {
+      toast('Pop-up blocked — please allow pop-ups and try again.', 'error');
+      return;
+    }
+    printWin.document.open();
+    printWin.document.write('<!DOCTYPE html><html lang="en"><head>' +
+      '<meta charset="UTF-8">' +
+      '<title>20DS — ' + title + '</title>' +
+      '<style>' + css + '</style>' +
+      '</head><body>' +
+      headerHTML +
+      clone.innerHTML +
+      '</body></html>');
+    printWin.document.close();
+    printWin.onload = function() {
+      printWin.focus();
+      setTimeout(function() { printWin.print(); }, 350);
+    };
   }
 };
 
