@@ -3519,15 +3519,18 @@ var DSAgent = {
   // Called after loadAllData — rebuilds STEPS from the dynamic config sheet
   applyStepConfig: function(configArr) {
     if (!configArr || !configArr.length) return;
+    var self = this;
     var built = {};
     configArr.forEach(function(s) {
+      // Preserve requiresStep from hardcoded STEPS — it's not stored in the sheet config
+      var existingRequires = (self.STEPS[s.key] && self.STEPS[s.key].requiresStep) || null;
       built[s.key] = {
-        label:       s.label,
-        short:       s.short,
-        sla:         s.slaHours,
-        statuses:    s.statuses,
-        substeps:    s.substeps || {},
-        requiresStep: s.requiresStep || null
+        label:        s.label,
+        short:        s.short,
+        sla:          s.slaHours,
+        statuses:     s.statuses,
+        substeps:     s.substeps || {},
+        requiresStep: s.requiresStep || existingRequires
       };
     });
     this.STEPS = built;
@@ -4135,7 +4138,7 @@ var DSAgent = {
       var pendCell = pendPills.length ? pendPills.join('<span class="ds-pill-sep">|</span>') : '<span style="color:var(--ds-green);font-size:10px">&#10003; All done</span>';
       // Progress bar computation
       var totalSteps = stepKeys.length || 1;
-      var doneSteps  = stepKeys.filter(function(k){ return (r[k]||{}).status === 'Done'; }).length;
+      var doneSteps  = stepKeys.filter(function(k){ var s=(r[k]||{}).status; return s==='Done'||s==='Fit'; }).length;
       var pct        = Math.round(doneSteps / totalSteps * 100);
       var barBg, barClass;
       if (r.OB_COMPLETE === 'TRUE') {

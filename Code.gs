@@ -372,6 +372,21 @@ function getStepConfig() {
         mergedInto: row.MERGED_INTO || ''
       });
     }
+    // Ensure every default step is present; append any that were added after the sheet was first seeded
+    var existingKeys = {};
+    steps.forEach(function(s){ existingKeys[s.key] = true; });
+    _DEFAULT_STEPS.forEach(function(def){
+      if (existingKeys[def.STEP_KEY]) return;
+      sh.appendRow(_STEPS_HDRS.map(function(h){ return def[h] !== undefined ? def[h] : ''; }));
+      var substepsObj2 = {};
+      try { substepsObj2 = JSON.parse(def.SUBSTEPS || '{}'); } catch(e2){}
+      steps.push({
+        key:      def.STEP_KEY,  label:    def.LABEL,  short:    def.SHORT,
+        slaHours: def.SLA_HOURS, substeps: substepsObj2,
+        statuses: (def.STATUSES||'Pending,Done').split(',').map(function(s){ return s.trim(); }),
+        order:    def.ORDER || 99, mergedInto: ''
+      });
+    });
     steps.sort(function(a,b){ return a.order - b.order; });
     return {success:true, data:steps};
   } catch(e) { return {success:false, error:e.message}; }
@@ -873,6 +888,17 @@ function get20DSTracker(profile) {
     var vals = sh.getDataRange().getValues();
     if (vals.length < 2) return {success:true,data:[]};
     var hdrs = vals[0].map(function(h){ return String(h).trim(); });
+    // One-time migration: add STEP_ASSD column if it was created before ASSD was introduced
+    if (hdrs.indexOf('STEP_ASSD') < 0) {
+      var eidPos = hdrs.indexOf('STEP_EID'); // insert right after STEP_EID (1-indexed col)
+      var insertCol = eidPos >= 0 ? eidPos + 2 : sh.getLastColumn() + 1;
+      sh.insertColumnBefore(insertCol);
+      sh.getRange(1, insertCol).setValue('STEP_ASSD');
+      var lockedJson = _emptyStep_('Locked');
+      if (vals.length > 1) sh.getRange(2, insertCol, vals.length - 1, 1).setValue(lockedJson);
+      vals = sh.getDataRange().getValues();
+      hdrs = vals[0].map(function(h){ return String(h).trim(); });
+    }
     var data = [];
     var nowMs = new Date().getTime();
     for (var i = 1; i < vals.length; i++) {
@@ -1077,7 +1103,7 @@ function adminFixOBComplete() {
   var vals = sh.getDataRange().getValues();
   if (vals.length < 2) { Logger.log('No data'); return; }
   var hdrs = vals[0].map(function(h){ return String(h).trim(); });
-  var stepKeys  = ['STEP_VISA','STEP_LABOR','STEP_MEDICAL','STEP_INSURANCE','STEP_NSI','STEP_EID'];
+  var stepKeys  = ['STEP_VISA','STEP_LABOR','STEP_MEDICAL','STEP_INSURANCE','STEP_NSI','STEP_EID','STEP_ASSD'];
   var cancelCol = hdrs.indexOf('CANCELLED');
   var totalCol  = hdrs.indexOf('TOTAL_DAYS_ELAPSED');
   var obCol     = hdrs.indexOf('OB_COMPLETE');
@@ -1219,8 +1245,8 @@ function _refreshDSTotals_(sh, vals, hdrs, rowIdx) {
     var completeCol = hdrs.indexOf('OB_COMPLETE');
     var cancelRaw = vals[rowIdx][cancelCol];
     if (cancelRaw === true || String(cancelRaw||'').toUpperCase() === 'TRUE') return;
-    var stepKeys = ['STEP_VISA','STEP_LABOR','STEP_MEDICAL','STEP_INSURANCE','STEP_NSI','STEP_EID'];
-    // Check if all 6 steps are Done/Fit
+    var stepKeys = ['STEP_VISA','STEP_LABOR','STEP_MEDICAL','STEP_INSURANCE','STEP_NSI','STEP_EID','STEP_ASSD'];
+    // Check if all 7 steps are Done/Fit (ASSD is the final step)
     var allDone = stepKeys.every(function(k){
       var col = hdrs.indexOf(k);
       if (col < 0) return false;
