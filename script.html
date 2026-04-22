@@ -1456,10 +1456,17 @@ var DashAgent={
     var s = function(id,v){ var el=document.getElementById(id); if(el) el.textContent=v; };
     var st = function(id,cls,txt){ var el=document.getElementById(id); if(!el) return; el.className='ktrend '+cls; el.textContent=txt; };
 
+    var now = new Date(); var curMonth = now.getMonth(); var curYear = now.getFullYear();
     var active     = ds.filter(function(r){ return r.CANCELLED !== 'TRUE'; });
     var inprog     = active.filter(function(r){ return r.OB_COMPLETE !== 'TRUE'; });
-    var completed  = active.filter(function(r){ return r.OB_COMPLETE === 'TRUE'; });
     var overstage  = active.filter(function(r){ return r.OB_COMPLETE !== 'TRUE' && parseInt(r.TOTAL_DAYS_ELAPSED||0,10) > 20; });
+    var completed  = active.filter(function(r){
+      if (r.OB_COMPLETE !== 'TRUE') return false;
+      var ms = DSAgent._completionMs(r);
+      if (!ms) return false;
+      var d = new Date(ms);
+      return d.getMonth() === curMonth && d.getFullYear() === curYear;
+    });
 
     var today = new Date(); today.setHours(0,0,0,0);
     var nsi = inprog.filter(function(r){
@@ -1496,7 +1503,7 @@ var DashAgent={
     st('dd-kpi-avgdays-sub',   avgDays !== null ? (avgDays <= 20 ? 'up' : 'warn') : 'neutral', avgDays !== null ? (avgDays <= 20 ? '✓ Within target' : '! Exceeds 20d') : 'No completions yet');
     st('dd-kpi-waitassd-sub',  waitAssd.length ? 'warn'   : 'up',   waitAssd.length ? waitAssd.length+' pending ASSD' : 'None pending');
     st('dd-kpi-waiteid-sub',   waitEid.length  ? 'warn'   : 'up',   waitEid.length  ? waitEid.length+' pending EID'  : 'All EID done');
-    st('dd-kpi-completed-sub', 'up', completed.length + ' completed of ' + active.length);
+    st('dd-kpi-completed-sub', completed.length ? 'up' : 'neutral', 'this month');
   },
   _cnt:function(arr,k){ var o={}; arr.forEach(function(r){ var v=r[k]||'Unknown'; o[v]=(o[v]||0)+1; }); return o; },
   _top:function(o,n){ return Object.entries(o).filter(function(x){ return x[0]&&x[0]!=='Unknown'&&x[0]!=='nan'&&x[0]!=='N/A'; }).sort(function(a,b){ return b[1]-a[1]; }).slice(0,n); },
@@ -3857,14 +3864,22 @@ var DSAgent = {
 
   // ── Summary Tab ──
   renderSummary: function() {
+    var self = this;
+    var now = new Date(); var curMonth = now.getMonth(); var curYear = now.getFullYear();
     var active    = this._activeRecords();
     var cancelled = (APP.dsTracker||[]).filter(function(r){ return r.CANCELLED==='TRUE'; });
-    var complete  = this._completedRecords();
     var delayed   = this._overStageRecords();
     var inprog    = active.filter(function(r){ return r.OB_COMPLETE!=='TRUE'; });
     var nsiNow    = this._nsiRecords();
     var waitAssd  = this._waitingForASSDRecords();
     var waitEid   = this._waitingForEIDRecords();
+    // "Completed with ASSD" counts only the current month
+    var complete  = this._completedRecords().filter(function(r){
+      var ms = self._completionMs(r);
+      if (!ms) return false;
+      var d = new Date(ms);
+      return d.getMonth() === curMonth && d.getFullYear() === curYear;
+    });
 
     var set = function(id,v){ var el=document.getElementById(id); if(el) el.textContent=v; };
     // KPI cards
@@ -3876,6 +3891,9 @@ var DSAgent = {
     set('ds-kpi-waiteid',     waitEid.length);
     var compEl = document.getElementById('ds-kpi-completed');
     if (compEl) compEl.textContent = complete.length + ' / ' + active.length;
+    // Update the KPI label to clarify "this month"
+    var compLblEl = compEl && compEl.closest('.ds-kpi') && compEl.closest('.ds-kpi').querySelector('.ds-kpi-lbl');
+    if (compLblEl) compLblEl.textContent = 'Completed with ASSD (This Month)';
 
     // ── Week-over-week trend badges ──
     var lw = this._computeLastWeekKPIs();
