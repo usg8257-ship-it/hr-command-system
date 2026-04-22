@@ -3511,7 +3511,7 @@ var DSAgent = {
     STEP_LABOR:     { label: 'Tawjeeh & Labor Card',     short: 'LC', sla: 24,  statuses: ['Pending','Done'],               substeps: { tawjeeh: 'Tawjeeh Completed', labor_card: 'Labor Card Received' } },
     STEP_MEDICAL:   { label: 'Visa Medical',             short: 'MD', sla: 24,  statuses: ['Pending','Fit','Unfit'],        substeps: { medical_done: 'Medical Done' } },
     STEP_INSURANCE: { label: 'Medical Insurance',        short: 'MI', sla: 72,  statuses: ['Pending','Done','Problem'],     substeps: { app_submitted: 'Application Submitted', card_received: 'Card Received' } },
-    STEP_NSI:       { label: 'NSI Training',             short: 'NS', sla: 168, statuses: ['Not Started','Pending','Done'], substeps: { app_submitted: 'Application Submitted', date_scheduled: 'Training Date Scheduled', training_completed: 'Training Completed', cert_received: 'Certificate Received' } },
+    STEP_NSI:       { label: 'NSI Training',             short: 'NS', sla: 168, statuses: ['Not Started','Pending','Scheduled','Done'], substeps: { app_submitted: 'Application Submitted', date_scheduled: 'Training Date Scheduled', training_completed: 'Training Completed', cert_received: 'Certificate Received' } },
     STEP_EID:       { label: 'EID & Residency Stamping', short: 'EI', sla: 48,  statuses: ['Pending','Done','Problem'],     substeps: { eid_app_submitted: 'EID Application Submitted', biometrics: 'Biometrics / Stamping Done', card_received: 'Card Received' } },
     STEP_ASSD:      { label: 'ASSD',                     short: 'AS', sla: 48,  statuses: ['Locked','Pending','Done','Problem'], substeps: {}, requiresStep: 'STEP_EID' }
   },
@@ -4034,13 +4034,12 @@ var DSAgent = {
       if (r.CANCELLED === 'TRUE') return false;
       if (kf === 'active') {
         if (r.OB_COMPLETE === 'TRUE') return false;
-        if (parseInt(r.TOTAL_DAYS_ELAPSED||0,10) > 20) return false;
       } else if (kf === 'nsi') {
         if (r.OB_COMPLETE === 'TRUE') return false;
         var nsi = r.STEP_NSI || {};
-        var nsiStatus = nsi.status || 'Not Started';
-        var hasTrainingDate = !!(nsi.substeps && nsi.substeps.training_date);
-        if (nsiStatus !== 'Scheduled' && !hasTrainingDate) return false;
+        if ((nsi.status || 'Not Started') !== 'Scheduled') return false;
+        var nsiCd = nsi.complete_date || '';
+        if (nsiCd) { var nsiD = new Date(nsiCd); var todayNsi = new Date(); todayNsi.setHours(0,0,0,0); if (!isNaN(nsiD) && nsiD < todayNsi) return false; }
       } else if (kf === 'overstage') {
         if (r.OB_COMPLETE === 'TRUE') return false;
         if (parseInt(r.TOTAL_DAYS_ELAPSED||0,10) <= 20) return false;
