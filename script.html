@@ -556,7 +556,7 @@ var GAS={
   },
   addEmployee:      function(d,cb){ GAS.call('addEmployee',     [d],cb); },
   updateEmployee:   function(d,cb){ GAS.call('updateEmployee',  [d],cb); },
-  deleteEmployee:   function(id,rsn,cb){ GAS.call('deleteEmployee',[id,rsn],cb); },
+  deleteEmployee:   function(id,rsn,lwd,cb){ GAS.call('deleteEmployee',[id,rsn,lwd],cb); },
   addOnboarding:    function(d,cb){ GAS.call('addOnboarding',   [d],cb); },
   updateOnboarding: function(d,cb){ GAS.call('updateOnboarding',[d],cb); },
   transferToMaster: function(obId,emp,cb){ GAS.call('transferToMaster',[obId,emp],cb); },
@@ -879,17 +879,20 @@ var EmpAgent={
     document.getElementById('del-id').value=id;
     document.getElementById('del-name').textContent=name;
     document.getElementById('del-reason').value='';
+    document.getElementById('del-last-date').value='';
     openM('m-del');
   },
   confirmDel:function(){
     var id=document.getElementById('del-id').value;
     var reason=document.getElementById('del-reason').value;
+    var lastDate=document.getElementById('del-last-date').value;
     if(!reason){ toast('Select a reason','error'); return; }
+    if(!lastDate){ toast('Enter last working date','error'); return; }
     var emp=this.byId(id); if(!emp){ toast('Not found','error'); return; }
-    GAS.deleteEmployee(id,reason,function(result){
+    GAS.deleteEmployee(id,reason,lastDate,function(result){
       if(!result||!result.success){ toast('Error: '+(result?result.error:'Unknown'),'error'); return; }
       emp.STATUS='DELETED';
-      APP.deletions.push({EMP_ID:id,FULL_NAME:emp.NAME,REASON:reason,DELETED_DATE:today()});
+      APP.deletions.push({EMP_ID:id,FULL_NAME:emp.NAME,REASON:reason,DELETED_DATE:today(),LAST_WORKING_DATE:lastDate});
       toast('Logged: '+emp.NAME,'success');
       closeM('m-del'); EmpAgent.render(true); DashAgent.refresh();
     });

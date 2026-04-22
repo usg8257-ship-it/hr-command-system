@@ -641,7 +641,7 @@ function updateEmployee(data) {
   } catch(e){ return {success:false,error:e.message}; }
 }
 
-function deleteEmployee(empId, reason) {
+function deleteEmployee(empId, reason, lastWorkingDate) {
   try {
     var profile = _requireRole(['SUPER_ADMIN','HR_OFFICER']);
     var deletedBy = profile.email;
@@ -653,14 +653,20 @@ function deleteEmployee(empId, reason) {
     var desigCol=hdrs.indexOf('DESIGNATION'), joinCol=hdrs.indexOf('DATE OF JOIN'), entCol=hdrs.indexOf('ENTITY');
     for(var i=1;i<vals.length;i++){
       if(String(vals[i][idCol]).trim()===String(empId).trim()){
-        var delSh=getOrCreate(TABS.DEL_LOG,['LOG_ID','EMP_ID','FULL_NAME','PASSPORT_NO','REASON','DELETED_DATE','DELETED_BY','DESIGNATION','DATE_OF_JOIN','GROUP']);
+        var delSh=getOrCreate(TABS.DEL_LOG,['LOG_ID','EMP_ID','FULL_NAME','PASSPORT_NO','REASON','DELETED_DATE','DELETED_BY','DESIGNATION','DATE_OF_JOIN','GROUP','LAST_WORKING_DATE']);
+        // One-time column migration: add LAST_WORKING_DATE header if missing
+        var delHdrs=delSh.getRange(1,1,1,delSh.getLastColumn()).getValues()[0].map(function(h){ return String(h).trim(); });
+        if(delHdrs.indexOf('LAST_WORKING_DATE')<0){
+          delSh.getRange(1, delSh.getLastColumn()+1).setValue('LAST_WORKING_DATE');
+        }
         delSh.appendRow([
           'DEL-'+new Date().getTime(), empId,
           vals[i][nmCol]||'', vals[i][ppCol]||'',
           reason, formatDate(new Date()), deletedBy,
           desigCol>=0 ? vals[i][desigCol]||'' : '',
           joinCol>=0  ? vals[i][joinCol]||''  : '',
-          entCol>=0   ? normaliseEntity(vals[i][entCol]) : ''
+          entCol>=0   ? normaliseEntity(vals[i][entCol]) : '',
+          lastWorkingDate || ''
         ]);
         if(stsCol>=0) sh.getRange(i+1,stsCol+1).setValue('DELETED');
         logActivity('EmployeeAgent','DELETE',empId+'|'+reason,'SUCCESS');
