@@ -125,14 +125,23 @@
 .ds-kpi.green  { background: linear-gradient(135deg, #fff 60%, rgba(19,110,66,.04)); }
 .ds-kpi.red    { background: linear-gradient(135deg, #fff 60%, rgba(200,48,48,.04)); }
 .ds-kpi.purple { background: linear-gradient(135deg, #fff 60%, rgba(78,66,184,.04)); }
+.ds-kpi.blue   { background: linear-gradient(135deg, #fff 60%, rgba(30,71,153,.04)); }
+.ds-kpi.amber  { background: linear-gradient(135deg, #fff 60%, rgba(184,112,0,.04)); }
+.ds-kpi.teal   { background: linear-gradient(135deg, #fff 60%, rgba(0,140,106,.04)); }
 .ds-kpi.cyan::before   { background: linear-gradient(180deg, #00c9b8, var(--ds-cyan)); }
 .ds-kpi.green::before  { background: linear-gradient(180deg, #1ab86e, var(--ds-green)); }
 .ds-kpi.red::before    { background: linear-gradient(180deg, #e84545, var(--ds-red)); }
 .ds-kpi.purple::before { background: linear-gradient(180deg, #7b6fde, var(--ds-purple)); }
+.ds-kpi.blue::before   { background: linear-gradient(180deg, #4f80ff, var(--ds-blue)); }
+.ds-kpi.amber::before  { background: linear-gradient(180deg, #f0a800, var(--ds-amber)); }
+.ds-kpi.teal::before   { background: linear-gradient(180deg, #00c27a, #008c6a); }
 .ds-kpi.cyan::after    { background: var(--ds-cyan); }
 .ds-kpi.green::after   { background: var(--ds-green); }
 .ds-kpi.red::after     { background: var(--ds-red); }
 .ds-kpi.purple::after  { background: var(--ds-purple); }
+.ds-kpi.blue::after    { background: var(--ds-blue); }
+.ds-kpi.amber::after   { background: var(--ds-amber); }
+.ds-kpi.teal::after    { background: #008c6a; }
 .ds-kpi-icon {
   font-size: 18px;
   margin-bottom: 8px;
@@ -151,6 +160,9 @@
 .ds-kpi.green .ds-kpi-val  { color: var(--ds-green); }
 .ds-kpi.red .ds-kpi-val    { color: var(--ds-red); }
 .ds-kpi.purple .ds-kpi-val { color: var(--ds-purple); }
+.ds-kpi.blue .ds-kpi-val   { color: var(--ds-blue); }
+.ds-kpi.amber .ds-kpi-val  { color: var(--ds-amber); }
+.ds-kpi.teal .ds-kpi-val   { color: #008c6a; }
 .ds-kpi-lbl {
   font-size: 10px;
   font-weight: 700;
@@ -468,6 +480,12 @@
 .ds-kpi-clickable.red.kpi-active       { box-shadow: 0 0 0 2px var(--ds-red),    0 6px 18px rgba(200,48,48,.2); }
 .ds-kpi-clickable.green.kpi-active     { box-shadow: 0 0 0 2px var(--ds-green),  0 6px 18px rgba(19,110,66,.2); }
 .ds-kpi-clickable.purple.kpi-active    { box-shadow: 0 0 0 2px var(--ds-purple), 0 6px 18px rgba(78,66,184,.2); }
+.ds-kpi-clickable.blue.kpi-active      { box-shadow: 0 0 0 2px var(--ds-blue),   0 6px 18px rgba(30,71,153,.2); }
+.ds-kpi-clickable.amber.kpi-active     { box-shadow: 0 0 0 2px var(--ds-amber),  0 6px 18px rgba(184,112,0,.2); }
+.ds-kpi-clickable.teal.kpi-active      { box-shadow: 0 0 0 2px #008c6a,          0 6px 18px rgba(0,140,106,.2); }
+.ds-kpi-clickable.blue:hover           { box-shadow: 0 8px 24px rgba(30,71,153,.22); }
+.ds-kpi-clickable.amber:hover          { box-shadow: 0 8px 24px rgba(184,112,0,.22); }
+.ds-kpi-clickable.teal:hover           { box-shadow: 0 8px 24px rgba(0,140,106,.22); }
 
 /* ── KPI Filter Badge ── */
 .ds-kpi-filter-badge {
@@ -614,6 +632,27 @@
         <div class="ds-kpi-lbl">Avg Completion</div>
         <div class="ds-kpi-trend neutral" id="ds-kpi-trend-avgspeed">—</div>
         <div class="ds-kpi-hint">&#8599; Open analytics</div>
+      </div>
+      <div class="ds-kpi blue ds-kpi-clickable" data-kpi="waitassd" onclick="DSAgent.filterByKPI('waitassd')" title="Click to filter employees waiting for ASSD">
+        <div class="ds-kpi-icon">&#128338;</div>
+        <div class="ds-kpi-val" id="ds-kpi-waitassd">—</div>
+        <div class="ds-kpi-lbl">Waiting for ASSD</div>
+        <div class="ds-kpi-trend neutral" id="ds-kpi-trend-waitassd">—</div>
+        <div class="ds-kpi-hint">&#8599; Filter tracker</div>
+      </div>
+      <div class="ds-kpi amber ds-kpi-clickable" data-kpi="waiteid" onclick="DSAgent.filterByKPI('waiteid')" title="Click to filter employees waiting for EID / Residency">
+        <div class="ds-kpi-icon">&#128196;</div>
+        <div class="ds-kpi-val" id="ds-kpi-waiteid">—</div>
+        <div class="ds-kpi-lbl">Waiting for EID / Residency</div>
+        <div class="ds-kpi-trend neutral" id="ds-kpi-trend-waiteid">—</div>
+        <div class="ds-kpi-hint">&#8599; Filter tracker</div>
+      </div>
+      <div class="ds-kpi teal ds-kpi-clickable" data-kpi="completed" onclick="DSAgent.filterByKPI('completed')" title="Click to filter fully completed employees">
+        <div class="ds-kpi-icon">&#9989;</div>
+        <div class="ds-kpi-val" id="ds-kpi-completed">—</div>
+        <div class="ds-kpi-lbl">Completed with ASSD</div>
+        <div class="ds-kpi-trend neutral" id="ds-kpi-trend-completed">—</div>
+        <div class="ds-kpi-hint">&#8599; Filter tracker</div>
       </div>
     </div>
     <!-- hidden legacy ids kept for backward compat with renderSummary() -->

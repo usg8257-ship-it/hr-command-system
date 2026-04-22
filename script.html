@@ -3536,6 +3536,28 @@ var DSAgent = {
     this.STEPS = built;
   },
 
+  _waitingForASSDRecords: function() {
+    return this._activeRecords().filter(function(r){
+      if (r.OB_COMPLETE === 'TRUE') return false;
+      var eid  = r.STEP_EID  || {};
+      var assd = r.STEP_ASSD || {};
+      return (eid.status === 'Done' || eid.status === 'Fit') &&
+             assd.status !== 'Done';
+    });
+  },
+
+  _waitingForEIDRecords: function() {
+    return this._activeRecords().filter(function(r){
+      if (r.OB_COMPLETE === 'TRUE') return false;
+      var eid = r.STEP_EID || {};
+      return eid.status !== 'Done' && eid.status !== 'Fit';
+    });
+  },
+
+  _completedRecords: function() {
+    return this._activeRecords().filter(function(r){ return r.OB_COMPLETE === 'TRUE'; });
+  },
+
   _statusClass: function(status) {
     var map = { 'Done':'done','Pending':'pending','Problem':'problem',
                 'Not Started':'notstart','Fit':'fit','Unfit':'unfit','Started':'pending','Locked':'locked' };
@@ -3645,11 +3667,31 @@ var DSAgent = {
       if (nsiStatus === 'Scheduled' && (nsiCompMs === 0 || nsiCompMs > cutMs)) nsi++;
     });
 
+    // Last-week counts for the 3 new cards — simpler pass
+    var waitAssd = 0, waitEid = 0, completed = 0;
+    (APP.dsTracker || []).forEach(function(r) {
+      if (r.CANCELLED === 'TRUE') return;
+      var days = parseInt(r.TOTAL_DAYS_ELAPSED || 0, 10);
+      if (days < 7) return;
+      var compMs = r.OB_COMPLETE === 'TRUE' ? self._completionMs(r) : 0;
+      var wasCompleteLW = compMs > 0 && compMs <= cutMs;
+      if (wasCompleteLW) { completed++; return; }
+      // In progress last week
+      var eid  = r.STEP_EID  || {};
+      var assd = r.STEP_ASSD || {};
+      var eidDone = eid.status === 'Done' || eid.status === 'Fit';
+      if (!eidDone) waitEid++;
+      else if (assd.status !== 'Done') waitAssd++;
+    });
+
     return {
       active:    active,
       nsi:       nsi,
       overstage: overstage,
-      avgDays:   completedCount > 0 ? Math.round(completedTotal / completedCount) : null
+      avgDays:   completedCount > 0 ? Math.round(completedTotal / completedCount) : null,
+      waitAssd:  waitAssd,
+      waitEid:   waitEid,
+      completed: completed
     };
   },
 
@@ -3758,17 +3800,23 @@ var DSAgent = {
   renderSummary: function() {
     var active    = this._activeRecords();
     var cancelled = (APP.dsTracker||[]).filter(function(r){ return r.CANCELLED==='TRUE'; });
-    var complete  = active.filter(function(r){ return r.OB_COMPLETE==='TRUE'; });
+    var complete  = this._completedRecords();
     var delayed   = this._overStageRecords();
     var inprog    = active.filter(function(r){ return r.OB_COMPLETE!=='TRUE'; });
     var nsiNow    = this._nsiRecords();
+    var waitAssd  = this._waitingForASSDRecords();
+    var waitEid   = this._waitingForEIDRecords();
 
     var set = function(id,v){ var el=document.getElementById(id); if(el) el.textContent=v; };
-    // 4 main KPI cards
+    // KPI cards
     set('ds-kpi-active20ds',  inprog.length);
     set('ds-kpi-nsi',         nsiNow.length);
     set('ds-kpi-overstage',   delayed.length);
     set('ds-kpi-avgspeed',    this._avgCompletionDays());
+    set('ds-kpi-waitassd',    waitAssd.length);
+    set('ds-kpi-waiteid',     waitEid.length);
+    var compEl = document.getElementById('ds-kpi-completed');
+    if (compEl) compEl.textContent = complete.length + ' / ' + active.length;
 
     // ── Week-over-week trend badges ──
     var lw = this._computeLastWeekKPIs();
@@ -3803,10 +3851,13 @@ var DSAgent = {
       el.className = 'ds-kpi-trend ' + (goingUp ? (isGood ? 'up-good' : 'up-bad') : (isGood ? 'down-good' : 'down-bad'));
       el.textContent = (goingUp ? '\u2191' : '\u2193') + ' ' + pct + '% vs last wk';
     };
-    trendEl('ds-kpi-trend-active',   inprog.length,   lw.active,   false);
-    trendEl('ds-kpi-trend-nsi',      nsiNow.length,   lw.nsi,      false);
-    trendEl('ds-kpi-trend-overstage',delayed.length,  lw.overstage,true);
-    trendEl('ds-kpi-trend-avgspeed', avgNow,          lw.avgDays,  true);
+    trendEl('ds-kpi-trend-active',    inprog.length,   lw.active,    false);
+    trendEl('ds-kpi-trend-nsi',       nsiNow.length,   lw.nsi,       false);
+    trendEl('ds-kpi-trend-overstage', delayed.length,  lw.overstage, true);
+    trendEl('ds-kpi-trend-avgspeed',  avgNow,          lw.avgDays,   true);
+    trendEl('ds-kpi-trend-waitassd',  waitAssd.length, lw.waitAssd,  true);
+    trendEl('ds-kpi-trend-waiteid',   waitEid.length,  lw.waitEid,   true);
+    trendEl('ds-kpi-trend-completed', complete.length, lw.completed, false);
 
     // legacy ids (kept for backward compat)
     set('ds-kpi-total',       active.length);
@@ -4046,6 +4097,17 @@ var DSAgent = {
       } else if (kf === 'overstage') {
         if (r.OB_COMPLETE === 'TRUE') return false;
         if (parseInt(r.TOTAL_DAYS_ELAPSED||0,10) <= 20) return false;
+      } else if (kf === 'waitassd') {
+        if (r.OB_COMPLETE === 'TRUE') return false;
+        var eidW = r.STEP_EID || {};
+        if (eidW.status !== 'Done' && eidW.status !== 'Fit') return false;
+        if ((r.STEP_ASSD || {}).status === 'Done') return false;
+      } else if (kf === 'waiteid') {
+        if (r.OB_COMPLETE === 'TRUE') return false;
+        var eidE = r.STEP_EID || {};
+        if (eidE.status === 'Done' || eidE.status === 'Fit') return false;
+      } else if (kf === 'completed') {
+        if (r.OB_COMPLETE !== 'TRUE') return false;
       }
       if (sts === 'complete' && r.OB_COMPLETE !== 'TRUE') return false;
       if (sts === 'active'   && r.OB_COMPLETE === 'TRUE') return false;
@@ -4056,7 +4118,7 @@ var DSAgent = {
     // Filter badge
     var fb = document.getElementById('ds-kpi-filter-badge');
     if (fb) {
-      var lmap = { active:'Onboarding Process - Active', nsi:'NSI Currently', overstage:'Over-Stage Alerts' };
+      var lmap = { active:'Onboarding Process - Active', nsi:'NSI Currently', overstage:'Over-Stage Alerts', waitassd:'Waiting for ASSD', waiteid:'Waiting for EID / Residency', completed:'Completed with ASSD' };
       fb.textContent = kf ? ('Filter: ' + (lmap[kf]||kf) + ' ×') : '';
       fb.style.display = kf ? 'inline-block' : 'none';
       fb.onclick = function(){ DSAgent._kpiFilter=null; document.querySelectorAll('.ds-kpi-clickable').forEach(function(el){ el.classList.remove('kpi-active'); }); if(fb) fb.style.display='none'; DSAgent.renderTracker(); };
