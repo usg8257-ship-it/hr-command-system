@@ -185,6 +185,51 @@
         <div class="kc" style="--cc:#c83030;--cb:rgba(200,48,48,.07)"><div class="kglow"></div><div class="ki">&#128683;</div><div class="kv" id="kEX">0</div><div class="kl">Ex-Employees</div><div class="ks" id="kEXsub">0 resigned this year</div><div class="ktrend warn" id="kEXtrend"></div></div>
         <div class="kc" style="--cc:#4e42b8;--cb:rgba(78,66,184,.08)"><div class="kglow"></div><div class="ki">&#128260;</div><div class="kv" id="kOBpend">0</div><div class="kl">In Onboarding Process</div><div class="ks">Pending transfers &mdash; Onboarding Tracker</div><div class="ktrend neutral" id="kOBpendtrend"></div></div>
       </div>
+      <div class="sec" style="margin-top:4px">20 Days Strategy &mdash; Onboarding Intelligence <span style="font-size:10px;font-weight:400;color:var(--muted);margin-left:8px">Click any card to open tracker with filter</span></div>
+      <div class="kpi-grid" id="ds-dash-grid" style="grid-template-columns:repeat(7,1fr);margin-bottom:18px">
+        <div class="kc" style="--cc:#007a8a;--cb:rgba(0,122,138,.08);cursor:pointer" onclick="navDS('active')" title="All employees currently in the onboarding process">
+          <div class="kglow"></div><div class="ki">&#128203;</div>
+          <div class="kv" id="dd-kpi-active">—</div>
+          <div class="kl">Onboarding Active</div>
+          <div class="ktrend neutral" id="dd-kpi-active-sub"></div>
+        </div>
+        <div class="kc" style="--cc:#136e42;--cb:rgba(19,110,66,.08);cursor:pointer" onclick="navDS('nsi')" title="Employees currently scheduled for NSI Training">
+          <div class="kglow"></div><div class="ki">&#127979;</div>
+          <div class="kv" id="dd-kpi-nsi">—</div>
+          <div class="kl">NSI Currently</div>
+          <div class="ktrend neutral" id="dd-kpi-nsi-sub"></div>
+        </div>
+        <div class="kc" style="--cc:#c83030;--cb:rgba(200,48,48,.07);cursor:pointer" onclick="navDS('overstage')" title="Employees past the 20-day onboarding target">
+          <div class="kglow"></div><div class="ki">&#9888;</div>
+          <div class="kv" id="dd-kpi-overstage">—</div>
+          <div class="kl">Over-Stage Alerts</div>
+          <div class="ktrend neutral" id="dd-kpi-overstage-sub"></div>
+        </div>
+        <div class="kc" style="--cc:#4e42b8;--cb:rgba(78,66,184,.08);cursor:pointer" onclick="navDS('analytics')" title="Average days to complete full onboarding">
+          <div class="kglow"></div><div class="ki">&#9889;</div>
+          <div class="kv" id="dd-kpi-avgdays">—</div>
+          <div class="kl">Avg Completion</div>
+          <div class="ktrend neutral" id="dd-kpi-avgdays-sub"></div>
+        </div>
+        <div class="kc" style="--cc:#1e4799;--cb:rgba(30,71,153,.08);cursor:pointer" onclick="navDS('waitassd')" title="EID done — waiting for final ASSD step">
+          <div class="kglow"></div><div class="ki">&#128338;</div>
+          <div class="kv" id="dd-kpi-waitassd">—</div>
+          <div class="kl">Waiting for ASSD</div>
+          <div class="ktrend neutral" id="dd-kpi-waitassd-sub"></div>
+        </div>
+        <div class="kc" style="--cc:#b87000;--cb:rgba(184,112,0,.08);cursor:pointer" onclick="navDS('waiteid')" title="Employees pending EID / Residency Stamping">
+          <div class="kglow"></div><div class="ki">&#128196;</div>
+          <div class="kv" id="dd-kpi-waiteid">—</div>
+          <div class="kl">Waiting for EID</div>
+          <div class="ktrend neutral" id="dd-kpi-waiteid-sub"></div>
+        </div>
+        <div class="kc" style="--cc:#008c6a;--cb:rgba(0,140,106,.08);cursor:pointer" onclick="navDS('completed')" title="Fully completed — all 7 steps including ASSD done">
+          <div class="kglow"></div><div class="ki">&#9989;</div>
+          <div class="kv" id="dd-kpi-completed">—</div>
+          <div class="kl">Completed with ASSD</div>
+          <div class="ktrend neutral" id="dd-kpi-completed-sub"></div>
+        </div>
+      </div>
       <div class="sec">Analytics</div>
       <div class="cr1">
         <div class="cc"><div class="cc-hd"><div><div class="cc-title">Top 10 Nationalities</div><div class="cc-sub">Staff by country</div></div><div><div class="cc-big" id="cNBig">0</div><div class="cc-tag">nationalities</div></div></div><canvas id="cTrend" height="210"></canvas></div>

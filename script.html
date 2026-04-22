@@ -1445,7 +1445,58 @@ var DashAgent={
     st('kADVtrend', adVisa>0?'neutral':'neutral',   t>0?(adVisa/t*100).toFixed(1)+'% of workforce':'—');
     st('kDXBVtrend',dxbVisa>0?'neutral':'neutral',  t>0?(dxbVisa/t*100).toFixed(1)+'% of workforce':'—');
     st('kOBpendtrend',pend>0?'warn':'up',           pend>0?pend+' awaiting transfer':'All transferred');
+    // ── 20DS KPI section ──
+    this._refresh20DS();
     this._charts(active,t,natCnt);
+  },
+
+  _refresh20DS: function() {
+    var ds = (APP.dsTracker || []);
+    if (!ds.length) return;
+    var s = function(id,v){ var el=document.getElementById(id); if(el) el.textContent=v; };
+    var st = function(id,cls,txt){ var el=document.getElementById(id); if(!el) return; el.className='ktrend '+cls; el.textContent=txt; };
+
+    var active     = ds.filter(function(r){ return r.CANCELLED !== 'TRUE'; });
+    var inprog     = active.filter(function(r){ return r.OB_COMPLETE !== 'TRUE'; });
+    var completed  = active.filter(function(r){ return r.OB_COMPLETE === 'TRUE'; });
+    var overstage  = active.filter(function(r){ return r.OB_COMPLETE !== 'TRUE' && parseInt(r.TOTAL_DAYS_ELAPSED||0,10) > 20; });
+
+    var today = new Date(); today.setHours(0,0,0,0);
+    var nsi = inprog.filter(function(r){
+      var n = r.STEP_NSI || {};
+      if ((n.status || '') !== 'Scheduled') return false;
+      var cd = n.complete_date ? new Date(n.complete_date) : null;
+      return !cd || isNaN(cd) || cd >= today;
+    });
+
+    var waitAssd = inprog.filter(function(r){
+      var eid = r.STEP_EID || {};
+      return (eid.status === 'Done' || eid.status === 'Fit') && (r.STEP_ASSD || {}).status !== 'Done';
+    });
+    var waitEid = inprog.filter(function(r){
+      var eid = r.STEP_EID || {};
+      return eid.status !== 'Done' && eid.status !== 'Fit';
+    });
+
+    var totalDays = 0, cCount = 0;
+    completed.forEach(function(r){ var d = parseInt(r.TOTAL_DAYS_ELAPSED||0,10); if(d>0){ totalDays+=d; cCount++; } });
+    var avgDays = cCount ? Math.round(totalDays/cCount) : null;
+
+    s('dd-kpi-active',    inprog.length);
+    s('dd-kpi-nsi',       nsi.length);
+    s('dd-kpi-overstage', overstage.length);
+    s('dd-kpi-avgdays',   avgDays !== null ? avgDays + 'd' : '—');
+    s('dd-kpi-waitassd',  waitAssd.length);
+    s('dd-kpi-waiteid',   waitEid.length);
+    s('dd-kpi-completed', completed.length + ' / ' + active.length);
+
+    st('dd-kpi-active-sub',    inprog.length   ? 'neutral' : 'up',   inprog.length   + ' in process');
+    st('dd-kpi-nsi-sub',       nsi.length      ? 'up'      : 'neutral', nsi.length + ' in training');
+    st('dd-kpi-overstage-sub', overstage.length? 'warn'    : 'up',   overstage.length ? overstage.length+' past 20 days' : 'All on track');
+    st('dd-kpi-avgdays-sub',   avgDays !== null ? (avgDays <= 20 ? 'up' : 'warn') : 'neutral', avgDays !== null ? (avgDays <= 20 ? '✓ Within target' : '! Exceeds 20d') : 'No completions yet');
+    st('dd-kpi-waitassd-sub',  waitAssd.length ? 'warn'   : 'up',   waitAssd.length ? waitAssd.length+' pending ASSD' : 'None pending');
+    st('dd-kpi-waiteid-sub',   waitEid.length  ? 'warn'   : 'up',   waitEid.length  ? waitEid.length+' pending EID'  : 'All EID done');
+    st('dd-kpi-completed-sub', 'up', completed.length + ' completed of ' + active.length);
   },
   _cnt:function(arr,k){ var o={}; arr.forEach(function(r){ var v=r[k]||'Unknown'; o[v]=(o[v]||0)+1; }); return o; },
   _top:function(o,n){ return Object.entries(o).filter(function(x){ return x[0]&&x[0]!=='Unknown'&&x[0]!=='nan'&&x[0]!=='N/A'; }).sort(function(a,b){ return b[1]-a[1]; }).slice(0,n); },
@@ -2766,6 +2817,14 @@ function showSelfServicePortal() {
 // ============================================================
 // Modules STAFF role is permitted to open (view-only)
 var _STAFF_VIEWS = ['dashboard','onboarding','20dstracker','employees','self-service'];
+
+function navDS(kpi) {
+  navigate('20dstracker');
+  setTimeout(function(){
+    if (kpi === 'analytics') { DSAgent.switchTab('analytics'); DSAgent.renderAnalytics(); }
+    else { DSAgent.filterByKPI(kpi); }
+  }, 80);
+}
 
 function navigate(view){
   // STAFF guard — block navigation to restricted views
