@@ -337,7 +337,10 @@ var _DEFAULT_STEPS = [
   { STEP_KEY:'STEP_INSURANCE', LABEL:'Medical Insurance',        SHORT:'MI', SLA_HOURS:72,  STATUSES:'Pending,Done,Problem',        SUBSTEPS:'{"app_submitted":"Application Submitted","card_received":"Card Received"}',                                                                              ORDER:4, ACTIVE:'TRUE', MERGED_INTO:'' },
   { STEP_KEY:'STEP_NSI',       LABEL:'NSI Training',             SHORT:'NS', SLA_HOURS:168, STATUSES:'Not Started,Pending,Scheduled,Done', SUBSTEPS:'{"app_submitted":"Application Submitted","date_scheduled":"Training Date Scheduled","training_completed":"Training Completed","cert_received":"Certificate Received"}', ORDER:5, ACTIVE:'TRUE', MERGED_INTO:'' },
   { STEP_KEY:'STEP_EID',       LABEL:'EID & Residency Stamping', SHORT:'EI', SLA_HOURS:48,  STATUSES:'Pending,Done,Problem',        SUBSTEPS:'{"eid_app_submitted":"EID Application Submitted","biometrics":"Biometrics / Stamping Done","card_received":"Card Received"}',                           ORDER:6, ACTIVE:'TRUE', MERGED_INTO:'' },
-  { STEP_KEY:'STEP_ASSD',      LABEL:'ASSD',                     SHORT:'AS', SLA_HOURS:48,  STATUSES:'Locked,Pending,Done,Problem',  SUBSTEPS:'{}',                                                                                                                                                    ORDER:7, ACTIVE:'TRUE', MERGED_INTO:'' }
+  { STEP_KEY:'STEP_ASSD',      LABEL:'ASSD',                     SHORT:'AS', SLA_HOURS:48,  STATUSES:'Locked,Pending,Done,Problem',  SUBSTEPS:'{}', ORDER:7, ACTIVE:'TRUE', MERGED_INTO:'' },
+  { STEP_KEY:'STEP_SIRA_CERT', LABEL:'SIRA Certificate',         SHORT:'SC', SLA_HOURS:72,  STATUSES:'Locked,Pending,Done,Problem',  SUBSTEPS:'{}', ORDER:8, ACTIVE:'TRUE', MERGED_INTO:'' },
+  { STEP_KEY:'STEP_PCC',       LABEL:'Police Clearance (PCC)',   SHORT:'PC', SLA_HOURS:72,  STATUSES:'Locked,Pending,Done,Problem',  SUBSTEPS:'{}', ORDER:9, ACTIVE:'TRUE', MERGED_INTO:'' },
+  { STEP_KEY:'STEP_SIRA_LIC',  LABEL:'SIRA License',             SHORT:'SL', SLA_HOURS:72,  STATUSES:'Locked,Pending,Done,Problem',  SUBSTEPS:'{}', ORDER:10,ACTIVE:'TRUE', MERGED_INTO:'' }
 ];
 
 var _STEPS_HDRS = ['STEP_KEY','LABEL','SHORT','SLA_HOURS','STATUSES','SUBSTEPS','ORDER','ACTIVE','MERGED_INTO'];
@@ -826,7 +829,10 @@ function transferToMaster(obId, empData) {
 var DS_TRACKER_HEADERS = [
   'DS_ID','EMP_ID','EMP_NAME','DESIGNATION','PHONE','EMAIL',
   'EXP_JOIN_DATE','PIPELINE_ADDED_DATE','TRANSFER_DATE','TRANSFERRED_BY','RESPONSIBLE_HR',
-  'STEP_VISA','STEP_LABOR','STEP_MEDICAL','STEP_INSURANCE','STEP_NSI','STEP_EID','STEP_ASSD',
+  'LIC_TYPE',
+  'STEP_VISA','STEP_LABOR','STEP_MEDICAL','STEP_INSURANCE','STEP_NSI','STEP_EID',
+  'STEP_ASSD',
+  'STEP_SIRA_CERT','STEP_PCC','STEP_SIRA_LIC',
   'CANCELLED','CANCEL_REASON','CANCELLED_BY','CANCELLED_ON','TOTAL_DAYS_ELAPSED','OB_COMPLETE'
 ];
 
@@ -861,6 +867,8 @@ function create20DSRecord(obId, empData, obRow) {
       var dsId = genId_('DS');
       var now = _uaeDT_();
       var pipelineDate = (obRow && obRow.DATE_ADDED) ? formatDate(new Date(obRow.DATE_ADDED)) : now;
+      var licType = _licTypeFromAuth_(empData['LIC_AUTH'] || empData.LIC_AUTH || '');
+      var isSIRA = licType === 'SIRA';
       sh.appendRow([
         dsId,
         empData.ID,
@@ -873,13 +881,17 @@ function create20DSRecord(obId, empData, obRow) {
         now,
         (transferrer && transferrer.name) || '',
         (transferrer && transferrer.name) || '',
-        _emptyStep_('Pending'),   // STEP_VISA
-        _emptyStep_('Pending'),   // STEP_LABOR
-        _emptyStep_('Pending'),   // STEP_MEDICAL
-        _emptyStep_('Pending'),   // STEP_INSURANCE
-        _emptyStep_('Not Started'), // STEP_NSI
-        _emptyStep_('Pending'),   // STEP_EID
-        _emptyStep_('Locked'),    // STEP_ASSD
+        licType,                            // LIC_TYPE
+        _emptyStep_('Pending'),             // STEP_VISA
+        _emptyStep_('Pending'),             // STEP_LABOR
+        _emptyStep_('Pending'),             // STEP_MEDICAL
+        _emptyStep_('Pending'),             // STEP_INSURANCE
+        _emptyStep_('Not Started'),         // STEP_NSI
+        _emptyStep_('Pending'),             // STEP_EID
+        isSIRA ? _emptyStep_('Locked') : _emptyStep_('Locked'), // STEP_ASSD (locked for both; unlocked after EID for ASSD type)
+        isSIRA ? _emptyStep_('Locked') : _emptyStep_('Locked'), // STEP_SIRA_CERT
+        isSIRA ? _emptyStep_('Locked') : _emptyStep_('Locked'), // STEP_PCC
+        isSIRA ? _emptyStep_('Locked') : _emptyStep_('Locked'), // STEP_SIRA_LIC
         'FALSE','','','','0','FALSE'
       ]);
     } finally { lock.releaseLock(); }
@@ -894,19 +906,43 @@ function get20DSTracker(profile) {
     var vals = sh.getDataRange().getValues();
     if (vals.length < 2) return {success:true,data:[]};
     var hdrs = vals[0].map(function(h){ return String(h).trim(); });
-    // One-time migration: add STEP_ASSD column if it was created before ASSD was introduced
+    // One-time migration: add STEP_ASSD column
     if (hdrs.indexOf('STEP_ASSD') < 0) {
-      var eidPos = hdrs.indexOf('STEP_EID'); // insert right after STEP_EID (1-indexed col)
+      var eidPos = hdrs.indexOf('STEP_EID');
       var insertCol = eidPos >= 0 ? eidPos + 2 : sh.getLastColumn() + 1;
       sh.insertColumnBefore(insertCol);
       sh.getRange(1, insertCol).setValue('STEP_ASSD');
-      var lockedJson = _emptyStep_('Locked');
-      if (vals.length > 1) sh.getRange(2, insertCol, vals.length - 1, 1).setValue(lockedJson);
+      if (vals.length > 1) sh.getRange(2, insertCol, vals.length - 1, 1).setValue(_emptyStep_('Locked'));
       vals = sh.getDataRange().getValues();
       hdrs = vals[0].map(function(h){ return String(h).trim(); });
     }
+    // One-time migration: add LIC_TYPE column (existing rows default to 'ASSD')
+    if (hdrs.indexOf('LIC_TYPE') < 0) {
+      var ltInsert = sh.getLastColumn() + 1;
+      // Insert after RESPONSIBLE_HR if present
+      var rhrPos = hdrs.indexOf('RESPONSIBLE_HR');
+      if (rhrPos >= 0) { ltInsert = rhrPos + 2; sh.insertColumnBefore(ltInsert); }
+      else { sh.insertColumnAfter(sh.getLastColumn()); }
+      sh.getRange(1, ltInsert).setValue('LIC_TYPE');
+      if (vals.length > 1) sh.getRange(2, ltInsert, vals.length - 1, 1).setValue('ASSD');
+      vals = sh.getDataRange().getValues();
+      hdrs = vals[0].map(function(h){ return String(h).trim(); });
+    }
+    // One-time migration: add SIRA step columns after STEP_ASSD
+    ['STEP_SIRA_CERT','STEP_PCC','STEP_SIRA_LIC'].forEach(function(col){
+      if (hdrs.indexOf(col) >= 0) return;
+      var assdPos = hdrs.indexOf('STEP_ASSD');
+      var ins = assdPos >= 0 ? assdPos + 2 : sh.getLastColumn() + 1;
+      sh.insertColumnBefore(ins);
+      sh.getRange(1, ins).setValue(col);
+      if (vals.length > 1) sh.getRange(2, ins, vals.length - 1, 1).setValue(_emptyStep_('Locked'));
+      vals = sh.getDataRange().getValues();
+      hdrs = vals[0].map(function(h){ return String(h).trim(); });
+    });
     var data = [];
     var nowMs = new Date().getTime();
+    var ALL_STEP_COLS = ['STEP_VISA','STEP_LABOR','STEP_MEDICAL','STEP_INSURANCE','STEP_NSI',
+                         'STEP_EID','STEP_ASSD','STEP_SIRA_CERT','STEP_PCC','STEP_SIRA_LIC'];
     for (var i = 1; i < vals.length; i++) {
       var row = {};
       hdrs.forEach(function(h,idx){
@@ -914,7 +950,7 @@ function get20DSTracker(profile) {
         row[h] = (typeof v === 'boolean') ? (v ? 'TRUE' : 'FALSE') : String(v||'');
       });
       // Parse JSON step fields
-      ['STEP_VISA','STEP_LABOR','STEP_MEDICAL','STEP_INSURANCE','STEP_NSI','STEP_EID','STEP_ASSD'].forEach(function(k){
+      ALL_STEP_COLS.forEach(function(k){
         try { row[k] = JSON.parse(row[k]); }
         catch(e){ row[k] = {status:'Pending',responsible:'',substeps:{},start_date:'',complete_date:'',start_dt:'',end_dt:'',duration_hours:'',notes:'',reason:'',blocker_reason:''}; }
       });
@@ -955,12 +991,18 @@ function completeDSStep(dsId, stepKey, notes, blockerReason) {
       if (stepCol < 0) return {success:false,error:'Unknown step: '+stepKey};
       for (var i = 1; i < vals.length; i++) {
         if (String(vals[i][idCol]) !== String(dsId)) continue;
-        // ASSD can only be updated after EID is complete
-        if (stepKey === 'STEP_ASSD') {
-          var eidCol = hdrs.indexOf('STEP_EID');
-          if (eidCol >= 0) {
-            try { var eid = JSON.parse(String(vals[i][eidCol]||'{}')); if (eid.status !== 'Done' && eid.status !== 'Fit') return {success:false,error:'ASSD can only be updated after EID step is completed.'}; }
-            catch(e2){ return {success:false,error:'Cannot verify EID status.'}; }
+        // Enforce prerequisite steps for locked steps
+        var prereqMap = { STEP_ASSD:'STEP_EID', STEP_SIRA_CERT:'STEP_EID', STEP_PCC:'STEP_SIRA_CERT', STEP_SIRA_LIC:'STEP_PCC' };
+        var prereqKey = prereqMap[stepKey];
+        if (prereqKey) {
+          var prereqCol = hdrs.indexOf(prereqKey);
+          if (prereqCol >= 0) {
+            try {
+              var prereqStep = JSON.parse(String(vals[i][prereqCol]||'{}'));
+              if (prereqStep.status !== 'Done' && prereqStep.status !== 'Fit') {
+                return {success:false, error:_dsStepLabel_(stepKey)+' can only be updated after '+_dsStepLabel_(prereqKey)+' is completed.'};
+              }
+            } catch(e2){ return {success:false, error:'Cannot verify prerequisite step status.'}; }
           }
         }
         var step = {};
@@ -998,12 +1040,18 @@ function update20DSStep(dsId, stepKey, stepData) {
       if (stepCol < 0) return {success:false,error:'Unknown step: '+stepKey};
       for (var i = 1; i < vals.length; i++) {
         if (String(vals[i][idCol]) !== String(dsId)) continue;
-        // ASSD requires EID to be done first
-        if (stepKey === 'STEP_ASSD' && stepData.status !== 'Locked') {
-          var eidCol2 = hdrs.indexOf('STEP_EID');
-          if (eidCol2 >= 0) {
-            try { var eid2 = JSON.parse(String(vals[i][eidCol2]||'{}')); if (eid2.status !== 'Done' && eid2.status !== 'Fit') return {success:false,error:'ASSD can only be updated after EID step is completed.'}; }
-            catch(e3){ return {success:false,error:'Cannot verify EID status.'}; }
+        // Enforce prerequisite steps (skip check when explicitly locking a step)
+        var prereqMap2 = { STEP_ASSD:'STEP_EID', STEP_SIRA_CERT:'STEP_EID', STEP_PCC:'STEP_SIRA_CERT', STEP_SIRA_LIC:'STEP_PCC' };
+        var prereqKey2 = prereqMap2[stepKey];
+        if (prereqKey2 && stepData.status !== 'Locked') {
+          var prereqCol2 = hdrs.indexOf(prereqKey2);
+          if (prereqCol2 >= 0) {
+            try {
+              var prereqStep2 = JSON.parse(String(vals[i][prereqCol2]||'{}'));
+              if (prereqStep2.status !== 'Done' && prereqStep2.status !== 'Fit') {
+                return {success:false, error:_dsStepLabel_(stepKey)+' can only be updated after '+_dsStepLabel_(prereqKey2)+' is completed.'};
+              }
+            } catch(e3){ return {success:false, error:'Cannot verify prerequisite step status.'}; }
           }
         }
         var oldStep = {};
@@ -1109,15 +1157,17 @@ function adminFixOBComplete() {
   var vals = sh.getDataRange().getValues();
   if (vals.length < 2) { Logger.log('No data'); return; }
   var hdrs = vals[0].map(function(h){ return String(h).trim(); });
-  var stepKeys  = ['STEP_VISA','STEP_LABOR','STEP_MEDICAL','STEP_INSURANCE','STEP_NSI','STEP_EID','STEP_ASSD'];
-  var cancelCol = hdrs.indexOf('CANCELLED');
-  var totalCol  = hdrs.indexOf('TOTAL_DAYS_ELAPSED');
-  var obCol     = hdrs.indexOf('OB_COMPLETE');
-  var tCol      = hdrs.indexOf('TRANSFER_DATE');
+  var cancelCol  = hdrs.indexOf('CANCELLED');
+  var totalCol   = hdrs.indexOf('TOTAL_DAYS_ELAPSED');
+  var obCol      = hdrs.indexOf('OB_COMPLETE');
+  var tCol       = hdrs.indexOf('TRANSFER_DATE');
+  var licTypeCol = hdrs.indexOf('LIC_TYPE');
   var fixed = 0;
   for (var i = 1; i < vals.length; i++) {
     var cv2 = vals[i][cancelCol];
     if (cv2 === true || String(cv2||'').toUpperCase() === 'TRUE') continue;
+    var licType = licTypeCol >= 0 ? String(vals[i][licTypeCol] || '') : 'ASSD';
+    var stepKeys = _stepKeysForType_(licType);
     var allDone = stepKeys.every(function(k) {
       var c = hdrs.indexOf(k);
       if (c < 0) return false;
@@ -1239,9 +1289,26 @@ function _dsStepLabel_(key) {
     STEP_INSURANCE: 'Medical Insurance',
     STEP_NSI:       'NSI Training',
     STEP_EID:       'EID & Residency Stamping',
-    STEP_ASSD:      'ASSD'
+    STEP_ASSD:      'ASSD',
+    STEP_SIRA_CERT: 'SIRA Certificate',
+    STEP_PCC:       'Police Clearance (PCC)',
+    STEP_SIRA_LIC:  'SIRA License'
   };
   return labels[key] || key;
+}
+
+// Returns the correct ordered step keys based on employee LIC_TYPE
+function _stepKeysForType_(licType) {
+  if (String(licType || '').toUpperCase() === 'SIRA') {
+    return ['STEP_VISA','STEP_LABOR','STEP_MEDICAL','STEP_INSURANCE','STEP_NSI','STEP_EID',
+            'STEP_SIRA_CERT','STEP_PCC','STEP_SIRA_LIC'];
+  }
+  return ['STEP_VISA','STEP_LABOR','STEP_MEDICAL','STEP_INSURANCE','STEP_NSI','STEP_EID','STEP_ASSD'];
+}
+
+// Derives LIC_TYPE ('ASSD' | 'SIRA') from the LIC_AUTH master data column value
+function _licTypeFromAuth_(licAuth) {
+  return String(licAuth || '').toUpperCase().trim() === 'SIRA' ? 'SIRA' : 'ASSD';
 }
 
 function _refreshDSTotals_(sh, vals, hdrs, rowIdx) {
@@ -1251,8 +1318,9 @@ function _refreshDSTotals_(sh, vals, hdrs, rowIdx) {
     var completeCol = hdrs.indexOf('OB_COMPLETE');
     var cancelRaw = vals[rowIdx][cancelCol];
     if (cancelRaw === true || String(cancelRaw||'').toUpperCase() === 'TRUE') return;
-    var stepKeys = ['STEP_VISA','STEP_LABOR','STEP_MEDICAL','STEP_INSURANCE','STEP_NSI','STEP_EID','STEP_ASSD'];
-    // Check if all 7 steps are Done/Fit (ASSD is the final step)
+    var licTypeCol = hdrs.indexOf('LIC_TYPE');
+    var licType = licTypeCol >= 0 ? String(vals[rowIdx][licTypeCol] || '') : 'ASSD';
+    var stepKeys = _stepKeysForType_(licType);
     var allDone = stepKeys.every(function(k){
       var col = hdrs.indexOf(k);
       if (col < 0) return false;

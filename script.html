@@ -1481,7 +1481,11 @@ var DashAgent={
 
     var waitAssd = inprog.filter(function(r){
       var eid = r.STEP_EID || {};
-      return (eid.status === 'Done' || eid.status === 'Fit') && (r.STEP_ASSD || {}).status !== 'Done';
+      var eidDone = eid.status === 'Done' || eid.status === 'Fit';
+      if (!eidDone) return false;
+      var lt = (r.LIC_TYPE || 'ASSD').toUpperCase();
+      return lt === 'SIRA' ? (r.STEP_SIRA_CERT || {}).status !== 'Done'
+                           : (r.STEP_ASSD      || {}).status !== 'Done';
     });
     var waitEid = inprog.filter(function(r){
       var eid = r.STEP_EID || {};
@@ -3564,54 +3568,98 @@ var RecruitmentAgent = {
 // ============================================================
 var DSAgent = {
   _tab: 'summary',
-  _kpiFilter: null,          // null | 'active' | 'nsi' | 'overstage'
-  _dsPage: 1,                // current page — Tracker tab
-  _dsSummaryPage: 1,         // current page — Summary tab tracker
-  _dsPageSize: 20,           // rows per page
-  _summaryFilterInit: false, // set once on first render to default to Active
-  _analyticsRaw: null,       // cached server response for analytics
-  _analyticsRange: 'all',    // 'all' | '90' | '30'
-  _analyticsSearch: '',      // search term for individual records table
+  _kpiFilter: null,          // null | 'active' | 'nsi' | 'overstage' | 'waitassd' | 'waiteid' | 'completed'
+  _licFilter: '',            // '' | 'assd' | 'sira'
+  _dsPage: 1,
+  _dsSummaryPage: 1,
+  _dsPageSize: 20,
+  _summaryFilterInit: false,
+  _analyticsRaw: null,
+  _analyticsRange: 'all',
+  _analyticsSearch: '',
 
-  // Step definitions — rebuilt dynamically from APP.stepConfig after load
-  // Hardcoded values serve as fallback if sheet hasn't been seeded yet
+  // ── ASSD path (7 steps) — default
   STEPS: {
-    STEP_VISA:      { label: 'Visa/Entry Issued',        short: 'VI', sla: 24,  statuses: ['Pending','Done','Problem'],     substeps: { mol_done: 'MOL Done', entry_permit: 'Entry Permit Submitted' } },
-    STEP_LABOR:     { label: 'Tawjeeh & Labor Card',     short: 'LC', sla: 24,  statuses: ['Pending','Done'],               substeps: { tawjeeh: 'Tawjeeh Completed', labor_card: 'Labor Card Received' } },
-    STEP_MEDICAL:   { label: 'Visa Medical',             short: 'MD', sla: 24,  statuses: ['Pending','Fit','Unfit'],        substeps: { medical_done: 'Medical Done' } },
-    STEP_INSURANCE: { label: 'Medical Insurance',        short: 'MI', sla: 72,  statuses: ['Pending','Done','Problem'],     substeps: { app_submitted: 'Application Submitted', card_received: 'Card Received' } },
+    STEP_VISA:      { label: 'Visa/Entry Issued',        short: 'VI', sla: 24,  statuses: ['Pending','Done','Problem'],          substeps: { mol_done: 'MOL Done', entry_permit: 'Entry Permit Submitted' } },
+    STEP_LABOR:     { label: 'Tawjeeh & Labor Card',     short: 'LC', sla: 24,  statuses: ['Pending','Done'],                   substeps: { tawjeeh: 'Tawjeeh Completed', labor_card: 'Labor Card Received' } },
+    STEP_MEDICAL:   { label: 'Visa Medical',             short: 'MD', sla: 24,  statuses: ['Pending','Fit','Unfit'],            substeps: { medical_done: 'Medical Done' } },
+    STEP_INSURANCE: { label: 'Medical Insurance',        short: 'MI', sla: 72,  statuses: ['Pending','Done','Problem'],         substeps: { app_submitted: 'Application Submitted', card_received: 'Card Received' } },
     STEP_NSI:       { label: 'NSI Training',             short: 'NS', sla: 168, statuses: ['Not Started','Pending','Scheduled','Done'], substeps: { app_submitted: 'Application Submitted', date_scheduled: 'Training Date Scheduled', training_completed: 'Training Completed', cert_received: 'Certificate Received' } },
-    STEP_EID:       { label: 'EID & Residency Stamping', short: 'EI', sla: 48,  statuses: ['Pending','Done','Problem'],     substeps: { eid_app_submitted: 'EID Application Submitted', biometrics: 'Biometrics / Stamping Done', card_received: 'Card Received' } },
+    STEP_EID:       { label: 'EID & Residency Stamping', short: 'EI', sla: 48,  statuses: ['Pending','Done','Problem'],         substeps: { eid_app_submitted: 'EID Application Submitted', biometrics: 'Biometrics / Stamping Done', card_received: 'Card Received' } },
     STEP_ASSD:      { label: 'ASSD',                     short: 'AS', sla: 48,  statuses: ['Locked','Pending','Done','Problem'], substeps: {}, requiresStep: 'STEP_EID' }
   },
 
-  // Called after loadAllData — rebuilds STEPS from the dynamic config sheet
+  // ── SIRA path (9 steps: common 6 + SIRA Cert + PCC + SIRA Lic)
+  STEPS_SIRA: {
+    STEP_VISA:      { label: 'Visa/Entry Issued',        short: 'VI', sla: 24,  statuses: ['Pending','Done','Problem'],          substeps: { mol_done: 'MOL Done', entry_permit: 'Entry Permit Submitted' } },
+    STEP_LABOR:     { label: 'Tawjeeh & Labor Card',     short: 'LC', sla: 24,  statuses: ['Pending','Done'],                   substeps: { tawjeeh: 'Tawjeeh Completed', labor_card: 'Labor Card Received' } },
+    STEP_MEDICAL:   { label: 'Visa Medical',             short: 'MD', sla: 24,  statuses: ['Pending','Fit','Unfit'],            substeps: { medical_done: 'Medical Done' } },
+    STEP_INSURANCE: { label: 'Medical Insurance',        short: 'MI', sla: 72,  statuses: ['Pending','Done','Problem'],         substeps: { app_submitted: 'Application Submitted', card_received: 'Card Received' } },
+    STEP_NSI:       { label: 'NSI Training',             short: 'NS', sla: 168, statuses: ['Not Started','Pending','Scheduled','Done'], substeps: { app_submitted: 'Application Submitted', date_scheduled: 'Training Date Scheduled', training_completed: 'Training Completed', cert_received: 'Certificate Received' } },
+    STEP_EID:       { label: 'EID & Residency Stamping', short: 'EI', sla: 48,  statuses: ['Pending','Done','Problem'],         substeps: { eid_app_submitted: 'EID Application Submitted', biometrics: 'Biometrics / Stamping Done', card_received: 'Card Received' } },
+    STEP_SIRA_CERT: { label: 'SIRA Certificate',         short: 'SC', sla: 72,  statuses: ['Locked','Pending','Done','Problem'], substeps: {}, requiresStep: 'STEP_EID' },
+    STEP_PCC:       { label: 'Police Clearance (PCC)',   short: 'PC', sla: 72,  statuses: ['Locked','Pending','Done','Problem'], substeps: {}, requiresStep: 'STEP_SIRA_CERT' },
+    STEP_SIRA_LIC:  { label: 'SIRA License',             short: 'SL', sla: 72,  statuses: ['Locked','Pending','Done','Problem'], substeps: {}, requiresStep: 'STEP_PCC' }
+  },
+
+  // Returns the correct steps object for a given record (ASSD=7 steps, SIRA=9 steps)
+  stepsFor: function(rec) {
+    var lt = (rec && rec.LIC_TYPE) ? rec.LIC_TYPE.toUpperCase() : 'ASSD';
+    return lt === 'SIRA' ? this.STEPS_SIRA : this.STEPS;
+  },
+
+  // Set the LIC-type filter and re-render the current tab
+  setLicFilter: function(val) {
+    this._licFilter = val || '';
+    this._kpiFilter = null;
+    var fb = document.getElementById('ds-kpi-filter-badge');
+    if (fb) fb.style.display = 'none';
+    document.querySelectorAll('.ds-kpi-clickable').forEach(function(el){ el.classList.remove('kpi-active'); });
+    this.render();
+  },
+
+  // Called after loadAllData — rebuilds both STEPS (ASSD) and STEPS_SIRA from config sheet
   applyStepConfig: function(configArr) {
     if (!configArr || !configArr.length) return;
     var self = this;
-    var built = {};
+    var builtAssd = {}, builtSira = {};
+    var SIRA_ONLY = { STEP_SIRA_CERT: true, STEP_PCC: true, STEP_SIRA_LIC: true };
     configArr.forEach(function(s) {
-      // Preserve requiresStep from hardcoded STEPS — it's not stored in the sheet config
-      var existingRequires = (self.STEPS[s.key] && self.STEPS[s.key].requiresStep) || null;
-      built[s.key] = {
-        label:        s.label,
-        short:        s.short,
-        sla:          s.slaHours,
-        statuses:     s.statuses,
-        substeps:     s.substeps || {},
-        requiresStep: s.requiresStep || existingRequires
+      var existReqAssd = (self.STEPS[s.key]      && self.STEPS[s.key].requiresStep)      || null;
+      var existReqSira = (self.STEPS_SIRA[s.key] && self.STEPS_SIRA[s.key].requiresStep) || null;
+      var def = {
+        label:    s.label,
+        short:    s.short,
+        sla:      s.slaHours,
+        statuses: s.statuses,
+        substeps: s.substeps || {}
       };
+      if (!SIRA_ONLY[s.key]) {
+        // ASSD path: all steps except SIRA-only ones
+        if (s.key !== 'STEP_SIRA_CERT' && s.key !== 'STEP_PCC' && s.key !== 'STEP_SIRA_LIC') {
+          builtAssd[s.key] = Object.assign({}, def, { requiresStep: s.requiresStep || existReqAssd });
+        }
+      }
+      // SIRA path: all steps except STEP_ASSD
+      if (s.key !== 'STEP_ASSD') {
+        builtSira[s.key] = Object.assign({}, def, { requiresStep: s.requiresStep || existReqSira });
+      }
     });
-    this.STEPS = built;
+    if (Object.keys(builtAssd).length) this.STEPS      = builtAssd;
+    if (Object.keys(builtSira).length) this.STEPS_SIRA = builtSira;
   },
 
   _waitingForASSDRecords: function() {
     return this._activeRecords().filter(function(r){
       if (r.OB_COMPLETE === 'TRUE') return false;
-      var eid  = r.STEP_EID  || {};
-      var assd = r.STEP_ASSD || {};
-      return (eid.status === 'Done' || eid.status === 'Fit') &&
-             assd.status !== 'Done';
+      var eid = r.STEP_EID || {};
+      var eidDone = eid.status === 'Done' || eid.status === 'Fit';
+      if (!eidDone) return false;
+      var lt = (r.LIC_TYPE || 'ASSD').toUpperCase();
+      if (lt === 'SIRA') {
+        return (r.STEP_SIRA_CERT || {}).status !== 'Done';
+      }
+      return (r.STEP_ASSD || {}).status !== 'Done';
     });
   },
 
@@ -3644,7 +3692,16 @@ var DSAgent = {
   },
 
   _activeRecords: function() {
-    return (APP.dsTracker || []).filter(function(r){ return r.CANCELLED !== 'TRUE'; });
+    var lf = this._licFilter;
+    return (APP.dsTracker || []).filter(function(r){
+      if (r.CANCELLED === 'TRUE') return false;
+      if (lf) {
+        var lt = (r.LIC_TYPE || 'ASSD').toUpperCase();
+        if (lf === 'assd' && lt !== 'ASSD') return false;
+        if (lf === 'sira' && lt !== 'SIRA') return false;
+      }
+      return true;
+    });
   },
 
   _nsiRecords: function() {
@@ -3688,8 +3745,9 @@ var DSAgent = {
 
   // Returns the latest step complete_date as ms timestamp for a record
   _completionMs: function(rec) {
+    var steps = this.stepsFor(rec);
     var maxMs = 0;
-    Object.keys(this.STEPS).forEach(function(k){
+    Object.keys(steps).forEach(function(k){
       var cd = rec[k] && rec[k].complete_date;
       if (cd) { var t = new Date(cd).getTime(); if (!isNaN(t) && t > maxMs) maxMs = t; }
     });
@@ -3746,11 +3804,15 @@ var DSAgent = {
       var wasCompleteLW = compMs > 0 && compMs <= cutMs;
       if (wasCompleteLW) { completed++; return; }
       // In progress last week
-      var eid  = r.STEP_EID  || {};
-      var assd = r.STEP_ASSD || {};
-      var eidDone = eid.status === 'Done' || eid.status === 'Fit';
-      if (!eidDone) waitEid++;
-      else if (assd.status !== 'Done') waitAssd++;
+      var eid2    = r.STEP_EID || {};
+      var eidDone2 = eid2.status === 'Done' || eid2.status === 'Fit';
+      if (!eidDone2) {
+        waitEid++;
+      } else {
+        var lt2 = (r.LIC_TYPE || 'ASSD').toUpperCase();
+        var finalStep2 = lt2 === 'SIRA' ? (r.STEP_SIRA_CERT || {}) : (r.STEP_ASSD || {});
+        if (finalStep2.status !== 'Done') waitAssd++;
+      }
     });
 
     return {
@@ -3894,9 +3956,15 @@ var DSAgent = {
     set('ds-kpi-waiteid',     waitEid.length);
     var compEl = document.getElementById('ds-kpi-completed');
     if (compEl) compEl.textContent = complete.length + ' / ' + active.length;
-    // Update the KPI label to clarify "this month"
+    // Dynamic labels based on LIC filter
+    var lf = this._licFilter;
+    var waitAssdLbl = lf === 'sira' ? 'Waiting for SIRA Cert' : lf === 'assd' ? 'Waiting for ASSD' : 'Waiting for Auth Step';
+    var completedLbl = lf === 'sira' ? 'Completed with SIRA (This Month)' : lf === 'assd' ? 'Completed with ASSD (This Month)' : 'Completed (This Month)';
+    var waitAssdCard = document.getElementById('ds-kpi-waitassd');
+    var waitAssdLblEl = waitAssdCard && waitAssdCard.closest('.ds-kpi') && waitAssdCard.closest('.ds-kpi').querySelector('.ds-kpi-lbl');
+    if (waitAssdLblEl) waitAssdLblEl.textContent = waitAssdLbl;
     var compLblEl = compEl && compEl.closest('.ds-kpi') && compEl.closest('.ds-kpi').querySelector('.ds-kpi-lbl');
-    if (compLblEl) compLblEl.textContent = 'Completed with ASSD (This Month)';
+    if (compLblEl) compLblEl.textContent = completedLbl;
 
     // ── Week-over-week trend badges ──
     var lw = this._computeLastWeekKPIs();
@@ -3946,8 +4014,10 @@ var DSAgent = {
     set('ds-kpi-delayed',     delayed.length);
     set('ds-kpi-cancelled',   cancelled.length);
 
-    var stepKeys = Object.keys(this.STEPS);
+    // Step overview uses merged step set (ASSD + SIRA keys, de-duped for common steps)
     var self = this;
+    var overviewSteps = Object.assign({}, this.STEPS, this.STEPS_SIRA);
+    var stepKeys = Object.keys(overviewSteps);
     var tbody = document.getElementById('ds-summary-tbody');
     if (!tbody) return;
     if (!active.length) {
@@ -3955,7 +4025,7 @@ var DSAgent = {
       return;
     }
     tbody.innerHTML = stepKeys.map(function(k){
-      var label = self.STEPS[k].label;
+      var label = overviewSteps[k].label;
       var done=0, pending=0, problem=0, notStart=0;
       active.forEach(function(r){
         var s = (r[k] && r[k].status) || 'Pending';
@@ -4164,8 +4234,10 @@ var DSAgent = {
     q = q.toLowerCase();
     var self = this;
     var kf   = this._kpiFilter;
+    var lf   = this._licFilter;
     var list = (APP.dsTracker||[]).filter(function(r){
       if (r.CANCELLED === 'TRUE') return false;
+      if (lf) { var lt=(r.LIC_TYPE||'ASSD').toUpperCase(); if(lf==='assd'&&lt!=='ASSD') return false; if(lf==='sira'&&lt!=='SIRA') return false; }
       if (kf === 'active') {
         if (r.OB_COMPLETE === 'TRUE') return false;
       } else if (kf === 'nsi') {
@@ -4181,7 +4253,9 @@ var DSAgent = {
         if (r.OB_COMPLETE === 'TRUE') return false;
         var eidW = r.STEP_EID || {};
         if (eidW.status !== 'Done' && eidW.status !== 'Fit') return false;
-        if ((r.STEP_ASSD || {}).status === 'Done') return false;
+        var ltW = (r.LIC_TYPE || 'ASSD').toUpperCase();
+        var authStep = ltW === 'SIRA' ? (r.STEP_SIRA_CERT || {}) : (r.STEP_ASSD || {});
+        if (authStep.status === 'Done') return false;
       } else if (kf === 'waiteid') {
         if (r.OB_COMPLETE === 'TRUE') return false;
         var eidE = r.STEP_EID || {};
@@ -4232,20 +4306,24 @@ var DSAgent = {
   _buildTrackerRows: function(list) {
     if (!list || !list.length) return '';
     var self = this;
-    var stepKeys = this.STEPS ? Object.keys(this.STEPS) : [];
+    var STEP_SHORT = {
+      STEP_VISA:'Visa', STEP_LABOR:'Labor', STEP_MEDICAL:'Medical',
+      STEP_INSURANCE:'Ins', STEP_NSI:'NSI', STEP_EID:'EID',
+      STEP_ASSD:'ASSD', STEP_SIRA_CERT:'S.Cert', STEP_PCC:'PCC', STEP_SIRA_LIC:'S.Lic'
+    };
     return list.map(function(r){
+      var mySteps  = self.stepsFor(r);
+      var stepKeys = Object.keys(mySteps);
       var days = parseInt(r.TOTAL_DAYS_ELAPSED||0,10);
       var isOver = days > 20 && r.OB_COMPLETE !== 'TRUE';
       var daysColor = r.OB_COMPLETE === 'TRUE' ? 'var(--ds-green)' : isOver ? 'var(--ds-red)' : days > 10 ? 'var(--ds-amber)' : 'var(--ds-green)';
       var daysLabel = days + ' Days';
       var rowStyle  = isOver ? 'background:rgba(200,48,48,.04);' : '';
-      var STEP_SHORT = {STEP_VISA:'Visa',STEP_LABOR:'Labor',STEP_MEDICAL:'Medical',STEP_INSURANCE:'Insurance',STEP_NSI:'NSI',STEP_EID:'EID',STEP_ASSD:'ASSD'};
       var donePills = [], pendPills = [];
       stepKeys.forEach(function(k, idx){
         var step = r[k] || {status:'Pending'};
         if (typeof step !== 'object' || step === null) step = {status:'Pending'};
-        // Auto-lock ASSD if its prerequisite (EID) is not yet done
-        var def = self.STEPS[k];
+        var def = mySteps[k];
         if (!def) return;
         if (def.requiresStep) {
           var prereq = r[def.requiresStep] || {};
@@ -4359,19 +4437,22 @@ var DSAgent = {
   // ── Pending Tab ──
   renderPending: function() {
     var self = this;
+    var lf = this._licFilter;
     var byEmp = {};   // dsId -> { emp, empId, responsible, totalDays, steps:[] }
     var order = [];   // dsId insertion order
     (APP.dsTracker||[]).forEach(function(r){
       if (r.CANCELLED === 'TRUE' || r.OB_COMPLETE === 'TRUE') return;
+      if (lf) { var lt = (r.LIC_TYPE||'ASSD').toUpperCase(); if (lf==='assd'&&lt!=='ASSD') return; if (lf==='sira'&&lt!=='SIRA') return; }
+      var mySteps = self.stepsFor(r);
       var pending = [];
-      Object.keys(self.STEPS).forEach(function(k){
+      Object.keys(mySteps).forEach(function(k){
         var step = r[k] || {status:'Pending'};
         var s = step.status || 'Pending';
         if (s === 'Done' || s === 'Fit') return;
         // Step-specific days: time since the step was started (or fall back to transfer date)
         var stepDateStr = step.start_date || step.start_dt || r.TRANSFER_DATE;
         var stepDays = self._daysFromDate(stepDateStr);
-        pending.push({ step: self.STEPS[k].label, status: s, days: stepDays, dsId: r.DS_ID, stepKey: k });
+        pending.push({ step: mySteps[k].label, status: s, days: stepDays, dsId: r.DS_ID, stepKey: k });
       });
       if (!pending.length) return;
       order.push(r.DS_ID);
@@ -4425,8 +4506,12 @@ var DSAgent = {
   // ── Delayed Tab ──
   renderDelayed: function() {
     var self = this;
+    var lf = this._licFilter;
     var list = (APP.dsTracker||[]).filter(function(r){
-      return r.CANCELLED !== 'TRUE' && r.OB_COMPLETE !== 'TRUE' && parseInt(r.TOTAL_DAYS_ELAPSED||0,10) > 20;
+      if (r.CANCELLED === 'TRUE' || r.OB_COMPLETE === 'TRUE') return false;
+      if (parseInt(r.TOTAL_DAYS_ELAPSED||0,10) <= 20) return false;
+      if (lf) { var lt = (r.LIC_TYPE||'ASSD').toUpperCase(); if (lf==='assd'&&lt!=='ASSD') return false; if (lf==='sira'&&lt!=='SIRA') return false; }
+      return true;
     });
     list.sort(function(a,b){ return parseInt(b.TOTAL_DAYS_ELAPSED||0,10) - parseInt(a.TOTAL_DAYS_ELAPSED||0,10); });
     var cnt = document.getElementById('ds-delayed-cnt');
@@ -4438,11 +4523,12 @@ var DSAgent = {
       return;
     }
     tbody.innerHTML = list.map(function(r){
+      var mySteps = self.stepsFor(r);
       var days = parseInt(r.TOTAL_DAYS_ELAPSED||0,10);
-      var pendingSteps = Object.keys(self.STEPS).filter(function(k){
+      var pendingSteps = Object.keys(mySteps).filter(function(k){
         var s = (r[k] && r[k].status) || 'Pending';
         return s !== 'Done' && s !== 'Fit';
-      }).map(function(k){ return self.STEPS[k].label; }).join(', ');
+      }).map(function(k){ return mySteps[k].label; }).join(', ');
       return '<tr>'+
         '<td class="mono" style="color:var(--ds-cyan)">'+esc(r.EMP_ID||'—')+'</td>'+
         '<td style="font-weight:600">'+esc(r.EMP_NAME||'—')+'</td>'+
@@ -4573,29 +4659,27 @@ var DSAgent = {
 
   _renderProgressSteps: function(rec) {
     var self = this;
-    var dsId = rec.DS_ID;
-    var stepKeys = Object.keys(this.STEPS);
+    var dsId     = rec.DS_ID;
+    var mySteps  = this.stepsFor(rec);
+    var stepKeys = Object.keys(mySteps);
     var container = document.getElementById('ds-m-prog-steps');
     if (!container) return;
     container.innerHTML = stepKeys.map(function(k, idx){
-      var def        = self.STEPS[k];
-      var step       = rec[k] || {status:'Pending'};
-      // Enforce prereq lock display
-      var isLocked   = false;
+      var def  = mySteps[k];
+      var step = rec[k] || {status:'Pending'};
+      var isLocked = false;
       if (def.requiresStep) {
         var prereq = rec[def.requiresStep] || {};
-        if (prereq.status !== 'Done' && prereq.status !== 'Fit') {
-          isLocked = true;
-          step = {status: 'Locked'};
-        }
+        if (prereq.status !== 'Done' && prereq.status !== 'Fit') { isLocked = true; step = {status:'Locked'}; }
       }
-      var sc         = self._statusClass(step.status||'Pending');
+      var sc = self._statusClass(step.status||'Pending');
       var isComplete = step.status==='Done' || step.status==='Fit';
       var completedInfo = isComplete && step.complete_date
         ? '<span style="font-size:10px;color:var(--ds-muted)">Completed: <span class="mono">'+esc(step.complete_date)+'</span></span>'
         : '';
+      var prereqDef = def.requiresStep ? mySteps[def.requiresStep] : null;
       var lockedHint = isLocked
-        ? '<span style="font-size:10px;color:var(--ds-muted);font-style:italic">&#128274; Requires EID &amp; Residency Stamping</span>'
+        ? '<span style="font-size:10px;color:var(--ds-muted);font-style:italic">&#128274; Requires '+(prereqDef ? prereqDef.label : def.requiresStep)+'</span>'
         : '';
       var completeBtn = (!isComplete && !isLocked && !isReadOnly())
         ? '<button class="ds-btn cyan sm" onclick="DSAgent._progComplete(\''+dsId+'\',\''+k+'\')">&#10003; Mark Done</button>'
@@ -4621,7 +4705,7 @@ var DSAgent = {
   _progComplete: function(dsId, stepKey) {
     var rec = (APP.dsTracker||[]).find(function(r){ return r.DS_ID===dsId; });
     var self = this;
-    var stepLabel = (this.STEPS[stepKey]||{}).label || stepKey;
+    var stepLabel = (this.stepsFor(rec)[stepKey]||{}).label || stepKey;
     if (!confirm('Mark "' + stepLabel + '" as complete?')) return;
     toast('Recording completion...','info');
     GAS.completeDSStep(dsId, stepKey, '', '', function(r){
@@ -4631,8 +4715,8 @@ var DSAgent = {
         rec[stepKey].complete_date = r.complete_date || '';
         rec[stepKey].status        = (stepKey==='STEP_MEDICAL') ? 'Fit' : 'Done';
       }
-      var stepKeys = Object.keys(self.STEPS);
-      var allDone = stepKeys.every(function(k){
+      var myStepsPC = self.stepsFor(rec);
+      var allDone = Object.keys(myStepsPC).every(function(k){
         var s = (rec[k]&&rec[k].status)||'Pending';
         return s==='Done'||s==='Fit';
       });
@@ -4872,13 +4956,15 @@ var DSAgent = {
   openStepModal: function(dsId, stepKey) {
     var rec = (APP.dsTracker||[]).find(function(r){ return r.DS_ID === dsId; });
     if (!rec) { toast('Record not found','error'); return; }
-    var stepDef = this.STEPS[stepKey];
+    var myStepsOM = this.stepsFor(rec);
+    var stepDef = myStepsOM[stepKey];
     if (!stepDef) return;
-    // Block editing ASSD until EID is complete
+    // Block editing locked steps until their prerequisite is complete
     if (stepDef.requiresStep) {
       var prereq = rec[stepDef.requiresStep] || {};
       if (prereq.status !== 'Done' && prereq.status !== 'Fit') {
-        toast('ASSD is locked until EID & Residency Stamping is completed.', 'error');
+        var prereqDef = myStepsOM[stepDef.requiresStep];
+        toast((stepDef.label||stepKey) + ' is locked until ' + (prereqDef ? prereqDef.label : stepDef.requiresStep) + ' is completed.', 'error');
         return;
       }
     }
@@ -4951,7 +5037,8 @@ var DSAgent = {
     var dsId    = document.getElementById('ds-m-step-dsid').value;
     var stepKey = document.getElementById('ds-m-step-key').value;
     var status  = document.getElementById('ds-m-step-status').value;
-    var stepDef = this.STEPS[stepKey];
+    var rec2    = (APP.dsTracker||[]).find(function(x){ return x.DS_ID===dsId; });
+    var stepDef = (this.stepsFor(rec2))[stepKey];
     if (!stepDef) return;
 
     // Collect substeps
@@ -4979,12 +5066,12 @@ var DSAgent = {
       var rec = (APP.dsTracker||[]).find(function(x){ return x.DS_ID===dsId; });
       if (rec) {
         rec[stepKey] = stepData;
-        var stepKeys = Object.keys(self.STEPS);
-        var allDone = stepKeys.every(function(k){
+        var myStepsSave = self.stepsFor(rec);
+        var allDoneSave = Object.keys(myStepsSave).every(function(k){
           var s = (rec[k]&&rec[k].status)||'Pending';
           return s==='Done'||s==='Fit';
         });
-        rec.OB_COMPLETE = allDone ? 'TRUE' : 'FALSE';
+        rec.OB_COMPLETE = allDoneSave ? 'TRUE' : 'FALSE';
       }
       toast(stepDef.label + ' updated to ' + status, 'success');
       self.closeStepModal();

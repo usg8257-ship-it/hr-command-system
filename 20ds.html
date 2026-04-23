@@ -586,6 +586,13 @@
       <div class="ds-topbar-title">20 Days Strategy Tracker <span>Performance Intelligence Dashboard</span></div>
     </div>
     <div class="ds-topbar-right">
+      <select id="ds-lic-filter" onchange="DSAgent.setLicFilter(this.value)"
+        style="font-size:11px;font-weight:700;padding:5px 10px;border-radius:6px;border:1px solid rgba(255,255,255,.3);background:rgba(255,255,255,.12);color:#fff;cursor:pointer;min-width:90px;letter-spacing:.03em"
+        title="Filter by licence type">
+        <option value="" style="color:#18243c;background:#fff">&#9673; All</option>
+        <option value="assd" style="color:#18243c;background:#fff">&#128737; ASSD</option>
+        <option value="sira" style="color:#18243c;background:#fff">&#128220; SIRA</option>
+      </select>
       <button class="ds-btn cyan" onclick="DSAgent.refresh()">&#8635; Refresh</button>
       <button class="ds-btn ghost" onclick="DSAgent.recalculateTotals()" title="Recompute TOTAL_DAYS_ELAPSED for all records — use after manually editing step dates" style="font-size:11px">&#9881; Recalculate Totals</button>
       <button class="ds-btn green" onclick="DSAgent.exportPDF()" title="Export current tab as PDF — opens print dialog" style="font-size:11px">&#128438; Export PDF</button>
